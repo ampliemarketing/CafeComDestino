@@ -1,0 +1,6 @@
+{
+  "name": "CAFÉ COM DESTINO",
+  "description": "Plataforma inteligente para gestão completa do CAFÉ COM DESTINO - Do atendimento ao financeiro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
