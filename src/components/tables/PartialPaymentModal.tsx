@@ -87,7 +87,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
     }
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (effectivePaymentAmount <= 0) {
       alert('Selecione pelo menos um item ou informe um valor maior que zero.');
       return;
@@ -114,7 +114,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
       finalSplitPayments = parsedSplits;
     }
 
-    const created = addPartialPayment(table.id, {
+    const created = await addPartialPayment(table.id, {
       amount: effectivePaymentAmount,
       paymentMethod: isSplitPayment ? 'multiplo' : singleMethod,
       type: paymentType,

@@ -23,8 +23,10 @@ interface PrintReceiptModalProps {
     deliveryFee?: number;
     total: number;
     paymentMethod?: string;
+    splitPayments?: Array<{ method: string; amount: number }>;
+    remainingBalance?: number;
     nfceKey?: string;
-    type: 'caixa' | 'cozinha' | 'pre_conta';
+    type: 'caixa' | 'cozinha' | 'pre_conta' | 'adiantamento_parcial';
   };
 }
 
@@ -72,6 +74,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               {receiptData.type === 'cozinha' && '*** PEDIDO COZINHA ***'}
               {receiptData.type === 'caixa' && '*** COMPROVANTE DE VENDA ***'}
               {receiptData.type === 'pre_conta' && '*** PRÉ-CONTA / CONFERÊNCIA ***'}
+              {receiptData.type === 'adiantamento_parcial' && '*** COMPROVANTE DE ADIANTAMENTO ***'}
             </div>
 
             {/* Meta */}

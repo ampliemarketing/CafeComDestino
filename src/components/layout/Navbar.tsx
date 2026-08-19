@@ -1,36 +1,31 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  UtensilsCrossed, 
-  UserCheck, 
-  Store, 
-  Bell, 
-  ExternalLink, 
-  ChevronDown, 
-  ChefHat, 
+import {
+  UtensilsCrossed,
+  Store,
+  Bell,
+  ExternalLink,
+  ChevronDown,
   Coffee,
-  Monitor, 
-  Smartphone, 
-  Search, 
-  SlidersHorizontal,
-  Power
+  Monitor,
+  Smartphone,
+  Power,
+  LogOut
 } from 'lucide-react';
-import { UserRole } from '../../types';
 
 export const Navbar: React.FC = () => {
-  const { 
-    companyProfile, 
-    setCompanyProfile, 
-    currentUser, 
-    setCurrentUser, 
-    users, 
-    orders, 
-    setActiveView, 
+  const {
+    companyProfile,
+    setCompanyProfile,
+    currentUser,
+    logout,
+    orders,
+    setActiveView,
     activeView,
     addToast
   } = useApp();
 
-  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const isStoreOpen = companyProfile.operatingHours !== 'Fechado';
@@ -42,19 +37,6 @@ export const Navbar: React.FC = () => {
       operatingHours: newStatus,
     }));
     addToast('info', 'Status da Loja Alterado', isStoreOpen ? 'Restaurante marcado como FECHADO' : 'Restaurante ABERTO para pedidos');
-  };
-
-  const handleRoleChange = (role: UserRole) => {
-    const foundUser = users.find((u) => u.role === role) || {
-      id: 'usr-' + role,
-      name: `Usuário ${role.toUpperCase()}`,
-      email: `${role}@cafecomdestino.com`,
-      role,
-      active: true,
-    };
-    setCurrentUser(foundUser);
-    setIsRoleDropdownOpen(false);
-    addToast('success', 'Perfil Alterado', `Agora você está navegando como ${role.toUpperCase()}`);
   };
 
   const pendingOrdersCount = orders.filter((o) => o.orderStatus === 'novo' || o.orderStatus === 'em_preparo').length;
@@ -182,10 +164,10 @@ export const Navbar: React.FC = () => {
           )}
         </div>
 
-        {/* User Role Switcher Dropdown */}
+        {/* Logged-in User */}
         <div className="relative">
           <button
-            onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 px-3 py-1.5 rounded-xl transition text-left"
           >
             <div className="w-7 h-7 rounded-lg bg-amber-800 text-amber-200 font-bold text-xs flex items-center justify-center">
@@ -200,35 +182,19 @@ export const Navbar: React.FC = () => {
             <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
           </button>
 
-          {isRoleDropdownOpen && (
+          {isUserMenuOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-stone-800 text-stone-100 rounded-xl shadow-2xl border border-stone-700 p-2 z-50 text-xs">
-              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase text-stone-400 tracking-wider">
-                Alternar Perfil de Acesso
+              <div className="px-3 py-2 border-b border-stone-700 mb-1">
+                <p className="font-semibold text-stone-100">{currentUser.name}</p>
+                <p className="text-[10px] text-stone-400">{currentUser.email}</p>
               </div>
-              <div className="space-y-0.5">
-                {[
-                  { role: 'admin' as UserRole, label: 'Administrador (Geral)' },
-                  { role: 'gerente' as UserRole, label: 'Gerente da Operação' },
-                  { role: 'caixa' as UserRole, label: 'Caixa / PDV' },
-                  { role: 'garcom' as UserRole, label: 'Garçom (Atendimento)' },
-                  { role: 'cozinha' as UserRole, label: 'Cozinha (KDS)' },
-                  { role: 'estoque' as UserRole, label: 'Estoque / Compras' },
-                  { role: 'financeiro' as UserRole, label: 'Financeiro' },
-                ].map((item) => (
-                  <button
-                    key={item.role}
-                    onClick={() => handleRoleChange(item.role)}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition flex items-center justify-between ${
-                      currentUser.role === item.role
-                        ? 'bg-amber-800/80 text-white font-semibold'
-                        : 'hover:bg-stone-700 text-stone-300'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    {currentUser.role === item.role && <UserCheck className="w-3.5 h-3.5 text-amber-300" />}
-                  </button>
-                ))}
-              </div>
+              <button
+                onClick={() => { setIsUserMenuOpen(false); logout(); }}
+                className="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-2 hover:bg-stone-700 text-rose-300"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sair</span>
+              </button>
             </div>
           )}
         </div>

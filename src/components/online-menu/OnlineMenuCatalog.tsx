@@ -132,7 +132,7 @@ export const OnlineMenuCatalog: React.FC = () => {
   const cartDeliveryFee = serviceType === 'entrega' ? companyProfile.deliveryFee : 0;
   const cartTotal = cartSubtotal + cartDeliveryFee;
 
-  const handleFinalizeOrder = () => {
+  const handleFinalizeOrder = async () => {
     if (!customerName || !customerPhone) {
       addToast('error', 'Preencha seus dados', 'Nome e WhatsApp/Telefone são obrigatórios.');
       return;
@@ -153,7 +153,7 @@ export const OnlineMenuCatalog: React.FC = () => {
       notes: c.notes,
     }));
 
-    const placed = createOnlineOrder({
+    const placed = await createOnlineOrder({
       customer: {
         name: customerName,
         phone: customerPhone,

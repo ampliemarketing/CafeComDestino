@@ -15,8 +15,9 @@ import {
 import { FinancialEntry } from '../../types';
 
 export const FinancialManagement: React.FC = () => {
-  const { financialEntries, orders, addToast } = useApp();
+  const { orders, addToast } = useApp();
 
+  const [financialEntries, setFinancialEntries] = useState<FinancialEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dre' | 'contas'>('dre');
 
   // New entry modal
@@ -255,8 +256,19 @@ export const FinancialManagement: React.FC = () => {
 
             <button
               onClick={() => {
+                const newEntry: FinancialEntry = {
+                  id: 'fin-' + Date.now(),
+                  type: newEntryType,
+                  description: newEntryDesc || (newEntryType === 'receita' ? 'Receita avulsa' : 'Despesa avulsa'),
+                  category: newEntryCategory,
+                  amount: newEntryAmount,
+                  dueDate: new Date().toLocaleDateString('pt-BR'),
+                  status: 'pendente',
+                };
+                setFinancialEntries((prev) => [newEntry, ...prev]);
                 addToast('success', 'Lançamento registrado com sucesso!');
                 setIsModalOpen(false);
+                setNewEntryDesc('');
               }}
               className="w-full bg-amber-800 text-white py-2.5 rounded-xl font-bold text-xs shadow"
             >

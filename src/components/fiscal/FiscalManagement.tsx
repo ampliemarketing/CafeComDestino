@@ -13,15 +13,15 @@ import {
 } from 'lucide-react';
 
 export const FiscalManagement: React.FC = () => {
-  const { orders, restaurantConfig, saveRestaurantConfig, addToast } = useApp();
+  const { orders, companyProfile, setCompanyProfile, addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<'notes' | 'config'>('notes');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Config Form
-  const [cnpjInput, setCnpjInput] = useState(restaurantConfig.cnpj);
-  const [ieInput, setIeInput] = useState(restaurantConfig.ie);
-  const [razaoSocialInput, setRazaoSocialInput] = useState(restaurantConfig.razaoSocial);
+  const [cnpjInput, setCnpjInput] = useState(companyProfile.cnpj);
+  const [ieInput, setIeInput] = useState(companyProfile.ie);
+  const [razaoSocialInput, setRazaoSocialInput] = useState(companyProfile.name);
 
   const fiscalOrders = orders.filter((o) => o.fiscalIssued);
 
@@ -171,12 +171,13 @@ export const FiscalManagement: React.FC = () => {
 
             <button
               onClick={() => {
-                saveRestaurantConfig({
-                  ...restaurantConfig,
-                  razaoSocial: razaoSocialInput,
+                setCompanyProfile({
+                  ...companyProfile,
+                  name: razaoSocialInput,
                   cnpj: cnpjInput,
                   ie: ieInput,
                 });
+                addToast('success', 'Dados fiscais salvos');
               }}
               className="bg-amber-800 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow"
             >

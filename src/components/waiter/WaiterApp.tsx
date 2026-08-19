@@ -86,15 +86,7 @@ export const WaiterApp: React.FC = () => {
     notes: string;
   }) => {
     if (!currentActiveTable) return;
-    addTableItem(currentActiveTable.id, {
-      productId: kgData.productId,
-      productName: kgData.productName,
-      quantity: 1,
-      unitPrice: kgData.totalPrice,
-      additions: [],
-      notes: kgData.notes,
-      waiterName: currentUser?.name || 'Garçom',
-    });
+    addTableItem(currentActiveTable.id, kgData.productId, 1, [], kgData.notes, kgData.totalPrice);
     addToast('success', 'Item por Quilo Adicionado', `${kgData.productName} (R$ ${kgData.totalPrice.toFixed(2).replace('.', ',')}) na Mesa #${currentActiveTable.number}`);
   };
   const getStatusBadge = (status: TableStatus) => {

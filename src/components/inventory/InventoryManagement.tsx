@@ -48,7 +48,7 @@ export const InventoryManagement: React.FC = () => {
   const [lossItemType, setLossItemType] = useState<'ingredient' | 'product'>('ingredient');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [lossQty, setLossQty] = useState<number>(1);
-  const [lossReason, setLossReason] = useState<LossReason>('validade_vencida');
+  const [lossReason, setLossReason] = useState<LossReason>('vencido');
   const [employeeName, setEmployeeName] = useState<string>('');
   const [sectorName, setSectorName] = useState<string>('Cozinha');
   const [lossNotes, setLossNotes] = useState<string>('');
@@ -64,7 +64,7 @@ export const InventoryManagement: React.FC = () => {
 
   // Filtered ingredients
   const filteredIngredients = ingredients.filter((ing) =>
-    ing.name.toLowerCase().includes(searchQuery.toLowerCase()) || ing.code?.toLowerCase().includes(searchQuery.toLowerCase())
+    ing.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Financial KPIs
@@ -73,8 +73,8 @@ export const InventoryManagement: React.FC = () => {
     .filter((p) => p.trackStock)
     .reduce((acc, p) => acc + p.stockQuantity * p.costPrice, 0);
 
-  const lowStockIngredientsCount = ingredients.filter((ing) => ing.stockQuantity <= ing.minStockQuantity).length;
-  const lowStockProductsCount = products.filter((p) => p.trackStock && p.stockQuantity <= (p.minStockQuantity || 5)).length;
+  const lowStockIngredientsCount = ingredients.filter((ing) => ing.stockQuantity <= ing.minStock).length;
+  const lowStockProductsCount = products.filter((p) => p.trackStock && p.stockQuantity <= (p.minStock || 5)).length;
 
   // Total Losses KPI
   const totalLossesValue = lossRecords.reduce((acc, l) => acc + l.costValue, 0);
@@ -99,7 +99,7 @@ export const InventoryManagement: React.FC = () => {
       }
     }
     setLossQty(1);
-    setLossReason('validade_vencida');
+    setLossReason('vencido');
     setEmployeeName(currentUser.name);
     setIsLossModalOpen(true);
   };
@@ -149,7 +149,7 @@ export const InventoryManagement: React.FC = () => {
       productId: prod.id,
       quantity: courtesyQty,
       reason: courtesyReason,
-      source: 'balcao',
+      source: 'caixa_pdv',
       targetReference: 'Atendimento / Geral',
       customerName: courtesyCustomer || undefined,
       authorizedBy: courtesyAuthorizer || currentUser.name,
@@ -291,11 +291,11 @@ export const InventoryManagement: React.FC = () => {
                 </thead>
                 <tbody className="divide-y">
                   {filteredIngredients.map((ing) => {
-                    const isLow = ing.stockQuantity <= ing.minStockQuantity;
+                    const isLow = ing.stockQuantity <= ing.minStock;
 
                     return (
                       <tr key={ing.id} className="hover:bg-stone-50 transition">
-                        <td className="p-3.5 font-bold font-mono text-stone-700">{ing.code || ing.id}</td>
+                        <td className="p-3.5 font-bold font-mono text-stone-700">{ing.id}</td>
                         <td className="p-3.5 font-bold text-stone-900">{ing.name}</td>
                         <td className="p-3.5">
                           <span className={`px-2.5 py-1 rounded font-bold text-xs inline-block ${
@@ -304,7 +304,7 @@ export const InventoryManagement: React.FC = () => {
                             {ing.stockQuantity} {ing.unit}
                           </span>
                         </td>
-                        <td className="p-3.5 text-stone-600 font-semibold">{ing.minStockQuantity} {ing.unit}</td>
+                        <td className="p-3.5 text-stone-600 font-semibold">{ing.minStock} {ing.unit}</td>
                         <td className="p-3.5 font-semibold text-stone-800">R$ {ing.avgCostUnit.toFixed(2)} / {ing.unit}</td>
                         <td className="p-3.5 font-bold text-amber-900">R$ {(ing.stockQuantity * ing.avgCostUnit).toFixed(2)}</td>
                         <td className="p-3.5 text-center">

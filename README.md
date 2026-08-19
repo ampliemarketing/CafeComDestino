@@ -163,139 +163,21 @@ O **Café com Destino** é uma solução completa de gestão comercial (ERP) e P
 
 ---
 
-## 🗄️ Estrutura de Banco de Dados (Migração para Supabase / PostgreSQL)
+## 🗄️ Banco de Dados & Autenticação (Supabase)
 
-Para migrar a persistência local para um banco de dados em nuvem com sincronização em tempo real (Supabase), execute o script SQL abaixo no **SQL Editor** do Supabase:
+O sistema é conectado de verdade ao Supabase: categorias, produtos, insumos, ficha técnica, mesas, pedidos e caixa são lidos/gravados no banco em tempo real (Supabase Realtime), e o login é feito via Supabase Auth (email + senha). Fornecedores, perdas, cortesias, impressoras, entregadores, auditoria e o perfil da empresa ainda usam armazenamento local do navegador.
 
-```sql
--- 1. Categorias e Produtos
-CREATE TABLE categories (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  icon TEXT,
-  color TEXT
-);
+**Configuração do banco:** rode o arquivo [`supabase/schema.sql`](supabase/schema.sql) inteiro no **SQL Editor** do seu projeto Supabase. Ele cria as tabelas, ativa Row Level Security, o Realtime e as funções de transação usadas pelo PDV/caixa. **Atenção:** o script começa com `DROP TABLE` nas tabelas antigas — só rode se elas ainda estiverem vazias (faça backup antes se já houver dado real).
 
-CREATE TABLE products (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
-  price NUMERIC(10,2) NOT NULL,
-  cost_price NUMERIC(10,2) DEFAULT 0,
-  stock_quantity NUMERIC(10,2) DEFAULT 0,
-  min_stock NUMERIC(10,2) DEFAULT 0,
-  unit TEXT DEFAULT 'un',
-  has_recipe BOOLEAN DEFAULT FALSE,
-  active BOOLEAN DEFAULT TRUE,
-  image_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 2. Insumos e Ficha Técnica
-CREATE TABLE ingredients (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  unit TEXT NOT NULL,
-  cost_per_unit NUMERIC(10,2) NOT NULL,
-  current_stock NUMERIC(10,2) DEFAULT 0,
-  min_stock NUMERIC(10,2) DEFAULT 0
-);
-
-CREATE TABLE product_recipes (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
-  ingredient_id TEXT REFERENCES ingredients(id) ON DELETE CASCADE,
-  quantity NUMERIC(10,4) NOT NULL
-);
-
--- 3. Mesas e Garçons
-CREATE TABLE waitstaff (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  code TEXT,
-  active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE dining_tables (
-  id INTEGER PRIMARY KEY,
-  number INTEGER NOT NULL UNIQUE,
-  status TEXT DEFAULT 'LIVRE',
-  current_bill_id TEXT,
-  waitstaff_id TEXT REFERENCES waitstaff(id),
-  opened_at TIMESTAMPTZ,
-  total_amount NUMERIC(10,2) DEFAULT 0
-);
-
--- 4. Pedidos da Mesa e KDS (Cozinha)
-CREATE TABLE orders (
-  id TEXT PRIMARY KEY,
-  table_id INTEGER REFERENCES dining_tables(id),
-  waitstaff_id TEXT REFERENCES waitstaff(id),
-  status TEXT DEFAULT 'PENDING',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE order_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id TEXT REFERENCES orders(id) ON DELETE CASCADE,
-  product_id TEXT REFERENCES products(id),
-  product_name TEXT NOT NULL,
-  quantity INTEGER NOT NULL,
-  unit_price NUMERIC(10,2) NOT NULL,
-  notes TEXT,
-  status TEXT DEFAULT 'PENDING',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 5. Vendas (PDV / Caixa) e Histórico
-CREATE TABLE sales (
-  id TEXT PRIMARY KEY,
-  table_id INTEGER,
-  waitstaff_id TEXT REFERENCES waitstaff(id),
-  subtotal NUMERIC(10,2) NOT NULL,
-  discount NUMERIC(10,2) DEFAULT 0,
-  service_fee NUMERIC(10,2) DEFAULT 0,
-  total NUMERIC(10,2) NOT NULL,
-  payment_method TEXT NOT NULL,
-  channel TEXT DEFAULT 'BALCAO',
-  status TEXT DEFAULT 'COMPLETED',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE sale_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  sale_id TEXT REFERENCES sales(id) ON DELETE CASCADE,
-  product_id TEXT REFERENCES products(id),
-  product_name TEXT NOT NULL,
-  quantity INTEGER NOT NULL,
-  unit_price NUMERIC(10,2) NOT NULL,
-  total_price NUMERIC(10,2) NOT NULL
-);
-
--- 6. Sessões de Caixa
-CREATE TABLE cash_sessions (
-  id TEXT PRIMARY KEY,
-  opened_by TEXT NOT NULL,
-  initial_amount NUMERIC(10,2) NOT NULL,
-  final_amount NUMERIC(10,2),
-  difference NUMERIC(10,2) DEFAULT 0,
-  opened_at TIMESTAMPTZ DEFAULT NOW(),
-  closed_at TIMESTAMPTZ,
-  status TEXT DEFAULT 'OPEN'
-);
-
--- Habilitar Sincronização em Tempo Real (WebSockets)
-ALTER PUBLICATION supabase_realtime ADD TABLE dining_tables, orders, order_items, sales;
-```
+**Primeiro acesso:** crie sua conta pela própria tela de login do app ("Criar cadastro"). Toda conta nova nasce com o cargo `garcom`; para virar administrador, abra o projeto no Supabase → **Table Editor** → tabela `profiles` → edite a linha do seu usuário e mude `role` para `admin`. Depois disso, promoções de cargo de outros funcionários já podem ser feitas pela própria tela **Configurações → Usuários**.
 
 ---
 
 ## 🔒 Variáveis de Ambiente (`.env`)
 
-Crie um arquivo `.env` na raiz do projeto contendo as seguintes configurações:
+Crie um arquivo `.env` na raiz do projeto contendo as seguintes configurações (use as credenciais do seu projeto em Supabase → Project Settings → API):
 
 ```env
-# Conexão com o Supabase (Opcional quando conectado em nuvem)
 VITE_SUPABASE_URL=https://seu-projeto.supabase.co
 VITE_SUPABASE_ANON_KEY=sua-chave-anonima-publica
 ```

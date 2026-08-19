@@ -23,7 +23,7 @@ interface SettingsManagementProps {
 }
 
 export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialTab = 'profile' }) => {
-  const { companyProfile, setCompanyProfile, products, setProducts, addToast } = useApp();
+  const { companyProfile, setCompanyProfile, products, saveProduct, users, updateUserProfile, currentUser, addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'printers'>(initialTab);
 
@@ -410,16 +410,14 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                 setCompanyProfile(updatedProfile);
 
                 // Also update matching products in catalog
-                const updatedProducts = products.map((p) => {
+                products.forEach((p) => {
                   if (p.id === 'prod-kg-almoco' || p.name.toLowerCase().includes('almoço por quilo')) {
-                    return { ...p, price: lunchPriceInput, name: `Almoço Por Quilo (R$ ${lunchPriceInput.toFixed(2).replace('.', ',')}/kg)` };
+                    saveProduct({ ...p, price: lunchPriceInput, name: `Almoço Por Quilo (R$ ${lunchPriceInput.toFixed(2).replace('.', ',')}/kg)` });
                   }
                   if (p.id === 'prod-kg-cafe' || p.name.toLowerCase().includes('café da manhã por quilo')) {
-                    return { ...p, price: breakfastPriceInput, name: `Café da Manhã Por Quilo (R$ ${breakfastPriceInput.toFixed(2).replace('.', ',')}/kg)` };
+                    saveProduct({ ...p, price: breakfastPriceInput, name: `Café da Manhã Por Quilo (R$ ${breakfastPriceInput.toFixed(2).replace('.', ',')}/kg)` });
                   }
-                  return p;
                 });
-                setProducts(updatedProducts);
 
                 addToast('success', 'Configurações Salvas', 'Perfil, foto de perfil, banner e valores por quilo atualizados!');
               }}
@@ -436,29 +434,36 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           <div className="space-y-4 text-xs">
             <div className="flex justify-between items-center border-b pb-2">
               <h3 className="font-bold text-stone-900 text-sm">Usuários Cadastrados no Sistema</h3>
-              <button
-                onClick={() => addToast('info', 'Novo Usuário', 'Formulário de usuário aberto.')}
-                className="bg-amber-800 text-white px-3 py-1.5 rounded-xl font-bold"
-              >
-                + Adicionar Funcionário
-              </button>
+              <p className="text-[10px] text-stone-500">Novos funcionários criam a própria conta na tela de login ("Criar conta").</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[
-                { name: 'Carlos Eduardo', role: 'admin', email: 'carlos@cafecomdestino.com' },
-                { name: 'Ana Souza', role: 'gerente', email: 'ana@cafecomdestino.com' },
-                { name: 'João Paulo', role: 'caixa', email: 'joao@cafecomdestino.com' },
-                { name: 'Marcos Garçom', role: 'garcom', email: 'marcos@cafecomdestino.com' },
-                { name: 'Chef Roberto', role: 'cozinha', email: 'chef@cafecomdestino.com' },
-              ].map((u, idx) => (
-                <div key={idx} className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between">
+              {users.map((u) => (
+                <div key={u.id} className="p-3 bg-stone-50 rounded-xl border space-y-2">
                   <div>
                     <p className="font-bold text-stone-900">{u.name}</p>
                     <p className="text-[10px] text-stone-500">{u.email}</p>
-                    <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded border mt-1 inline-block uppercase">
-                      {u.role}
-                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={u.role}
+                      onChange={(e) => updateUserProfile(u.id, { role: e.target.value as UserRole })}
+                      disabled={u.id === currentUser.id}
+                      className="flex-1 border rounded-lg px-2 py-1 text-[10px] font-bold uppercase disabled:opacity-50"
+                    >
+                      {(['admin', 'gerente', 'caixa', 'garcom', 'cozinha', 'estoque', 'financeiro'] as UserRole[]).map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => updateUserProfile(u.id, { active: !u.active })}
+                      disabled={u.id === currentUser.id}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border disabled:opacity-50 ${
+                        u.active ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-stone-200 text-stone-600 border-stone-300'
+                      }`}
+                    >
+                      {u.active ? 'Ativo' : 'Inativo'}
+                    </button>
                   </div>
                 </div>
               ))}

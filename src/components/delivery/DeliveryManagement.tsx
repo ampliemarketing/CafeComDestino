@@ -14,9 +14,10 @@ import {
 import { Order } from '../../types';
 
 export const DeliveryManagement: React.FC = () => {
-  const { orders, drivers, assignDriverToOrder, updateOrderStatus, addToast } = useApp();
+  const { orders, deliveryDrivers, updateOrderStatus, addToast } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [assignedDriverByOrder, setAssignedDriverByOrder] = useState<Record<string, string>>({});
 
   const deliveryOrders = orders.filter(
     (o) => o.channel === 'online' || o.channel === 'whatsapp' || o.channel === 'telefone'
@@ -41,7 +42,7 @@ export const DeliveryManagement: React.FC = () => {
         <div className="flex items-center gap-2">
           <div className="bg-stone-800 px-3 py-1.5 rounded-xl border border-stone-700 text-xs">
             <span className="text-stone-400">Motoboys Ativos: </span>
-            <strong className="text-emerald-400 font-bold">{drivers.filter((d) => d.available).length} disponíveis</strong>
+            <strong className="text-emerald-400 font-bold">{deliveryDrivers.filter((d) => d.active).length} disponíveis</strong>
           </div>
         </div>
       </div>
@@ -50,16 +51,16 @@ export const DeliveryManagement: React.FC = () => {
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-2">
         <h3 className="font-bold text-stone-900 text-xs uppercase tracking-wider">Equipe de Motoboys / Entregadores</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {drivers.map((d) => (
+          {deliveryDrivers.map((d) => (
             <div key={d.id} className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between text-xs">
               <div className="space-y-0.5">
                 <p className="font-bold text-stone-900">{d.name}</p>
                 <p className="text-[10px] text-stone-500">{d.vehicle} ({d.plate}) • {d.phone}</p>
               </div>
               <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                d.available ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                d.active ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
               }`}>
-                {d.available ? 'Disponível' : 'Em Rota'}
+                {d.active ? 'Disponível' : 'Em Rota'}
               </span>
             </div>
           ))}
@@ -98,13 +99,13 @@ export const DeliveryManagement: React.FC = () => {
               {/* Assign Motoboy & Dispatch */}
               <div className="flex items-center gap-2 pt-2 border-t">
                 <select
-                  value={ord.driverId || ''}
-                  onChange={(e) => assignDriverToOrder(ord.id, e.target.value)}
+                  value={assignedDriverByOrder[ord.id] || ord.deliveryDriverName || ''}
+                  onChange={(e) => setAssignedDriverByOrder((prev) => ({ ...prev, [ord.id]: e.target.value }))}
                   className="flex-1 border rounded-xl p-2 text-xs font-semibold text-stone-800"
                 >
                   <option value="">Selecione o Entregador...</option>
-                  {drivers.map((d) => (
-                    <option key={d.id} value={d.id}>
+                  {deliveryDrivers.map((d) => (
+                    <option key={d.id} value={d.name}>
                       {d.name} ({d.vehicle})
                     </option>
                   ))}
@@ -112,7 +113,12 @@ export const DeliveryManagement: React.FC = () => {
 
                 <button
                   onClick={() => {
-                    updateOrderStatus(ord.id, 'saiu_entrega');
+                    const driverName = assignedDriverByOrder[ord.id] || ord.deliveryDriverName;
+                    if (!driverName) {
+                      addToast('warning', 'Selecione um entregador', 'Escolha o motoboy antes de despachar.');
+                      return;
+                    }
+                    updateOrderStatus(ord.id, 'saiu_entrega', driverName);
                     addToast('success', 'Despachado!', `Pedido #${ord.orderNumber} saiu para entrega.`);
                   }}
                   className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow"

@@ -47,10 +47,10 @@ export const DashboardView: React.FC = () => {
 
   const openTablesCount = tables.filter((t) => t.status !== 'livre').length;
 
-  const totalDailyRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0) + 2480.00; // adding baseline mock sales
-  const totalMonthlyRevenue = totalDailyRevenue * 22; // baseline for month
-  const totalOrdersCount = completedOrders.length + 38;
-  const avgTicket = totalDailyRevenue / Math.max(1, totalOrdersCount);
+  const totalDailyRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
+  const totalMonthlyRevenue = totalDailyRevenue;
+  const totalOrdersCount = completedOrders.length;
+  const avgTicket = totalOrdersCount > 0 ? totalDailyRevenue / totalOrdersCount : 0;
 
   // Low stock check
   const lowStockIngredients = ingredients.filter((i) => i.stockQuantity <= i.minStock);
@@ -58,35 +58,57 @@ export const DashboardView: React.FC = () => {
   // Losses sum
   const totalLossesValue = lossRecords.reduce((sum, l) => sum + l.costValue, 0);
 
-  // Recharts Mock Data
-  const hourlySalesData = [
-    { hour: '11:00', total: 320, orders: 4 },
-    { hour: '12:00', total: 1250, orders: 15 },
-    { hour: '13:00', total: 980, orders: 12 },
-    { hour: '14:00', total: 450, orders: 6 },
-    { hour: '18:00', total: 310, orders: 4 },
-    { hour: '19:00', total: 1120, orders: 14 },
-    { hour: '20:00', total: 1680, orders: 18 },
-    { hour: '21:00', total: 1420, orders: 16 },
-    { hour: '22:00', total: 640, orders: 8 },
-  ];
+  // Hourly sales, derived from real completed orders (createdAt is stored as "HH:MM")
+  const hourlySalesData = Object.entries(
+    completedOrders.reduce<Record<string, { total: number; orders: number }>>((acc, o) => {
+      const hour = (o.createdAt || '').split(':')[0];
+      if (!hour) return acc;
+      const key = `${hour}:00`;
+      if (!acc[key]) acc[key] = { total: 0, orders: 0 };
+      acc[key].total += o.total;
+      acc[key].orders += 1;
+      return acc;
+    }, {})
+  )
+    .map(([hour, v]) => ({ hour, ...v }))
+    .sort((a, b) => a.hour.localeCompare(b.hour));
 
-  const paymentBreakdownData = [
-    { name: 'Pix Online & QR', value: 45, color: '#2E8B57' },
-    { name: 'Cartão de Crédito', value: 30, color: '#A67C52' },
-    { name: 'Cartão de Débito', value: 15, color: '#3B82F6' },
-    { name: 'Dinheiro', value: 10, color: '#D98532' },
-  ];
+  // Payment method breakdown, derived from real completed orders
+  const paymentMethodLabels: Record<string, string> = {
+    pix: 'Pix',
+    cartao_credito: 'Cartão de Crédito',
+    cartao_debito: 'Cartão de Débito',
+    dinheiro: 'Dinheiro',
+    multiplo: 'Múltiplo',
+  };
+  const paymentMethodColors: Record<string, string> = {
+    pix: '#2E8B57',
+    cartao_credito: '#A67C52',
+    cartao_debito: '#3B82F6',
+    dinheiro: '#D98532',
+    multiplo: '#8B5CF6',
+  };
+  const paymentBreakdownData = Object.entries(
+    completedOrders.reduce<Record<string, number>>((acc, o) => {
+      acc[o.paymentMethod] = (acc[o.paymentMethod] || 0) + o.total;
+      return acc;
+    }, {})
+  ).map(([method, total]) => ({
+    name: paymentMethodLabels[method] || method,
+    value: totalDailyRevenue > 0 ? Math.round((total / totalDailyRevenue) * 100) : 0,
+    color: paymentMethodColors[method] || '#78716c',
+  }));
 
-  const channelSalesData = [
-    { channel: 'Ped. Online', total: 1850 },
-    { channel: 'App Garçom', total: 2400 },
-    { channel: 'PDV Balcão', total: 1200 },
-    { channel: 'WhatsApp', total: 650 },
-  ];
-
-  // Top products count
-  const topProductsList = products.slice(0, 4);
+  // Top selling products, derived from real completed orders
+  const soldQtyByProduct = completedOrders.reduce<Record<string, number>>((acc, o) => {
+    o.items.forEach((it) => {
+      acc[it.productId] = (acc[it.productId] || 0) + it.quantity;
+    });
+    return acc;
+  }, {});
+  const topProductsList = [...products]
+    .sort((a, b) => (soldQtyByProduct[b.id] || 0) - (soldQtyByProduct[a.id] || 0))
+    .slice(0, 4);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -134,10 +156,7 @@ export const DashboardView: React.FC = () => {
           <p className="text-2xl font-bold text-stone-900 mt-3">
             R$ {totalDailyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <div className="flex items-center gap-1.5 text-emerald-600 text-xs mt-2 font-medium">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>+14.2% em relação a ontem</span>
-          </div>
+          <p className="text-xs text-stone-500 mt-2">{completedOrders.length} venda(s) concluída(s)</p>
         </div>
 
         {/* Monthly Revenue */}
@@ -151,7 +170,7 @@ export const DashboardView: React.FC = () => {
           <p className="text-2xl font-bold text-stone-900 mt-3">
             R$ {totalMonthlyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-stone-500 mt-2">Acumulado do mês corrente</p>
+          <p className="text-xs text-stone-500 mt-2">Total de todas as vendas registradas</p>
         </div>
 
         {/* Total Orders & Ticket */}
@@ -274,18 +293,24 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={hourlySalesData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E7E2DC" />
-                <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#78716c' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#78716c' }} />
-                <Tooltip 
-                  formatter={(val: any) => [`R$ ${val}`, 'Vendas']} 
-                  contentStyle={{ backgroundColor: '#1c1917', color: '#fff', borderRadius: '12px', fontSize: '12px' }}
-                />
-                <Bar dataKey="total" fill="#A67C52" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {hourlySalesData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-stone-400">
+                Nenhuma venda concluída ainda.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={hourlySalesData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E7E2DC" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#78716c' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#78716c' }} />
+                  <Tooltip
+                    formatter={(val: any) => [`R$ ${val}`, 'Vendas']}
+                    contentStyle={{ backgroundColor: '#1c1917', color: '#fff', borderRadius: '12px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="total" fill="#A67C52" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -295,24 +320,30 @@ export const DashboardView: React.FC = () => {
             <h3 className="font-bold text-stone-900 text-sm mb-1">Formas de Pagamento</h3>
             <p className="text-xs text-stone-500 mb-4">Distribuição do faturamento por meio</p>
             <div className="h-44 w-full relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={paymentBreakdownData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {paymentBreakdownData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val: any) => [`${val}%`, 'Participação']} />
-                </PieChart>
-              </ResponsiveContainer>
+              {paymentBreakdownData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-stone-400">
+                  Nenhuma venda concluída ainda.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentBreakdownData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {paymentBreakdownData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val: any) => [`${val}%`, 'Participação']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
           <div className="space-y-1.5 text-xs pt-2 border-t border-stone-200">
@@ -343,22 +374,26 @@ export const DashboardView: React.FC = () => {
             </button>
           </div>
           <div className="space-y-3">
-            {topProductsList.map((prod, idx) => (
-              <div key={prod.id} className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-200">
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-stone-200 text-stone-700 font-bold text-xs flex items-center justify-center">
-                    #{idx + 1}
-                  </span>
-                  <div>
-                    <p className="font-semibold text-xs text-stone-900">{prod.name}</p>
-                    <p className="text-[10px] text-stone-500">R$ {prod.price.toFixed(2)}</p>
+            {topProductsList.length === 0 ? (
+              <p className="text-xs text-stone-500 py-6 text-center">Nenhum produto cadastrado ainda.</p>
+            ) : (
+              topProductsList.map((prod, idx) => (
+                <div key={prod.id} className="flex items-center justify-between p-2 rounded-xl bg-stone-50 border border-stone-200">
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-lg bg-stone-200 text-stone-700 font-bold text-xs flex items-center justify-center">
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-xs text-stone-900">{prod.name}</p>
+                      <p className="text-[10px] text-stone-500">R$ {prod.price.toFixed(2)}</p>
+                    </div>
                   </div>
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    {soldQtyByProduct[prod.id] || 0} un
+                  </span>
                 </div>
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                  {42 - idx * 7} un
-                </span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
