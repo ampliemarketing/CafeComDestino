@@ -24,16 +24,20 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { PartialPaymentModal } from './PartialPaymentModal';
 import { CourtesyModal } from './CourtesyModal';
 
+const SECTORS: DiningTable['sector'][] = ['Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão'];
+
 export const TableManagement: React.FC = () => {
-  const { 
-    tables, 
-    openTable, 
-    cancelTableItem, 
-    transferTable, 
-    closeTableAndPay, 
+  const {
+    tables,
+    createTable,
+    deleteTable,
+    openTable,
+    cancelTableItem,
+    transferTable,
+    closeTableAndPay,
     cancelPartialPayment,
-    addToast, 
-    currentUser 
+    addToast,
+    currentUser
   } = useApp();
 
   const [selectedSector, setSelectedSector] = useState<string>('todos');
@@ -43,6 +47,12 @@ export const TableManagement: React.FC = () => {
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [guestCount, setGuestCount] = useState(2);
   const [clientName, setClientName] = useState('');
+
+  // New Table Modal
+  const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
+  const [newTableNumber, setNewTableNumber] = useState<number>(1);
+  const [newTableSector, setNewTableSector] = useState<DiningTable['sector']>('Salão Principal');
+  const [newTableCapacity, setNewTableCapacity] = useState<number>(2);
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
@@ -96,19 +106,35 @@ export const TableManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Sector Tabs */}
-        <div className="flex gap-1.5 bg-stone-800 p-1.5 rounded-xl border border-stone-700 text-xs font-semibold">
-          {['todos', 'Salão Principal', 'Varanda', 'Área VIP'].map((sec) => (
-            <button
-              key={sec}
-              onClick={() => setSelectedSector(sec)}
-              className={`px-3 py-1.5 rounded-lg transition capitalize ${
-                selectedSector === sec ? 'bg-amber-800 text-white shadow' : 'text-stone-300 hover:text-white'
-              }`}
-            >
-              {sec}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          {/* Sector Tabs */}
+          <div className="flex gap-1.5 bg-stone-800 p-1.5 rounded-xl border border-stone-700 text-xs font-semibold">
+            {['todos', ...SECTORS].map((sec) => (
+              <button
+                key={sec}
+                onClick={() => setSelectedSector(sec)}
+                className={`px-3 py-1.5 rounded-lg transition capitalize ${
+                  selectedSector === sec ? 'bg-amber-800 text-white shadow' : 'text-stone-300 hover:text-white'
+                }`}
+              >
+                {sec}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              const nextNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) + 1 : 1;
+              setNewTableNumber(nextNumber);
+              setNewTableSector('Salão Principal');
+              setNewTableCapacity(2);
+              setIsNewTableModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2.5 rounded-xl text-xs font-bold shadow transition shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Mesa</span>
+          </button>
         </div>
       </div>
 
@@ -141,9 +167,23 @@ export const TableManagement: React.FC = () => {
                   <span className="text-2xl font-bold text-stone-900">Mesa {tb.number}</span>
                   <p className="text-[10px] text-stone-500 font-semibold">{tb.sector} • {tb.capacity} lug</p>
                 </div>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${badge.class}`}>
-                  {badge.label}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${badge.class}`}>
+                    {badge.label}
+                  </span>
+                  {tb.status === 'livre' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Remover a Mesa ${tb.number}?`)) deleteTable(tb.id);
+                      }}
+                      className="text-stone-300 hover:text-rose-600 p-0.5"
+                      title="Remover mesa"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {tb.status !== 'livre' ? (
@@ -401,6 +441,70 @@ export const TableManagement: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL: New Table */}
+      {isNewTableModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <h3 className="font-bold text-stone-900 text-base">Nova Mesa</h3>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Número da Mesa</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newTableNumber}
+                  onChange={(e) => setNewTableNumber(Number(e.target.value))}
+                  className="w-full border rounded-xl p-2.5"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Setor</label>
+                <select
+                  value={newTableSector}
+                  onChange={(e) => setNewTableSector(e.target.value as DiningTable['sector'])}
+                  className="w-full border rounded-xl p-2.5 bg-white font-semibold"
+                >
+                  {SECTORS.map((sec) => (
+                    <option key={sec} value={sec}>{sec}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Capacidade (lugares)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newTableCapacity}
+                  onChange={(e) => setNewTableCapacity(Number(e.target.value))}
+                  className="w-full border rounded-xl p-2.5"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsNewTableModalOpen(false)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (tables.some((t) => t.number === newTableNumber)) {
+                    addToast('error', 'Número já existe', `Já existe uma mesa com o número ${newTableNumber}.`);
+                    return;
+                  }
+                  createTable(newTableNumber, newTableSector, newTableCapacity);
+                  setIsNewTableModalOpen(false);
+                }}
+                className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow"
+              >
+                Criar Mesa
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

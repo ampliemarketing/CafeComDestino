@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
     {
       title: 'PRODUTOS & ESTOQUE',
       items: [
-        { id: 'products', label: 'Produtos & Ficha Técnica', icon: Package, roles: ['admin', 'gerente', 'estoque'] },
+        { id: 'products', label: 'Produtos', icon: Package, roles: ['admin', 'gerente', 'estoque'] },
         { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes, roles: ['admin', 'gerente', 'estoque'] },
         { id: 'suppliers', label: 'Fornecedores', icon: Truck, roles: ['admin', 'gerente', 'estoque'] },
       ]

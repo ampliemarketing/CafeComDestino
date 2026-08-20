@@ -75,26 +75,19 @@ export interface Category {
   description?: string;
   order: number;
   active: boolean;
+  showsInStock: boolean;
+}
+
+export interface SaleUnit {
+  id: string;
+  name: string;
+  abbreviation: string;
 }
 
 export interface ProductAddition {
   id: string;
   name: string;
   price: number;
-}
-
-export interface IngredientUsage {
-  ingredientId: string;
-  quantityUsed: number; // e.g. 0.150 for 150g or 1 for 1 unit
-  unit: string;
-}
-
-export interface TechnicalSheet {
-  productId: string;
-  ingredients: IngredientUsage[];
-  servingsYield: number;
-  totalCost: number;
-  marginPercent: number;
 }
 
 export interface Product {
@@ -107,9 +100,10 @@ export interface Product {
   price: number;
   costPrice: number;
   promoPrice?: number;
-  unit: 'UN' | 'KG' | 'L' | 'PORTION';
+  unit: string;
   imageUrl: string;
   available: boolean;
+  requiresPreparation: boolean;
   trackStock: boolean;
   stockQuantity: number;
   minStock: number;

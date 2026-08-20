@@ -71,7 +71,8 @@ create table categories (
   icon text,
   description text,
   "order" int not null default 0,
-  active boolean not null default true
+  active boolean not null default true,
+  shows_in_stock boolean not null default true
 );
 
 create table ingredients (
@@ -86,6 +87,13 @@ create table ingredients (
   expiry_date date
 );
 
+-- Unidades de venda cadastráveis pelo usuário (ex: Unidade/UN, Quilograma/KG).
+create table sale_units (
+  id text primary key,
+  name text not null,
+  abbreviation text not null
+);
+
 create table products (
   id text primary key,
   code text not null default '',
@@ -96,9 +104,10 @@ create table products (
   price numeric(10,2) not null default 0,
   cost_price numeric(10,2) not null default 0,
   promo_price numeric(10,2),
-  unit text not null default 'UN' check (unit in ('UN', 'KG', 'L', 'PORTION')),
+  unit text not null default 'UN',
   image_url text not null default '',
   available boolean not null default true,
+  requires_preparation boolean not null default true,
   track_stock boolean not null default false,
   stock_quantity numeric(10,3) not null default 0,
   min_stock numeric(10,3) not null default 0,
@@ -199,6 +208,7 @@ create table cash_movements (
 -- ----------------------------------------------------------------------------
 alter table profiles enable row level security;
 alter table categories enable row level security;
+alter table sale_units enable row level security;
 alter table ingredients enable row level security;
 alter table products enable row level security;
 alter table technical_sheets enable row level security;
@@ -211,6 +221,7 @@ create policy "authenticated_read_profiles" on profiles for select using (auth.r
 create policy "self_update_profile" on profiles for update using (auth.uid() = id);
 
 create policy "authenticated_all_categories" on categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated_all_sale_units" on sale_units for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredients" on ingredients for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_products" on products for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_technical_sheets" on technical_sheets for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

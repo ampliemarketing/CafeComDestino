@@ -22,16 +22,20 @@ import {
 import { Ingredient, Product, LossReason, CourtesyReason } from '../../types';
 
 export const InventoryManagement: React.FC = () => {
-  const { 
-    ingredients, 
-    products, 
-    lossRecords, 
-    courtesyRecords, 
-    recordStockEntry, 
-    recordLoss, 
-    recordCourtesy, 
+  const {
+    ingredients,
+    products,
+    categories,
+    lossRecords,
+    courtesyRecords,
+    recordStockEntry,
+    recordProductStockEntry,
+    saveIngredient,
+    recordLoss,
+    recordCourtesy,
     currentUser,
-    users 
+    users,
+    addToast
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'stock' | 'losses' | 'courtesies'>('stock');
@@ -42,6 +46,22 @@ export const InventoryManagement: React.FC = () => {
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [entryQty, setEntryQty] = useState<number>(10);
   const [unitCostInput, setUnitCostInput] = useState<number>(5.00);
+
+  // Product Stock Entry Modal
+  const [isProductStockModalOpen, setIsProductStockModalOpen] = useState(false);
+  const [productStockSearch, setProductStockSearch] = useState('');
+  const [selectedProductForStock, setSelectedProductForStock] = useState<Product | null>(null);
+  const [productStockQty, setProductStockQty] = useState<number>(10);
+
+  // New Ingredient Modal
+  const [isNewIngredientModalOpen, setIsNewIngredientModalOpen] = useState(false);
+  const [newIngredientName, setNewIngredientName] = useState('');
+  const [newIngredientCategory, setNewIngredientCategory] = useState<Ingredient['category']>('outros');
+  const [newIngredientUnit, setNewIngredientUnit] = useState<Ingredient['unit']>('UN');
+  const [newIngredientStock, setNewIngredientStock] = useState<number>(0);
+  const [newIngredientMinStock, setNewIngredientMinStock] = useState<number>(0);
+  const [newIngredientCost, setNewIngredientCost] = useState<number>(0);
+  const [newIngredientExpiry, setNewIngredientExpiry] = useState('');
 
   // New Comprehensive Loss Modal
   const [isLossModalOpen, setIsLossModalOpen] = useState(false);
@@ -66,6 +86,13 @@ export const InventoryManagement: React.FC = () => {
   const filteredIngredients = ingredients.filter((ing) =>
     ing.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Filtered products
+  const filteredProducts = products.filter((p) => {
+    const category = categories.find((c) => c.id === p.categoryId);
+    const showsInStock = category ? category.showsInStock !== false : true;
+    return showsInStock && p.name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   // Financial KPIs
   const totalIngredientValue = ingredients.reduce((acc, ing) => acc + ing.stockQuantity * ing.avgCostUnit, 0);
@@ -130,7 +157,7 @@ export const InventoryManagement: React.FC = () => {
         itemId: prod.id,
         itemName: prod.name,
         quantity: lossQty,
-        unit: 'unid',
+        unit: prod.unit,
         costValue: computedCost,
         reason: lossReason,
         notes: lossNotes,
@@ -245,14 +272,44 @@ export const InventoryManagement: React.FC = () => {
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
               <input
                 type="text"
-                placeholder="Buscar insumo por nome ou código..."
+                placeholder="Buscar insumo ou produto por nome..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700"
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+              <button
+                onClick={() => {
+                  setNewIngredientName('');
+                  setNewIngredientCategory('outros');
+                  setNewIngredientUnit('UN');
+                  setNewIngredientStock(0);
+                  setNewIngredientMinStock(0);
+                  setNewIngredientCost(0);
+                  setNewIngredientExpiry('');
+                  setIsNewIngredientModalOpen(true);
+                }}
+                className="flex-1 sm:flex-none px-3.5 py-2 bg-stone-800 hover:bg-stone-900 text-white font-bold rounded-xl text-xs shadow transition flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Novo Insumo</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setProductStockSearch('');
+                  setSelectedProductForStock(null);
+                  setProductStockQty(10);
+                  setIsProductStockModalOpen(true);
+                }}
+                className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow transition flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Adicionar Estoque</span>
+              </button>
+
               <button
                 onClick={() => handleOpenLossModal('ingredient')}
                 className="flex-1 sm:flex-none px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-xl text-xs shadow transition flex items-center justify-center gap-1.5"
@@ -330,6 +387,76 @@ export const InventoryManagement: React.FC = () => {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b bg-stone-50">
+              <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-amber-800" />
+                <span>Produtos Finais & Estoque de Venda ({filteredProducts.length})</span>
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                  <tr>
+                    <th className="p-3.5">Cód</th>
+                    <th className="p-3.5">Produto</th>
+                    <th className="p-3.5">Categoria</th>
+                    <th className="p-3.5">Unidade</th>
+                    <th className="p-3.5">Estoque Atual</th>
+                    <th className="p-3.5">Estoque Mínimo</th>
+                    <th className="p-3.5 text-center">Ações Rápidas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-stone-400 italic">
+                        Nenhum produto cadastrado até o momento.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProducts.map((p) => {
+                      const category = categories.find((c) => c.id === p.categoryId);
+                      const isLow = p.trackStock && p.stockQuantity <= p.minStock;
+
+                      return (
+                        <tr key={p.id} className="hover:bg-stone-50 transition">
+                          <td className="p-3.5 font-bold font-mono text-stone-700">{p.code || p.id}</td>
+                          <td className="p-3.5 font-bold text-stone-900">{p.name}</td>
+                          <td className="p-3.5 text-stone-600 font-medium">{category?.name || 'Geral'}</td>
+                          <td className="p-3.5 text-stone-600 font-semibold">{p.unit}</td>
+                          <td className="p-3.5">
+                            {p.trackStock ? (
+                              <span className={`px-2.5 py-1 rounded font-bold text-xs inline-block ${
+                                isLow ? 'bg-rose-100 text-rose-800 border border-rose-300' : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {p.stockQuantity} {p.unit}
+                              </span>
+                            ) : (
+                              <span className="text-stone-400 italic">Não controla estoque</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-stone-600 font-semibold">
+                            {p.trackStock ? `${p.minStock} ${p.unit}` : '—'}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <button
+                              onClick={() => handleOpenLossModal('product', p.id)}
+                              className="px-2.5 py-1 bg-rose-700 text-white font-bold rounded-lg text-[10px] shadow hover:bg-rose-800"
+                            >
+                              - Registrar Perda
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -541,6 +668,240 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL: New Ingredient */}
+      {isNewIngredientModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-stone-900 text-base">Novo Insumo</h3>
+              <button onClick={() => setIsNewIngredientModalOpen(false)} className="p-1 text-stone-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Nome do Insumo *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Ex: Creme de Leite"
+                  value={newIngredientName}
+                  onChange={(e) => setNewIngredientName(e.target.value)}
+                  className="w-full border rounded-xl p-2.5"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Categoria</label>
+                  <select
+                    value={newIngredientCategory}
+                    onChange={(e) => setNewIngredientCategory(e.target.value as Ingredient['category'])}
+                    className="w-full border rounded-xl p-2.5 font-semibold"
+                  >
+                    <option value="carnes">Carnes</option>
+                    <option value="laticinios">Laticínios</option>
+                    <option value="hortifruti">Hortifruti</option>
+                    <option value="bebidas">Bebidas</option>
+                    <option value="embalagens">Embalagens</option>
+                    <option value="outros">Outros</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Unidade</label>
+                  <select
+                    value={newIngredientUnit}
+                    onChange={(e) => setNewIngredientUnit(e.target.value as Ingredient['unit'])}
+                    className="w-full border rounded-xl p-2.5 font-semibold"
+                  >
+                    <option value="KG">Quilograma (KG)</option>
+                    <option value="G">Grama (G)</option>
+                    <option value="L">Litro (L)</option>
+                    <option value="ML">Mililitro (ML)</option>
+                    <option value="UN">Unidade (UN)</option>
+                    <option value="CX">Caixa (CX)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Estoque Inicial</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={newIngredientStock}
+                    onChange={(e) => setNewIngredientStock(Number(e.target.value))}
+                    className="w-full border rounded-xl p-2.5 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Estoque Mínimo</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={newIngredientMinStock}
+                    onChange={(e) => setNewIngredientMinStock(Number(e.target.value))}
+                    className="w-full border rounded-xl p-2.5"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Custo Médio Unitário (R$)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newIngredientCost}
+                    onChange={(e) => setNewIngredientCost(Number(e.target.value))}
+                    className="w-full border rounded-xl p-2.5"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Validade (opcional)</label>
+                  <input
+                    type="date"
+                    value={newIngredientExpiry}
+                    onChange={(e) => setNewIngredientExpiry(e.target.value)}
+                    className="w-full border rounded-xl p-2.5"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (!newIngredientName.trim()) {
+                  addToast('error', 'Nome obrigatório', 'Informe o nome do insumo.');
+                  return;
+                }
+                const newIngredient: Ingredient = {
+                  id: 'ing-' + Date.now(),
+                  name: newIngredientName.trim(),
+                  category: newIngredientCategory,
+                  unit: newIngredientUnit,
+                  stockQuantity: newIngredientStock,
+                  minStock: newIngredientMinStock,
+                  avgCostUnit: newIngredientCost,
+                  expiryDate: newIngredientExpiry || undefined,
+                };
+                saveIngredient(newIngredient);
+                setIsNewIngredientModalOpen(false);
+              }}
+              className="w-full bg-stone-800 hover:bg-stone-900 text-white py-2.5 rounded-xl font-bold text-xs shadow"
+            >
+              Cadastrar Insumo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Product Stock Entry */}
+      {isProductStockModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-stone-900 text-base flex items-center gap-2">
+                <PackageCheck className="w-5 h-5 text-emerald-700" />
+                <span>Adicionar Estoque de Produto</span>
+              </h3>
+              <button onClick={() => setIsProductStockModalOpen(false)} className="p-1 text-stone-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!selectedProductForStock ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="font-bold text-stone-700 block mb-1">Buscar Produto</label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Digite o nome do produto..."
+                      value={productStockSearch}
+                      onChange={(e) => setProductStockSearch(e.target.value)}
+                      className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-1.5 border rounded-xl p-2">
+                  {products
+                    .filter((p) => p.name.toLowerCase().includes(productStockSearch.toLowerCase()))
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedProductForStock(p)}
+                        className="w-full text-left p-2.5 rounded-lg hover:bg-stone-100 border border-transparent hover:border-stone-200 transition flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="font-bold text-stone-900">{p.name}</p>
+                          <p className="text-[10px] text-stone-500">Estoque atual: {p.stockQuantity} {p.unit}</p>
+                        </div>
+                        <span className="text-[10px] text-stone-400 font-mono">{p.code}</span>
+                      </button>
+                    ))}
+                  {products.filter((p) => p.name.toLowerCase().includes(productStockSearch.toLowerCase())).length === 0 && (
+                    <p className="text-stone-400 italic text-center py-4">Nenhum produto encontrado.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-stone-900">{selectedProductForStock.name}</p>
+                    <p className="text-[10px] text-stone-500">Estoque atual: {selectedProductForStock.stockQuantity} {selectedProductForStock.unit}</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedProductForStock(null)}
+                    className="text-amber-800 font-bold hover:underline"
+                  >
+                    Trocar
+                  </button>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Quantidade a Adicionar ({selectedProductForStock.unit})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={productStockQty}
+                    onChange={(e) => setProductStockQty(Number(e.target.value))}
+                    className="w-full border rounded-xl p-2.5 font-bold text-sm"
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (productStockQty <= 0) {
+                      addToast('error', 'Quantidade inválida', 'Informe uma quantidade maior que zero.');
+                      return;
+                    }
+                    recordProductStockEntry(selectedProductForStock.id, productStockQty);
+                    setIsProductStockModalOpen(false);
+                  }}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs shadow"
+                >
+                  Confirmar Entrada de Estoque
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODAL: Stock Entry */}
       {isEntryModalOpen && selectedIngredient && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -647,7 +1008,7 @@ export const InventoryManagement: React.FC = () => {
                       ))
                     : products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} (Estoque: {p.stockQuantity} unid - Custo: R$ {p.costPrice.toFixed(2)})
+                          {p.name} (Estoque: {p.stockQuantity} {p.unit} - Custo: R$ {p.costPrice.toFixed(2)})
                         </option>
                       ))}
                 </select>
@@ -673,13 +1034,13 @@ export const InventoryManagement: React.FC = () => {
                     onChange={(e) => setLossReason(e.target.value as LossReason)}
                     className="w-full border rounded-xl p-2.5 font-semibold text-xs"
                   >
-                    <option value="validade_vencida">Validade Vencida</option>
+                    <option value="vencido">Validade Vencida</option>
                     <option value="erro_preparo">Erro no Preparo</option>
                     <option value="queda_quebra">Queda / Quebra</option>
-                    <option value="produto_danificado">Produto Danificado</option>
+                    <option value="danificado">Produto Danificado</option>
                     <option value="sobra_descartada">Sobra Descartada</option>
-                    <option value="armazenamento_inadequado">Armazenamento Inadequado</option>
-                    <option value="cancelamento_pos_preparo">Cancelamento pós-preparo</option>
+                    <option value="armazenamento">Armazenamento Inadequado</option>
+                    <option value="cancelamento">Cancelamento pós-preparo</option>
                     <option value="ajuste_inventario">Ajuste de Inventário</option>
                     <option value="outro">Outro Motivo</option>
                   </select>

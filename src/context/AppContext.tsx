@@ -6,9 +6,9 @@ import {
   User,
   CompanyProfileData,
   Category,
+  SaleUnit,
   Product,
   Ingredient,
-  TechnicalSheet,
   DiningTable,
   Order,
   OrderStatus,
@@ -64,9 +64,9 @@ const formatTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
 const mapCategory = (row: any): Category => rowToCamel<Category>(row);
+const mapSaleUnit = (row: any): SaleUnit => rowToCamel<SaleUnit>(row);
 const mapIngredient = (row: any): Ingredient => rowToCamel<Ingredient>(row);
 const mapProduct = (row: any): Product => rowToCamel<Product>(row);
-const mapTechnicalSheet = (row: any): TechnicalSheet => rowToCamel<TechnicalSheet>(row);
 const mapDiningTable = (row: any): DiningTable => rowToCamel<DiningTable>(row);
 const mapCashShiftRow = (row: any): CashShift => rowToCamel<CashShift>(row);
 const mapCashMovementRow = (row: any): CashMovement => rowToCamel<CashMovement>(row);
@@ -163,9 +163,9 @@ interface AppContextType {
   users: User[];
   updateUserProfile: (userId: string, patch: Partial<Pick<User, 'role' | 'active' | 'code' | 'phone' | 'name'>>) => Promise<void>;
   categories: Category[];
+  saleUnits: SaleUnit[];
   products: Product[];
   ingredients: Ingredient[];
-  technicalSheets: TechnicalSheet[];
   tables: DiningTable[];
   orders: Order[];
   cashShift: CashShift;
@@ -192,6 +192,8 @@ interface AppContextType {
   // Actions
   logAudit: (action: string, moduleName: string, details?: string) => void;
   logout: () => Promise<void>;
+  createTable: (number: number, sector: DiningTable['sector'], capacity: number) => Promise<void>;
+  deleteTable: (tableId: string) => Promise<void>;
   openTable: (tableId: string, guestCount: number, clientName?: string) => Promise<void>;
   addTableItem: (tableId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
   cancelTableItem: (tableId: string, itemId: string, reason: string) => Promise<void>;
@@ -221,11 +223,14 @@ interface AppContextType {
   closeCashShift: (actualTotal: number, notes?: string) => Promise<void>;
   addCashMovement: (type: 'reforco' | 'sangria', amount: number, reason: string) => Promise<void>;
 
+  saveCategory: (category: Category) => Promise<void>;
+  saveSaleUnit: (saleUnit: SaleUnit) => Promise<void>;
   saveProduct: (product: Product) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
 
   saveIngredient: (ingredient: Ingredient) => Promise<void>;
   recordStockEntry: (ingredientId: string, qty: number, costUnit: number) => Promise<void>;
+  recordProductStockEntry: (productId: string, qty: number) => Promise<void>;
   recordLoss: (data: {
     itemType: 'product' | 'ingredient';
     itemId?: string;
@@ -339,9 +344,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
+  const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
   const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id');
-  const [technicalSheets] = useSupabaseCollection<TechnicalSheet>('technical_sheets', session, mapTechnicalSheet, 'productId');
   const [tables] = useSupabaseCollection<DiningTable>('dining_tables', session, mapDiningTable, 'id');
   const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at');
 
@@ -448,6 +453,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ---- Table Management Actions ----
+  const createTable = async (number: number, sector: DiningTable['sector'], capacity: number) => {
+    const newTable: DiningTable = {
+      id: 'tb-' + Date.now(),
+      number,
+      sector,
+      capacity,
+      status: 'livre',
+      items: [],
+      subtotal: 0,
+    };
+
+    const { error } = await supabase.from('dining_tables').insert(toRow(newTable));
+    if (error) { addToast('error', 'Erro ao criar mesa', error.message); return; }
+
+    addToast('success', 'Mesa criada', `Mesa ${number} adicionada em ${sector}`);
+    logAudit('Criação de Mesa', 'Mesas', `Mesa ${number} - ${sector} (${capacity} lugares)`);
+  };
+
+  const deleteTable = async (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return;
+    if (table.status !== 'livre' || table.items.length > 0) {
+      addToast('error', 'Não é possível remover', 'Só é possível remover mesas livres e sem comanda aberta.');
+      return;
+    }
+
+    const { error } = await supabase.from('dining_tables').delete().eq('id', tableId);
+    if (error) { addToast('error', 'Erro ao remover mesa', error.message); return; }
+
+    addToast('warning', 'Mesa removida', `Mesa ${table.number}`);
+    logAudit('Remoção de Mesa', 'Mesas', `Mesa ${table.number}`);
+  };
+
   const openTable = async (tableId: string, guestCount: number, clientName?: string) => {
     if (!currentUser) return;
     const { error } = await supabase
@@ -485,7 +523,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unitPrice,
       additions,
       notes,
-      status: 'em_preparo',
+      status: product.requiresPreparation === false ? 'pronto' : 'em_preparo',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       waiterName: currentUser.name,
     };
@@ -495,9 +533,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .filter((i) => i.status !== 'cancelado')
       .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
+    const stillPreparing = updatedItems.some((i) => i.status === 'em_preparo');
+    const newTableStatus = stillPreparing ? 'em_preparo' : 'pedido_pronto';
+
     const { error } = await supabase
       .from('dining_tables')
-      .update({ items: updatedItems, subtotal: newSubtotal, status: 'em_preparo' })
+      .update({ items: updatedItems, subtotal: newSubtotal, status: newTableStatus })
       .eq('id', tableId);
 
     if (error) { addToast('error', 'Erro ao lançar item', error.message); return; }
@@ -927,6 +968,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit(`Movimento Caixa (${type})`, 'Caixa', `R$ ${amount.toFixed(2)} - ${reason}`);
   };
 
+  // ---- Category CRUD ----
+  const saveCategory = async (category: Category) => {
+    const { error } = await supabase.from('categories').upsert(toRow(category));
+    if (error) { addToast('error', 'Erro ao salvar categoria', error.message); return; }
+    addToast('success', 'Categoria salva', category.name);
+    logAudit('Cadastro de Categoria', 'Produtos', `Categoria: ${category.name}`);
+  };
+
+  const saveSaleUnit = async (saleUnit: SaleUnit) => {
+    const { error } = await supabase.from('sale_units').upsert(toRow(saleUnit));
+    if (error) { addToast('error', 'Erro ao salvar unidade', error.message); return; }
+    addToast('success', 'Unidade de venda salva', saleUnit.name);
+    logAudit('Cadastro de Unidade de Venda', 'Produtos', `Unidade: ${saleUnit.name} (${saleUnit.abbreviation})`);
+  };
+
   // ---- Product CRUD ----
   const saveProduct = async (product: Product) => {
     const { error } = await supabase.from('products').upsert(toRow(product));
@@ -962,6 +1018,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addToast('success', 'Entrada de estoque', `+${qty} unidades registradas`);
     logAudit('Entrada de Mercadoria', 'Estoque', `Insumo ID ${ingredientId} +${qty}`);
+  };
+
+  const recordProductStockEntry = async (productId: string, qty: number) => {
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) return;
+
+    const { error } = await supabase
+      .from('products')
+      .update({ stock_quantity: prod.stockQuantity + qty })
+      .eq('id', productId);
+
+    if (error) { addToast('error', 'Erro ao registrar entrada', error.message); return; }
+
+    addToast('success', 'Entrada de estoque', `+${qty} ${prod.unit} de ${prod.name}`);
+    logAudit('Entrada de Estoque de Produto', 'Estoque', `Produto ${prod.name} +${qty} ${prod.unit}`);
   };
 
   const recordLoss: AppContextType['recordLoss'] = async (data) => {
@@ -1108,9 +1179,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         updateUserProfile,
         categories,
+        saleUnits,
         products,
         ingredients,
-        technicalSheets,
         tables,
         orders,
         cashShift,
@@ -1131,6 +1202,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeToast,
         logAudit,
         logout,
+        createTable,
+        deleteTable,
         openTable,
         addTableItem,
         cancelTableItem,
@@ -1145,10 +1218,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openCashShift,
         closeCashShift,
         addCashMovement,
+        saveCategory,
+        saveSaleUnit,
         saveProduct,
         deleteProduct,
         saveIngredient,
         recordStockEntry,
+        recordProductStockEntry,
         recordLoss,
         recordCourtesy,
         issueNfce,

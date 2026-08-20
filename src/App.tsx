@@ -92,7 +92,7 @@ const AppContent: React.FC = () => {
     {
       title: 'ESTOQUE & OPERAÇÕES',
       items: [
-        { id: 'products', label: 'Produtos & Ficha Técnica', icon: Package },
+        { id: 'products', label: 'Produtos', icon: Package },
         { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes },
         { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
         { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },

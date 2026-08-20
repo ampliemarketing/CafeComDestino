@@ -1,22 +1,21 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  Package, 
-  Plus, 
-  Search, 
-  Edit2, 
-  Trash2, 
-  Boxes, 
-  CheckCircle2, 
-  X, 
-  FileText, 
-  Sparkles,
-  Utensils
+import {
+  Package,
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Boxes,
+  CheckCircle2,
+  X,
+  FileText,
+  Sparkles
 } from 'lucide-react';
-import { Product, ProductAddition, TechnicalSheet } from '../../types';
+import { Product, ProductAddition, Category, SaleUnit } from '../../types';
 
 export const ProductManagement: React.FC = () => {
-  const { products, categories, ingredients, technicalSheets, saveProduct, deleteProduct, addToast } = useApp();
+  const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,10 +24,24 @@ export const ProductManagement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
 
-  // Technical Sheet Modal
-  const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
-  const [activeSheetProduct, setActiveSheetProduct] = useState<Product | null>(null);
-  const [sheetIngredients, setSheetIngredients] = useState<Array<{ ingredientId: string; quantityUsed: number; unit: string }>>([]);
+  // Category Modal (create or edit)
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryShowsInStock, setNewCategoryShowsInStock] = useState(true);
+
+  const handleOpenCategoryModal = () => {
+    const selected = categories.find((c) => c.id === editingProduct?.categoryId);
+    setEditingCategory(selected || null);
+    setNewCategoryName(selected?.name || '');
+    setNewCategoryShowsInStock(selected ? selected.showsInStock !== false : true);
+    setIsCategoryModalOpen(true);
+  };
+
+  // New Sale Unit Modal
+  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
+  const [newUnitName, setNewUnitName] = useState('');
+  const [newUnitAbbreviation, setNewUnitAbbreviation] = useState('');
 
   const filteredProducts = products.filter((p) => {
     const matchCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
@@ -41,16 +54,17 @@ export const ProductManagement: React.FC = () => {
       id: 'prod-' + Date.now(),
       code: String(100 + products.length + 1),
       name: '',
-      categoryId: categories[0]?.id || 'cat-1',
+      categoryId: categories[0]?.id || '',
       description: '',
       price: 29.90,
       costPrice: 10.00,
-      unit: 'UN',
+      unit: saleUnits[0]?.abbreviation || '',
       imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
       available: true,
+      requiresPreparation: true,
       trackStock: true,
-      stockQuantity: 50,
-      minStock: 10,
+      stockQuantity: 0,
+      minStock: 0,
       additions: [],
       fiscal: {
         ncm: '2106.90.90',
@@ -72,15 +86,16 @@ export const ProductManagement: React.FC = () => {
       addToast('error', 'Campos obrigatórios', 'Preencha o nome e preço do produto.');
       return;
     }
+    if (!editingProduct?.categoryId) {
+      addToast('error', 'Categoria obrigatória', 'Selecione ou crie uma categoria para o produto.');
+      return;
+    }
+    if (!editingProduct?.unit) {
+      addToast('error', 'Unidade de venda obrigatória', 'Selecione ou crie uma unidade de venda para o produto.');
+      return;
+    }
     saveProduct(editingProduct as Product);
     setIsModalOpen(false);
-  };
-
-  const handleOpenSheet = (p: Product) => {
-    setActiveSheetProduct(p);
-    const existing = technicalSheets.find((ts) => ts.productId === p.id);
-    setSheetIngredients(existing ? existing.ingredients : []);
-    setIsSheetModalOpen(true);
   };
 
   return (
@@ -92,9 +107,9 @@ export const ProductManagement: React.FC = () => {
             <Package className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight">Cadastro de Produtos & Ficha Técnica</h2>
+            <h2 className="text-xl font-bold tracking-tight">Cadastro de Produtos</h2>
             <p className="text-xs text-stone-400 mt-0.5">
-              Gestão de cardápio, preços, adicionais, regras fiscais NCM e consumo automático de estoque.
+              Gestão de cardápio, preços, adicionais e regras fiscais NCM.
             </p>
           </div>
         </div>
@@ -155,16 +170,14 @@ export const ProductManagement: React.FC = () => {
                 <th className="p-3.5">Categoria</th>
                 <th className="p-3.5">Preço Venda</th>
                 <th className="p-3.5">Custo Aprox.</th>
-                <th className="p-3.5">Estoque Saldo</th>
+                <th className="p-3.5">Unidade de Venda</th>
                 <th className="p-3.5">Disponível</th>
-                <th className="p-3.5 text-center">Ficha Técnica</th>
                 <th className="p-3.5 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredProducts.map((p) => {
                 const category = categories.find((c) => c.id === p.categoryId);
-                const hasSheet = technicalSheets.some((ts) => ts.productId === p.id);
 
                 return (
                   <tr key={p.id} className="hover:bg-stone-50 transition">
@@ -180,10 +193,9 @@ export const ProductManagement: React.FC = () => {
                     <td className="p-3.5 font-bold text-stone-900">R$ {p.price.toFixed(2)}</td>
                     <td className="p-3.5 text-stone-600">R$ {p.costPrice.toFixed(2)}</td>
                     <td className="p-3.5">
-                      <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                        p.stockQuantity <= p.minStock ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-                      }`}>
-                        {p.stockQuantity} {p.unit}
+                      <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-stone-100 text-stone-700 border border-stone-200">
+                        {saleUnits.find((u) => u.abbreviation === p.unit)?.name || p.unit || 'Não definida'}
+                        {p.unit ? ` (${p.unit})` : ''}
                       </span>
                     </td>
                     <td className="p-3.5">
@@ -192,17 +204,6 @@ export const ProductManagement: React.FC = () => {
                       }`}>
                         {p.available ? 'SIM' : 'NÃO'}
                       </span>
-                    </td>
-                    <td className="p-3.5 text-center">
-                      <button
-                        onClick={() => handleOpenSheet(p)}
-                        className={`text-[10px] px-2.5 py-1 rounded-lg font-bold transition flex items-center justify-center gap-1 mx-auto ${
-                          hasSheet ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-stone-100 text-stone-600 border'
-                        }`}
-                      >
-                        <Utensils className="w-3 h-3" />
-                        <span>{hasSheet ? 'Ficha Mapeada' : 'Criar Ficha'}</span>
-                      </button>
                     </td>
                     <td className="p-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -255,14 +256,49 @@ export const ProductManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Categoria *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-stone-700">Categoria *</label>
+                  <button
+                    type="button"
+                    onClick={handleOpenCategoryModal}
+                    className="text-amber-800 font-bold hover:underline flex items-center gap-1"
+                  >
+                    {editingProduct.categoryId ? <Edit2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                    <span>{editingProduct.categoryId ? 'Editar categoria' : 'Nova categoria'}</span>
+                  </button>
+                </div>
                 <select
                   value={editingProduct.categoryId || ''}
                   onChange={(e) => setEditingProduct({ ...editingProduct, categoryId: e.target.value })}
                   className="w-full border rounded-xl p-2.5"
                 >
+                  <option value="">Selecione...</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-stone-700">Unidade de Venda *</label>
+                  <button
+                    type="button"
+                    onClick={() => { setNewUnitName(''); setNewUnitAbbreviation(''); setIsUnitModalOpen(true); }}
+                    className="text-amber-800 font-bold hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Nova unidade</span>
+                  </button>
+                </div>
+                <select
+                  value={editingProduct.unit || ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
+                  className="w-full border rounded-xl p-2.5"
+                >
+                  <option value="">Selecione...</option>
+                  {saleUnits.map((u) => (
+                    <option key={u.id} value={u.abbreviation}>{u.name} ({u.abbreviation})</option>
                   ))}
                 </select>
               </div>
@@ -335,15 +371,27 @@ export const ProductManagement: React.FC = () => {
             </div>
 
             <div className="flex justify-between items-center pt-3 border-t">
-              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editingProduct.available || false}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, available: e.target.checked })}
-                  className="rounded text-amber-800"
-                />
-                <span>Disponível para Venda</span>
-              </label>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingProduct.available || false}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, available: e.target.checked })}
+                    className="rounded text-amber-800"
+                  />
+                  <span>Disponível para Venda</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" title="Desmarque para itens que não passam pela cozinha, como bebidas prontas — entram direto como Pronto na comanda.">
+                  <input
+                    type="checkbox"
+                    checked={editingProduct.requiresPreparation ?? true}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, requiresPreparation: e.target.checked })}
+                    className="rounded text-amber-800"
+                  />
+                  <span>Precisa de Preparo?</span>
+                </label>
+              </div>
 
               <button
                 onClick={handleSave}
@@ -356,46 +404,121 @@ export const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Technical Sheet Modal */}
-      {isSheetModalOpen && activeSheetProduct && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-stone-200">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="font-bold text-stone-900 text-base">Ficha Técnica: {activeSheetProduct.name}</h3>
-                <p className="text-xs text-stone-500">Mapeamento de insumos para baixa automática no estoque</p>
-              </div>
-              <button onClick={() => setIsSheetModalOpen(false)} className="p-1 text-stone-400">
-                <X className="w-5 h-5" />
+      {/* New Category Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <h3 className="font-bold text-stone-900 text-base">{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</h3>
+            <div className="text-xs">
+              <label className="font-semibold text-stone-700 block mb-1">Nome da Categoria *</label>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Ex: Bebidas & Sucos"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" title="Desmarque para categorias de pratos prontos, cujo estoque já é controlado pela ficha técnica dos insumos — os produtos dela não aparecem na tela de Gestão de Estoque.">
+              <input
+                type="checkbox"
+                checked={newCategoryShowsInStock}
+                onChange={(e) => setNewCategoryShowsInStock(e.target.checked)}
+                className="rounded text-amber-800"
+              />
+              <span>Ir para o Estoque</span>
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!newCategoryName.trim()) {
+                    addToast('error', 'Nome obrigatório', 'Informe o nome da categoria.');
+                    return;
+                  }
+                  const savedCategory: Category = {
+                    id: editingCategory?.id || 'cat-' + Date.now(),
+                    name: newCategoryName.trim(),
+                    icon: editingCategory?.icon || 'Utensils',
+                    description: editingCategory?.description,
+                    order: editingCategory?.order ?? categories.length + 1,
+                    active: editingCategory?.active ?? true,
+                    showsInStock: newCategoryShowsInStock,
+                  };
+                  saveCategory(savedCategory);
+                  setEditingProduct((prev) => (prev ? { ...prev, categoryId: savedCategory.id } : prev));
+                  setIsCategoryModalOpen(false);
+                }}
+                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+              >
+                {editingCategory ? 'Salvar Categoria' : 'Criar Categoria'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
+      {/* New Sale Unit Modal */}
+      {isUnitModalOpen && (
+        <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <h3 className="font-bold text-stone-900 text-base">Nova Unidade de Venda</h3>
             <div className="space-y-3 text-xs">
-              <span className="font-bold text-stone-700 block">Ingredientes Utilizados:</span>
-              {sheetIngredients.map((ing, idx) => {
-                const foundIng = ingredients.find((i) => i.id === ing.ingredientId);
-                return (
-                  <div key={idx} className="p-2.5 bg-stone-50 rounded-xl border flex items-center justify-between">
-                    <span className="font-bold text-stone-900">{foundIng?.name || 'Insumo'}</span>
-                    <span className="text-amber-800 font-semibold">{ing.quantityUsed} {ing.unit}</span>
-                  </div>
-                );
-              })}
-
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-950 font-bold">
-                Ao vender {activeSheetProduct.name}, os insumos da ficha serão reduzidos do Estoque automaticamente!
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Nome *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Ex: Quilograma"
+                  value={newUnitName}
+                  onChange={(e) => setNewUnitName(e.target.value)}
+                  className="w-full border rounded-xl p-2.5"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Abreviação *</label>
+                <input
+                  type="text"
+                  placeholder="Ex: KG"
+                  value={newUnitAbbreviation}
+                  onChange={(e) => setNewUnitAbbreviation(e.target.value.toUpperCase())}
+                  className="w-full border rounded-xl p-2.5 font-mono"
+                />
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                addToast('success', 'Ficha Técnica Atualizada!');
-                setIsSheetModalOpen(false);
-              }}
-              className="w-full bg-amber-800 text-white py-2.5 rounded-xl font-bold text-xs shadow"
-            >
-              Salvar Ficha Técnica
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsUnitModalOpen(false)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!newUnitName.trim() || !newUnitAbbreviation.trim()) {
+                    addToast('error', 'Campos obrigatórios', 'Informe nome e abreviação da unidade.');
+                    return;
+                  }
+                  const newUnit: SaleUnit = {
+                    id: 'unit-' + Date.now(),
+                    name: newUnitName.trim(),
+                    abbreviation: newUnitAbbreviation.trim(),
+                  };
+                  saveSaleUnit(newUnit);
+                  setEditingProduct((prev) => (prev ? { ...prev, unit: newUnit.abbreviation } : prev));
+                  setIsUnitModalOpen(false);
+                }}
+                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+              >
+                Criar Unidade
+              </button>
+            </div>
           </div>
         </div>
       )}
