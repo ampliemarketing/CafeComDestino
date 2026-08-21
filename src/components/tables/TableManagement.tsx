@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  Grid2X2, 
-  Users, 
-  Plus, 
-  Receipt, 
-  Printer, 
-  ArrowRightLeft, 
-  CheckCircle2, 
-  DollarSign, 
-  Trash2, 
+import {
+  Grid2X2,
+  Users,
+  Plus,
+  Receipt,
+  Printer,
+  ArrowRightLeft,
+  CheckCircle2,
+  DollarSign,
+  Trash2,
   X,
   Sparkles,
   Gift,
@@ -17,7 +17,8 @@ import {
   RotateCcw,
   CreditCard,
   ShieldAlert,
-  AlertCircle
+  AlertCircle,
+  ChevronRight
 } from 'lucide-react';
 import { DiningTable, TableStatus, PaymentMethod } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
@@ -31,10 +32,10 @@ export const TableManagement: React.FC = () => {
     tables,
     createTable,
     deleteTable,
-    openTable,
-    cancelTableItem,
-    transferTable,
-    closeTableAndPay,
+    openComanda,
+    cancelComandaItem,
+    transferComanda,
+    closeComandaAndPay,
     cancelPartialPayment,
     addToast,
     currentUser
@@ -42,11 +43,12 @@ export const TableManagement: React.FC = () => {
 
   const [selectedSector, setSelectedSector] = useState<string>('todos');
   const [activeTable, setActiveTable] = useState<DiningTable | null>(null);
+  const [selectedComandaId, setSelectedComandaId] = useState<string | null>(null);
 
-  // Modals
+  // New Comanda modal (opens a free table, or adds another person to one already occupied)
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [guestCount, setGuestCount] = useState(2);
-  const [clientName, setClientName] = useState('');
+  const [personName, setPersonName] = useState('');
 
   // New Table Modal
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
@@ -67,26 +69,30 @@ export const TableManagement: React.FC = () => {
 
   const filteredTables = tables.filter((t) => selectedSector === 'todos' || t.sector === selectedSector);
 
-  // Keep activeTable updated when tables state changes
+  // Keep activeTable/currentComanda updated when tables state changes
   const currentActiveTable = activeTable ? tables.find((t) => t.id === activeTable.id) || null : null;
+  const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
 
   const handleOpenTableClick = (tb: DiningTable) => {
     setActiveTable(tb);
+    setSelectedComandaId(null);
     if (tb.status === 'livre') {
       setGuestCount(2);
-      setClientName('');
+      setPersonName('');
       setIsOpenModalOpen(true);
     }
   };
 
+  const handleOpenNewComandaModal = () => {
+    setGuestCount(2);
+    setPersonName('');
+    setIsOpenModalOpen(true);
+  };
+
   const getStatusBadge = (status: TableStatus) => {
     switch (status) {
-      case 'livre': return { label: 'Livre', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
       case 'ocupada': return { label: 'Ocupada', class: 'bg-amber-100 text-amber-800 border-amber-300' };
-      case 'em_preparo': return { label: 'Em Preparo', class: 'bg-orange-100 text-orange-800 border-orange-300' };
-      case 'pedido_pronto': return { label: 'Pedido Pronto!', class: 'bg-blue-100 text-blue-800 border-blue-400 animate-pulse' };
-      case 'aguardando_fechamento': return { label: 'Aguardando Fechamento', class: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' };
-      default: return { label: 'Livre', class: 'bg-stone-100 text-stone-700' };
+      default: return { label: 'Livre', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
     }
   };
 
@@ -101,7 +107,7 @@ export const TableManagement: React.FC = () => {
           <div>
             <h2 className="text-xl font-bold tracking-tight">Gestão de Mesas e Comandas</h2>
             <p className="text-xs text-stone-400 mt-0.5">
-              Mapa do restaurante, adiantamento parcial de comandas, cortesias e fechamento.
+              Mapa do restaurante, comandas por pessoa, adiantamento parcial, cortesias e fechamento.
             </p>
           </div>
         </div>
@@ -144,9 +150,13 @@ export const TableManagement: React.FC = () => {
           const badge = getStatusBadge(tb.status);
           const isSelected = activeTable?.id === tb.id;
 
-          const activeAdvances = (tb.advancePayments || []).filter((p) => p.status === 'ativo');
-          const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
-          const remainingBalance = Math.max(0, tb.subtotal - totalAdvances);
+          const tableAdvances = tb.comandas.reduce(
+            (sum, c) => sum + (c.advancePayments || []).filter((p) => p.status === 'ativo').reduce((s, p) => s + p.amount, 0),
+            0
+          );
+          const tableSubtotal = tb.comandas.reduce((sum, c) => sum + c.subtotal, 0);
+          const remainingBalance = Math.max(0, tableSubtotal - tableAdvances);
+          const hasAnyItems = tb.comandas.some((c) => c.items.length > 0);
 
           return (
             <div
@@ -155,10 +165,10 @@ export const TableManagement: React.FC = () => {
               className={`bg-white p-4 rounded-2xl border-2 transition cursor-pointer shadow-sm hover:shadow-md flex flex-col justify-between h-44 ${
                 isSelected ? 'ring-2 ring-amber-800 border-amber-800' : ''
               } ${
-                tb.status === 'livre' 
-                  ? 'border-emerald-200 bg-emerald-50/10' 
-                  : remainingBalance === 0 && tb.items.length > 0 
-                  ? 'border-emerald-500 bg-emerald-50/20' 
+                tb.status === 'livre'
+                  ? 'border-emerald-200 bg-emerald-50/10'
+                  : remainingBalance === 0 && hasAnyItems
+                  ? 'border-emerald-500 bg-emerald-50/20'
                   : 'border-amber-600 bg-amber-50/20'
               }`}
             >
@@ -186,27 +196,29 @@ export const TableManagement: React.FC = () => {
                 </div>
               </div>
 
-              {tb.status !== 'livre' ? (
+              {tb.comandas.length > 0 ? (
                 <div className="space-y-1">
-                  <p className="text-xs font-bold text-stone-800 truncate">{tb.clientName || `Mesa ${tb.number}`}</p>
-                  
+                  <p className="text-xs font-bold text-stone-800 truncate">
+                    {tb.comandas.length} comanda{tb.comandas.length > 1 ? 's' : ''}: {tb.comandas.map((c) => c.personName).join(', ')}
+                  </p>
+
                   {/* Financial indicators */}
-                  {totalAdvances > 0 && (
+                  {tableAdvances > 0 && (
                     <div className="flex items-center justify-between text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">
                       <span>Adiantado:</span>
-                      <span>R$ {totalAdvances.toFixed(2)}</span>
+                      <span>R$ {tableAdvances.toFixed(2)}</span>
                     </div>
                   )}
 
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-200">
-                    <span className="text-stone-500 text-[10px]">{tb.guestCount}p • {tb.openedAt}</span>
+                    <span className="text-stone-500 text-[10px]">{tb.comandas.length} comanda(s)</span>
                     <div className="text-right">
                       <span className="font-bold text-amber-900 text-sm block">
                         R$ {remainingBalance.toFixed(2)}
                       </span>
-                      {totalAdvances > 0 && (
+                      {tableAdvances > 0 && (
                         <span className="text-[9px] text-stone-400 block line-through">
-                          R$ {tb.subtotal.toFixed(2)}
+                          R$ {tableSubtotal.toFixed(2)}
                         </span>
                       )}
                     </div>
@@ -223,22 +235,66 @@ export const TableManagement: React.FC = () => {
         })}
       </div>
 
-      {/* Active Table Consumption & Detail Drawer */}
+      {/* Comandas list of the selected table */}
       {currentActiveTable && currentActiveTable.status !== 'livre' && (
+        <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-md space-y-4">
+          <div className="flex items-center justify-between border-b pb-3">
+            <h3 className="font-bold text-lg text-stone-900">
+              Mesa #{currentActiveTable.number} — {currentActiveTable.comandas.length} comanda(s) aberta(s)
+            </h3>
+            <button
+              onClick={handleOpenNewComandaModal}
+              className="bg-amber-800 hover:bg-amber-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nova Comanda</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {currentActiveTable.comandas.map((c) => {
+              const isSelected = c.id === selectedComandaId;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setSelectedComandaId(c.id)}
+                  className={`p-3.5 rounded-xl border-2 cursor-pointer transition flex items-center justify-between ${
+                    isSelected ? 'border-amber-800 bg-amber-50/40' : 'border-stone-200 hover:border-amber-400 bg-stone-50'
+                  }`}
+                >
+                  <div>
+                    <p className="font-bold text-sm text-stone-900">{c.personName}</p>
+                    <p className="text-[10px] text-stone-500">
+                      {c.guestCount ? `${c.guestCount} pessoas • ` : ''}{c.items.length} item(ns) • {c.openedAt}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-amber-800 text-sm">R$ {c.subtotal.toFixed(2)}</span>
+                    <ChevronRight className="w-4 h-4 text-stone-400" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Active Comanda Consumption & Detail Drawer */}
+      {currentActiveTable && currentComanda && (
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-md space-y-5">
           {/* Header Actions */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-4">
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-xl text-stone-900">
-                  Comanda Mesa #{currentActiveTable.number} • {currentActiveTable.clientName || 'Cliente'}
+                  Comanda Mesa #{currentActiveTable.number} • {currentComanda.personName}
                 </h3>
                 <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${getStatusBadge(currentActiveTable.status).class}`}>
                   {getStatusBadge(currentActiveTable.status).label}
                 </span>
               </div>
               <p className="text-xs text-stone-500 mt-1">
-                {currentActiveTable.guestCount} pessoas • Garçom: {currentActiveTable.waiterName || 'Atendente'} • Aberta às {currentActiveTable.openedAt}
+                {currentComanda.guestCount} pessoas • Garçom: {currentComanda.waiterName || 'Atendente'} • Aberta às {currentComanda.openedAt}
               </p>
             </div>
 
@@ -249,7 +305,7 @@ export const TableManagement: React.FC = () => {
                 className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-stone-300"
               >
                 <ArrowRightLeft className="w-4 h-4 text-stone-600" />
-                <span>Transferir Mesa</span>
+                <span>Transferir Comanda</span>
               </button>
 
               <button
@@ -281,22 +337,22 @@ export const TableManagement: React.FC = () => {
                 className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
               >
                 <DollarSign className="w-4 h-4" />
-                <span>Fechar e Receber Mesa</span>
+                <span>Fechar e Receber Comanda</span>
               </button>
             </div>
           </div>
 
           {/* Financial Totals Summary Bar */}
           {(() => {
-            const activeAdvances = (currentActiveTable.advancePayments || []).filter((p) => p.status === 'ativo');
+            const activeAdvances = (currentComanda.advancePayments || []).filter((p) => p.status === 'ativo');
             const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
-            const remainingBalance = Math.max(0, currentActiveTable.subtotal - totalAdvances);
+            const remainingBalance = Math.max(0, currentComanda.subtotal - totalAdvances);
 
             return (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-2xl border border-stone-200">
                 <div className="bg-white p-3 rounded-xl border border-stone-200">
-                  <span className="text-[10px] text-stone-500 font-bold uppercase block">Consumo Total da Mesa</span>
-                  <strong className="text-stone-900 font-bold text-lg">R$ {currentActiveTable.subtotal.toFixed(2)}</strong>
+                  <span className="text-[10px] text-stone-500 font-bold uppercase block">Consumo Total da Comanda</span>
+                  <strong className="text-stone-900 font-bold text-lg">R$ {currentComanda.subtotal.toFixed(2)}</strong>
                 </div>
 
                 <div className="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/40">
@@ -321,22 +377,22 @@ export const TableManagement: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">
-                Produtos Lançados na Comanda ({currentActiveTable.items.length})
+                Produtos Lançados na Comanda ({currentComanda.items.length})
               </h4>
             </div>
 
-            {currentActiveTable.items.length === 0 ? (
+            {currentComanda.items.length === 0 ? (
               <p className="text-stone-400 text-xs italic py-2">Nenhum item consumido até o momento.</p>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {currentActiveTable.items.map((it) => (
+                {currentComanda.items.map((it) => (
                   <div
                     key={it.id}
                     className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
-                      it.isPaid 
-                        ? 'bg-emerald-50/60 border-emerald-200' 
-                        : it.isCourtesy 
-                        ? 'bg-amber-50/60 border-amber-200' 
+                      it.isPaid
+                        ? 'bg-emerald-50/60 border-emerald-200'
+                        : it.isCourtesy
+                        ? 'bg-amber-50/60 border-amber-200'
                         : 'bg-stone-50 border-stone-200'
                     }`}
                   >
@@ -365,7 +421,7 @@ export const TableManagement: React.FC = () => {
                       </span>
                       {!it.isPaid && !it.isCourtesy && (
                         <button
-                          onClick={() => cancelTableItem(currentActiveTable.id, it.id, 'Cancelado pelo operador')}
+                          onClick={() => cancelComandaItem(currentActiveTable.id, currentComanda.id, it.id, 'Cancelado pelo operador')}
                           className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded-lg"
                           title="Cancelar item"
                         >
@@ -380,15 +436,15 @@ export const TableManagement: React.FC = () => {
           </div>
 
           {/* List of Partial Payments Completed */}
-          {currentActiveTable.advancePayments && currentActiveTable.advancePayments.length > 0 && (
+          {currentComanda.advancePayments && currentComanda.advancePayments.length > 0 && (
             <div className="border-t pt-4 space-y-3">
               <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider flex items-center gap-1.5">
                 <Receipt className="w-4 h-4 text-amber-800" />
-                <span>Histórico de Adiantamentos Parciais Nesta Mesa</span>
+                <span>Histórico de Adiantamentos Parciais Nesta Comanda</span>
               </h4>
 
               <div className="space-y-2">
-                {currentActiveTable.advancePayments.map((adv) => (
+                {currentComanda.advancePayments.map((adv) => (
                   <div
                     key={adv.id}
                     className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
@@ -427,7 +483,7 @@ export const TableManagement: React.FC = () => {
                         <button
                           onClick={() => {
                             if (confirm(`Estornar o adiantamento de R$ ${adv.amount.toFixed(2)} (${adv.customerName})?`)) {
-                              cancelPartialPayment(currentActiveTable.id, adv.id);
+                              cancelPartialPayment(currentActiveTable.id, currentComanda.id, adv.id);
                             }
                           }}
                           className="text-rose-600 hover:underline text-[11px] font-bold"
@@ -508,12 +564,22 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Open Table */}
+      {/* MODAL: New Comanda (opens a free table, or adds another person to one already occupied) */}
       {isOpenModalOpen && activeTable && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
-            <h3 className="font-bold text-stone-900 text-base">Abrir Mesa #{activeTable.number}</h3>
+            <h3 className="font-bold text-stone-900 text-base">Nova Comanda • Mesa #{activeTable.number}</h3>
             <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente / Identificação</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Carlos Andrade"
+                  value={personName}
+                  onChange={(e) => setPersonName(e.target.value)}
+                  className="w-full border rounded-xl p-2.5"
+                />
+              </div>
               <div>
                 <label className="font-semibold text-stone-700 block mb-1">Quantidade de Pessoas</label>
                 <input
@@ -521,16 +587,6 @@ export const TableManagement: React.FC = () => {
                   min="1"
                   value={guestCount}
                   onChange={(e) => setGuestCount(Number(e.target.value))}
-                  className="w-full border rounded-xl p-2.5"
-                />
-              </div>
-              <div>
-                <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente / Identificação</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Carlos Andrade"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -543,34 +599,35 @@ export const TableManagement: React.FC = () => {
                 Cancelar
               </button>
               <button
-                onClick={() => {
-                  openTable(activeTable.id, guestCount, clientName);
+                onClick={async () => {
+                  const created = await openComanda(activeTable.id, personName || 'Cliente', guestCount);
                   setIsOpenModalOpen(false);
+                  if (created) setSelectedComandaId(created.id);
                 }}
                 className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
               >
-                Abrir Mesa
+                Abrir Comanda
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: Final Table Closure */}
-      {isFinalPayModalOpen && currentActiveTable && (
+      {/* MODAL: Final Comanda Closure */}
+      {isFinalPayModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-stone-200">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-stone-900 text-base">Fechar e Receber Mesa #{currentActiveTable.number}</h3>
+              <h3 className="font-bold text-stone-900 text-base">Fechar e Receber • {currentComanda.personName} (Mesa #{currentActiveTable.number})</h3>
               <button onClick={() => setIsFinalPayModalOpen(false)}>
                 <X className="w-5 h-5 text-stone-400" />
               </button>
             </div>
 
             {(() => {
-              const activeAdvances = (currentActiveTable.advancePayments || []).filter((p) => p.status === 'ativo');
+              const activeAdvances = (currentComanda.advancePayments || []).filter((p) => p.status === 'ativo');
               const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
-              const remainingBeforeDiscount = Math.max(0, currentActiveTable.subtotal - totalAdvances);
+              const remainingBeforeDiscount = Math.max(0, currentComanda.subtotal - totalAdvances);
               const finalAmountToCollect = Math.max(0, remainingBeforeDiscount - finalDiscount);
 
               return (
@@ -578,7 +635,7 @@ export const TableManagement: React.FC = () => {
                   <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-1.5">
                     <div className="flex justify-between text-stone-600">
                       <span>Consumo Bruto:</span>
-                      <strong className="text-stone-900">R$ {currentActiveTable.subtotal.toFixed(2)}</strong>
+                      <strong className="text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</strong>
                     </div>
                     <div className="flex justify-between text-amber-900 font-semibold">
                       <span>Adiantamentos Já Pagos ({activeAdvances.length}):</span>
@@ -638,7 +695,7 @@ export const TableManagement: React.FC = () => {
                     </div>
                   ) : (
                     <p className="bg-emerald-50 text-emerald-900 border border-emerald-200 p-3 rounded-xl text-center font-bold">
-                      Mesa totalmente quitada via adiantamentos! Clique em confirmar para liberar a mesa.
+                      Comanda totalmente quitada via adiantamentos! Clique em confirmar para liberar.
                     </p>
                   )}
 
@@ -653,8 +710,9 @@ export const TableManagement: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        closeTableAndPay(currentActiveTable.id, finalPaymentMethod, finalDiscount);
+                        closeComandaAndPay(currentActiveTable.id, currentComanda.id, finalPaymentMethod, finalDiscount);
                         setIsFinalPayModalOpen(false);
+                        setSelectedComandaId(null);
                       }}
                       className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow"
                     >
@@ -668,11 +726,11 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Transfer Table */}
-      {isTransferModalOpen && currentActiveTable && (
+      {/* MODAL: Transfer Comanda */}
+      {isTransferModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200 text-xs">
-            <h3 className="font-bold text-stone-900 text-base">Transferir Mesa #{currentActiveTable.number}</h3>
+            <h3 className="font-bold text-stone-900 text-base">Transferir Comanda de {currentComanda.personName}</h3>
             <p className="text-stone-500">Selecione a mesa de destino para onde os itens consumidos serão movidos:</p>
 
             <select
@@ -685,7 +743,7 @@ export const TableManagement: React.FC = () => {
                 .filter((t) => t.id !== currentActiveTable.id)
                 .map((t) => (
                   <option key={t.id} value={t.id}>
-                    Mesa {t.number} ({t.sector}) - {t.status === 'livre' ? 'Livre' : `Ocupada (${t.clientName || 'Cliente'})`}
+                    Mesa {t.number} ({t.sector}) - {t.status === 'livre' ? 'Livre' : `Ocupada (${t.comandas.length} comanda(s))`}
                   </option>
                 ))}
             </select>
@@ -700,8 +758,9 @@ export const TableManagement: React.FC = () => {
               <button
                 onClick={() => {
                   if (targetTableId) {
-                    transferTable(currentActiveTable.id, targetTableId);
+                    transferComanda(currentActiveTable.id, currentComanda.id, targetTableId);
                     setIsTransferModalOpen(false);
+                    setSelectedComandaId(null);
                   }
                 }}
                 className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl shadow"
@@ -714,11 +773,12 @@ export const TableManagement: React.FC = () => {
       )}
 
       {/* Partial Payment Modal Component */}
-      {isPartialModalOpen && currentActiveTable && (
+      {isPartialModalOpen && currentActiveTable && currentComanda && (
         <PartialPaymentModal
           isOpen={isPartialModalOpen}
           onClose={() => setIsPartialModalOpen(false)}
           table={currentActiveTable}
+          comandaId={currentComanda.id}
         />
       )}
 
@@ -729,22 +789,23 @@ export const TableManagement: React.FC = () => {
           onClose={() => setIsCourtesyModalOpen(false)}
           tableId={currentActiveTable?.id}
           tableNumber={currentActiveTable?.number}
+          comandaId={currentComanda?.id}
         />
       )}
 
       {/* Thermal Ticket Modal */}
-      {isPrintModalOpen && currentActiveTable && (
+      {isPrintModalOpen && currentActiveTable && currentComanda && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           title="Pré-Conta da Mesa"
           receiptData={{
             tableNumber: currentActiveTable.number,
-            customerName: currentActiveTable.clientName,
-            waiterName: currentActiveTable.waiterName || currentUser.name,
-            items: currentActiveTable.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
-            subtotal: currentActiveTable.subtotal,
-            total: currentActiveTable.subtotal,
+            customerName: currentComanda.personName,
+            waiterName: currentComanda.waiterName || currentUser.name,
+            items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
+            subtotal: currentComanda.subtotal,
+            total: currentComanda.subtotal,
             type: 'pre_conta',
           }}
         />

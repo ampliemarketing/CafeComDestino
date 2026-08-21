@@ -6,10 +6,13 @@ import {
   User,
   CompanyProfileData,
   Category,
+  IngredientCategory,
   SaleUnit,
   Product,
   Ingredient,
   DiningTable,
+  Comanda,
+  TableStatus,
   Order,
   OrderStatus,
   PaymentStatus,
@@ -64,10 +67,14 @@ const formatTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
 const mapCategory = (row: any): Category => rowToCamel<Category>(row);
+const mapIngredientCategory = (row: any): IngredientCategory => rowToCamel<IngredientCategory>(row);
 const mapSaleUnit = (row: any): SaleUnit => rowToCamel<SaleUnit>(row);
 const mapIngredient = (row: any): Ingredient => rowToCamel<Ingredient>(row);
 const mapProduct = (row: any): Product => rowToCamel<Product>(row);
-const mapDiningTable = (row: any): DiningTable => rowToCamel<DiningTable>(row);
+const mapDiningTable = (row: any): DiningTable => {
+  const base = rowToCamel<DiningTable>(row);
+  return { ...base, comandas: base.comandas || [] };
+};
 const mapCashShiftRow = (row: any): CashShift => rowToCamel<CashShift>(row);
 const mapCashMovementRow = (row: any): CashMovement => rowToCamel<CashMovement>(row);
 const mapProfileRow = (row: any): User => rowToCamel<User>(row);
@@ -76,6 +83,10 @@ const mapOrderRow = (row: any): Order => {
   const base = rowToCamel<Order>(row);
   return { ...base, createdAt: formatTime(row.created_at), updatedAt: formatTime(row.updated_at) };
 };
+
+function computeTableStatus(comandas: Comanda[]): TableStatus {
+  return comandas.length === 0 ? 'livre' : 'ocupada';
+}
 
 const EMPTY_CASH_SHIFT: CashShift = {
   id: '',
@@ -163,6 +174,7 @@ interface AppContextType {
   users: User[];
   updateUserProfile: (userId: string, patch: Partial<Pick<User, 'role' | 'active' | 'code' | 'phone' | 'name'>>) => Promise<void>;
   categories: Category[];
+  ingredientCategories: IngredientCategory[];
   saleUnits: SaleUnit[];
   products: Product[];
   ingredients: Ingredient[];
@@ -194,13 +206,15 @@ interface AppContextType {
   logout: () => Promise<void>;
   createTable: (number: number, sector: DiningTable['sector'], capacity: number) => Promise<void>;
   deleteTable: (tableId: string) => Promise<void>;
-  openTable: (tableId: string, guestCount: number, clientName?: string) => Promise<void>;
-  addTableItem: (tableId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
-  cancelTableItem: (tableId: string, itemId: string, reason: string) => Promise<void>;
-  transferTable: (fromTableId: string, toTableId: string) => Promise<void>;
-  closeTableAndPay: (tableId: string, paymentMethod: PaymentMethod, discount?: number, customerCpf?: string) => Promise<void>;
+  openComanda: (tableId: string, personName: string, guestCount?: number) => Promise<Comanda | null>;
+  openComandas: (tableId: string, personNames: string[]) => Promise<Comanda[]>;
+  addComandaItem: (tableId: string, comandaId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
+  cancelComandaItem: (tableId: string, comandaId: string, itemId: string, reason: string) => Promise<void>;
+  transferComanda: (fromTableId: string, comandaId: string, toTableId: string) => Promise<void>;
+  closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number) => Promise<Order | null>;
   addPartialPayment: (
     tableId: string,
+    comandaId: string,
     paymentData: {
       amount: number;
       paymentMethod: PaymentMethod | string;
@@ -211,7 +225,7 @@ interface AppContextType {
       splitPayments?: { method: PaymentMethod; amount: number }[];
     }
   ) => Promise<PartialPayment | null>;
-  cancelPartialPayment: (tableId: string, paymentId: string) => Promise<void>;
+  cancelPartialPayment: (tableId: string, comandaId: string, paymentId: string) => Promise<void>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus, driverName?: string) => Promise<void>;
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<void>;
@@ -224,11 +238,15 @@ interface AppContextType {
   addCashMovement: (type: 'reforco' | 'sangria', amount: number, reason: string) => Promise<void>;
 
   saveCategory: (category: Category) => Promise<void>;
+  deleteCategory: (categoryId: string) => Promise<void>;
+  saveIngredientCategory: (category: IngredientCategory) => Promise<void>;
+  deleteIngredientCategory: (categoryId: string) => Promise<void>;
   saveSaleUnit: (saleUnit: SaleUnit) => Promise<void>;
   saveProduct: (product: Product) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
 
   saveIngredient: (ingredient: Ingredient) => Promise<void>;
+  deleteIngredient: (ingredientId: string) => Promise<void>;
   recordStockEntry: (ingredientId: string, qty: number, costUnit: number) => Promise<void>;
   recordProductStockEntry: (productId: string, qty: number) => Promise<void>;
   recordLoss: (data: {
@@ -253,6 +271,7 @@ interface AppContextType {
     authorizedBy: string;
     notes?: string;
     tableId?: string;
+    comandaId?: string;
   }) => Promise<void>;
 
   issueNfce: (orderId: string) => Promise<string>;
@@ -344,6 +363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
+  const [ingredientCategories] = useSupabaseCollection<IngredientCategory>('ingredient_categories', session, mapIngredientCategory, 'id');
   const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
   const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id');
@@ -460,8 +480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sector,
       capacity,
       status: 'livre',
-      items: [],
-      subtotal: 0,
+      comandas: [],
     };
 
     const { error } = await supabase.from('dining_tables').insert(toRow(newTable));
@@ -474,7 +493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteTable = async (tableId: string) => {
     const table = tables.find((t) => t.id === tableId);
     if (!table) return;
-    if (table.status !== 'livre' || table.items.length > 0) {
+    if (table.status !== 'livre' || table.comandas.length > 0) {
       addToast('error', 'Não é possível remover', 'Só é possível remover mesas livres e sem comanda aberta.');
       return;
     }
@@ -486,59 +505,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Remoção de Mesa', 'Mesas', `Mesa ${table.number}`);
   };
 
-  const openTable = async (tableId: string, guestCount: number, clientName?: string) => {
-    if (!currentUser) return;
+  // Abre uma nova comanda na mesa (funciona tanto pra abrir a mesa quanto
+  // pra adicionar mais uma pessoa numa mesa já ocupada).
+  const openComanda = async (tableId: string, personName: string, guestCount?: number): Promise<Comanda | null> => {
+    if (!currentUser) return null;
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return null;
+
+    const newComanda: Comanda = {
+      id: 'cmd-' + Date.now(),
+      personName: personName || 'Cliente',
+      guestCount,
+      openedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      waiterId: currentUser.id,
+      waiterName: currentUser.name,
+      items: [],
+      subtotal: 0,
+      status: 'aberta',
+    };
+
+    const updatedComandas = [...table.comandas, newComanda];
+
     const { error } = await supabase
       .from('dining_tables')
-      .update({
-        status: 'ocupada',
-        guest_count: guestCount,
-        client_name: clientName || `Mesa ${tableId}`,
-        opened_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        waiter_id: currentUser.id,
-        waiter_name: currentUser.name,
-      })
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
       .eq('id', tableId);
 
-    if (error) { addToast('error', 'Erro ao abrir mesa', error.message); return; }
+    if (error) { addToast('error', 'Erro ao abrir comanda', error.message); return null; }
 
-    addToast('success', `Mesa aberta`, `Cliente: ${clientName || 'Geral'} (${guestCount} pessoas)`);
-    logAudit(`Abertura de Mesa`, 'Atendimento Salão', `Mesa ${tableId} - ${guestCount} pessoas`);
+    addToast('success', 'Comanda aberta', `${personName}${guestCount ? ` (${guestCount} pessoas)` : ''}`);
+    logAudit('Abertura de Comanda', 'Atendimento Salão', `Mesa ${table.number} - ${personName}`);
+    return newComanda;
   };
 
-  const addTableItem = async (tableId: string, productId: string, quantity: number, additions: any[] = [], notes?: string, unitPriceOverride?: number) => {
+  // Abre várias comandas de uma vez (uma por nome) num único update, evitando
+  // que updates concorrentes se sobrescrevam por causa do atraso do realtime.
+  const openComandas = async (tableId: string, personNames: string[]): Promise<Comanda[]> => {
+    if (!currentUser) return [];
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return [];
+
+    const nowLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const newComandas: Comanda[] = personNames.map((personName, idx) => ({
+      id: 'cmd-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 7),
+      personName: personName || 'Cliente',
+      openedAt: nowLabel,
+      waiterId: currentUser.id,
+      waiterName: currentUser.name,
+      items: [],
+      subtotal: 0,
+      status: 'aberta',
+    }));
+
+    const updatedComandas = [...table.comandas, ...newComandas];
+
+    const { error } = await supabase
+      .from('dining_tables')
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
+      .eq('id', tableId);
+
+    if (error) { addToast('error', 'Erro ao abrir comanda', error.message); return []; }
+
+    addToast('success', newComandas.length > 1 ? 'Comandas abertas' : 'Comanda aberta', personNames.join(', '));
+    logAudit('Abertura de Comanda', 'Atendimento Salão', `Mesa ${table.number} - ${personNames.join(', ')}`);
+    return newComandas;
+  };
+
+  const addComandaItem = async (tableId: string, comandaId: string, productId: string, quantity: number, additions: any[] = [], notes?: string, unitPriceOverride?: number) => {
     if (!currentUser) return;
     const product = products.find((p) => p.id === productId);
     const table = tables.find((t) => t.id === tableId);
-    if (!product || !table) return;
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!product || !table || !comanda) return;
 
     const additionsTotal = additions.reduce((acc, a) => acc + (a.price || 0), 0);
     const unitPrice = unitPriceOverride !== undefined ? unitPriceOverride : (product.promoPrice || product.price) + additionsTotal;
+    const nowLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const newItem: TableItem = {
-      id: 'item-' + Date.now(),
+    // Cada unidade vira sua própria linha (quantity: 1) em vez de um item
+    // agregado, para permitir selecionar/cancelar/pagar unidades individuais
+    // (ex: pagamento parcial de só 1 das 2 cocas pedidas juntas).
+    const newItems: TableItem[] = Array.from({ length: Math.max(1, quantity) }, (_, idx) => ({
+      id: 'item-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 6),
       productId,
       productName: product.name,
-      quantity,
+      quantity: 1,
       unitPrice,
       additions,
       notes,
-      status: product.requiresPreparation === false ? 'pronto' : 'em_preparo',
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'ativo',
+      createdAt: nowLabel,
       waiterName: currentUser.name,
-    };
+    }));
 
-    const updatedItems = [...table.items, newItem];
+    const updatedItems = [...comanda.items, ...newItems];
     const newSubtotal = updatedItems
       .filter((i) => i.status !== 'cancelado')
       .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
-    const stillPreparing = updatedItems.some((i) => i.status === 'em_preparo');
-    const newTableStatus = stillPreparing ? 'em_preparo' : 'pedido_pronto';
+    const updatedComandas = table.comandas.map((c) =>
+      c.id === comandaId ? { ...c, items: updatedItems, subtotal: newSubtotal } : c
+    );
 
     const { error } = await supabase
       .from('dining_tables')
-      .update({ items: updatedItems, subtotal: newSubtotal, status: newTableStatus })
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
       .eq('id', tableId);
 
     if (error) { addToast('error', 'Erro ao lançar item', error.message); return; }
@@ -549,18 +620,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Lançamento de Pedido na Mesa', 'Garçom App', `Mesa ID: ${tableId} - ${quantity}x ${product.name}`);
   };
 
-  const cancelTableItem = async (tableId: string, itemId: string, reason: string) => {
+  const cancelComandaItem = async (tableId: string, comandaId: string, itemId: string, reason: string) => {
     const table = tables.find((t) => t.id === tableId);
-    if (!table) return;
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return;
 
-    const updatedItems = table.items.map((i) => (i.id === itemId ? { ...i, status: 'cancelado' as const } : i));
+    const updatedItems = comanda.items.map((i) => (i.id === itemId ? { ...i, status: 'cancelado' as const } : i));
     const newSubtotal = updatedItems
       .filter((i) => i.status !== 'cancelado')
       .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
+    const updatedComandas = table.comandas.map((c) =>
+      c.id === comandaId ? { ...c, items: updatedItems, subtotal: newSubtotal } : c
+    );
+
     const { error } = await supabase
       .from('dining_tables')
-      .update({ items: updatedItems, subtotal: newSubtotal })
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
       .eq('id', tableId);
 
     if (error) { addToast('error', 'Erro ao cancelar item', error.message); return; }
@@ -569,55 +645,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Cancelamento de Item de Comanda', 'Mesas', `Mesa ID ${tableId}, Item ID ${itemId}, Motivo: ${reason}`);
   };
 
-  const transferTable = async (fromTableId: string, toTableId: string) => {
+  // Move só uma comanda (com seus itens) para outra mesa — as demais
+  // comandas da mesa de origem não são afetadas.
+  const transferComanda = async (fromTableId: string, comandaId: string, toTableId: string) => {
     const sourceTable = tables.find((t) => t.id === fromTableId);
     const targetTable = tables.find((t) => t.id === toTableId);
-    if (!sourceTable || !targetTable) return;
+    const comanda = sourceTable?.comandas.find((c) => c.id === comandaId);
+    if (!sourceTable || !targetTable || !comanda) return;
 
-    const mergedItems = [...targetTable.items, ...sourceTable.items];
-    const newSubtotal = mergedItems
-      .filter((i) => i.status !== 'cancelado')
-      .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-
+    const updatedTargetComandas = [...targetTable.comandas, comanda];
     const { error: targetError } = await supabase
       .from('dining_tables')
-      .update({
-        status: 'ocupada',
-        guest_count: (targetTable.guestCount || 0) + (sourceTable.guestCount || 1),
-        client_name: targetTable.clientName || sourceTable.clientName || null,
-        items: mergedItems,
-        subtotal: newSubtotal,
-      })
+      .update({ comandas: updatedTargetComandas, status: computeTableStatus(updatedTargetComandas) })
       .eq('id', toTableId);
 
-    if (targetError) { addToast('error', 'Erro ao transferir mesa', targetError.message); return; }
+    if (targetError) { addToast('error', 'Erro ao transferir comanda', targetError.message); return; }
 
+    const updatedSourceComandas = sourceTable.comandas.filter((c) => c.id !== comandaId);
     const { error: sourceError } = await supabase
       .from('dining_tables')
-      .update({ status: 'livre', guest_count: 0, client_name: null, opened_at: null, items: [], subtotal: 0 })
+      .update({ comandas: updatedSourceComandas, status: computeTableStatus(updatedSourceComandas) })
       .eq('id', fromTableId);
 
-    if (sourceError) { addToast('error', 'Erro ao limpar mesa de origem', sourceError.message); return; }
+    if (sourceError) { addToast('error', 'Erro ao limpar comanda na mesa de origem', sourceError.message); return; }
 
-    addToast('info', 'Mesa transferida com sucesso', `Mesa ${sourceTable.number} transferida para Mesa ${targetTable.number}`);
-    logAudit('Transferência de Mesa', 'Atendimento', `Da Mesa ${sourceTable.number} para Mesa ${targetTable.number}`);
+    addToast('info', 'Comanda transferida com sucesso', `${comanda.personName}: Mesa ${sourceTable.number} → Mesa ${targetTable.number}`);
+    logAudit('Transferência de Comanda', 'Atendimento', `${comanda.personName} - Da Mesa ${sourceTable.number} para Mesa ${targetTable.number}`);
   };
 
-  const closeTableAndPay = async (tableId: string, paymentMethod: PaymentMethod, discount = 0) => {
-    if (!currentUser) return;
+  const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0): Promise<Order | null> => {
+    if (!currentUser) return null;
     const table = tables.find((t) => t.id === tableId);
-    if (!table) return;
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return null;
 
-    const finalSubtotal = table.subtotal;
-    const finalTotal = Math.max(0, finalSubtotal - discount);
+    const finalSubtotal = comanda.subtotal;
+    const advancesTotal = (comanda.advancePayments || [])
+      .filter((p) => p.status === 'ativo')
+      .reduce((sum, p) => sum + p.amount, 0);
+    const remainingBalance = Math.max(0, finalSubtotal - advancesTotal);
+    const finalTotal = Math.max(0, remainingBalance - discount);
 
     const newOrder: Order = {
       id: 'ord-' + Date.now(),
       orderNumber: orders.length + 1001,
       channel: 'garcom',
       tableNumber: table.number,
-      customer: { name: table.clientName || `Mesa ${table.number}`, phone: '(11) 00000-0000' },
-      items: table.items.map((it) => ({
+      customer: { name: comanda.personName, phone: '(11) 00000-0000' },
+      items: comanda.items.map((it) => ({
         id: it.id, productId: it.productId, productName: it.productName, quantity: it.quantity,
         unitPrice: it.unitPrice, additions: it.additions, notes: it.notes,
       })),
@@ -631,36 +706,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderStatus: 'concluido',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      waiterName: table.waiterName || currentUser.name,
+      waiterName: comanda.waiterName || currentUser.name,
       fiscalIssued: true,
       nfceKey: '352607' + Math.floor(100000000000000 + Math.random() * 900000000000000),
     };
 
-    const { error } = await supabase.rpc('close_table_and_pay', {
+    const { error } = await supabase.rpc('close_comanda_and_pay', {
       p_table_id: tableId,
+      p_comanda_id: comandaId,
       p_order: newOrder,
       p_cash_amount: cashShift.status === 'aberto' ? finalTotal : null,
       p_payment_method: paymentMethod,
     });
 
-    if (error) { addToast('error', 'Erro ao fechar mesa', error.message); return; }
+    if (error) { addToast('error', 'Erro ao fechar comanda', error.message); return null; }
 
-    addToast('success', `Mesa ${table.number} fechada`, `Pagamento de R$ ${finalTotal.toFixed(2)} recebido (${paymentMethod.toUpperCase()})`);
-    logAudit('Fechamento e Pagamento de Mesa', 'PDV / Caixa', `Mesa ${table.number} - Total R$ ${finalTotal.toFixed(2)}`);
+    addToast(
+      'success',
+      `Comanda ${comanda.personName} fechada`,
+      `Pagamento de R$ ${finalTotal.toFixed(2)} recebido (${paymentMethod.toUpperCase()})${advancesTotal > 0 ? ` • R$ ${advancesTotal.toFixed(2)} já adiantado` : ''}`
+    );
+    logAudit('Fechamento e Pagamento de Comanda', 'PDV / Caixa', `Mesa ${table.number} - ${comanda.personName} - Total R$ ${finalTotal.toFixed(2)}`);
+    return newOrder;
   };
 
-  const addPartialPayment: AppContextType['addPartialPayment'] = async (tableId, paymentData) => {
+  const addPartialPayment: AppContextType['addPartialPayment'] = async (tableId, comandaId, paymentData) => {
     if (!currentUser) return null;
     const table = tables.find((t) => t.id === tableId);
-    if (!table) return null;
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return null;
 
-    const currentAdvances = table.advancePayments || [];
+    const currentAdvances = comanda.advancePayments || [];
     const activeAdvancesTotal = currentAdvances.filter((p) => p.status === 'ativo').reduce((sum, p) => sum + p.amount, 0);
-    const totalConsumed = table.items.filter((i) => i.status !== 'cancelado').reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+    const totalConsumed = comanda.items.filter((i) => i.status !== 'cancelado').reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
     const currentRemaining = Math.max(0, totalConsumed - activeAdvancesTotal);
 
     if (paymentData.amount <= 0 || paymentData.amount > currentRemaining + 0.05) {
-      addToast('error', 'Valor de adiantamento inválido', `Saldo restante atual da mesa: R$ ${currentRemaining.toFixed(2)}`);
+      addToast('error', 'Valor de adiantamento inválido', `Saldo restante atual da comanda: R$ ${currentRemaining.toFixed(2)}`);
       return null;
     }
 
@@ -669,7 +751,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let paidItemsDetails: { productName: string; quantity: number; unitPrice: number }[] = [];
     if (paymentData.type === 'by_item' && paymentData.itemIdsPaid && paymentData.itemIdsPaid.length > 0) {
-      const targetItems = table.items.filter((i) => paymentData.itemIdsPaid?.includes(i.id));
+      const targetItems = comanda.items.filter((i) => paymentData.itemIdsPaid?.includes(i.id));
       paidItemsDetails = targetItems.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }));
     }
 
@@ -679,13 +761,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newPaymentId,
       tableId,
       tableNumber: table.number,
+      comandaId,
       amount: paymentData.amount,
       paymentMethod: paymentData.paymentMethod,
       splitPayments: paymentData.splitPayments,
       type: paymentData.type,
       itemIdsPaid: paymentData.itemIdsPaid,
       paidItemsDetails,
-      customerName: paymentData.customerName || 'Cliente',
+      customerName: paymentData.customerName || comanda.personName,
       paidAt: paidAtTimestamp,
       userName: currentUser.name,
       notes: paymentData.notes,
@@ -693,7 +776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       remainingBalanceAfter: remainingAfter,
     };
 
-    const updatedItems = table.items.map((item) => {
+    const updatedItems = comanda.items.map((item) => {
       if (paymentData.type === 'by_item' && paymentData.itemIdsPaid?.includes(item.id)) {
         return { ...item, isPaid: true, paidAt: paidAtTimestamp, partialPaymentId: newPaymentId };
       }
@@ -701,14 +784,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const updatedAdvances = [...currentAdvances, newPartialPayment];
+    const updatedComandas = table.comandas.map((c) =>
+      c.id === comandaId
+        ? { ...c, items: updatedItems, advancePayments: updatedAdvances, status: remainingAfter === 0 ? ('aguardando_fechamento' as const) : c.status }
+        : c
+    );
 
     const { error } = await supabase
       .from('dining_tables')
-      .update({
-        items: updatedItems,
-        advance_payments: updatedAdvances,
-        status: remainingAfter === 0 ? 'aguardando_fechamento' : table.status,
-      })
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
       .eq('id', tableId);
 
     if (error) { addToast('error', 'Erro ao registrar adiantamento', error.message); return null; }
@@ -741,41 +825,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast(
       'success',
       `Adiantamento Parcial Registrado!`,
-      `Mesa #${table.number}: R$ ${paymentData.amount.toFixed(2)} (${paymentData.customerName || 'Cliente'}). Saldo restante: R$ ${remainingAfter.toFixed(2)}`
+      `${comanda.personName} (Mesa #${table.number}): R$ ${paymentData.amount.toFixed(2)}. Saldo restante: R$ ${remainingAfter.toFixed(2)}`
     );
     logAudit(
       'Adiantamento Parcial de Comanda',
       'Atendimento / Caixa',
-      `Mesa #${table.number} - R$ ${paymentData.amount.toFixed(2)} por ${paymentData.customerName || 'Cliente'} (${paymentData.type === 'by_item' ? 'Por Produtos' : 'Por Valor'})`
+      `Mesa #${table.number} - ${comanda.personName} - R$ ${paymentData.amount.toFixed(2)} (${paymentData.type === 'by_item' ? 'Por Produtos' : 'Por Valor'})`
     );
 
     return newPartialPayment;
   };
 
-  const cancelPartialPayment = async (tableId: string, paymentId: string) => {
+  const cancelPartialPayment = async (tableId: string, comandaId: string, paymentId: string) => {
     if (!currentUser) return;
     const table = tables.find((t) => t.id === tableId);
-    if (!table) return;
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return;
 
-    const paymentToCancel = table.advancePayments?.find((p) => p.id === paymentId);
+    const paymentToCancel = comanda.advancePayments?.find((p) => p.id === paymentId);
     if (!paymentToCancel || paymentToCancel.status === 'estornado') return;
 
-    const updatedItems = table.items.map((item) =>
+    const updatedItems = comanda.items.map((item) =>
       item.partialPaymentId === paymentId ? { ...item, isPaid: false, paidAt: undefined, partialPaymentId: undefined } : item
     );
-    const updatedAdvances = (table.advancePayments || []).map((p) =>
+    const updatedAdvances = (comanda.advancePayments || []).map((p) =>
       p.id === paymentId ? { ...p, status: 'estornado' as const, canceledAt: new Date().toLocaleString('pt-BR'), canceledBy: currentUser.name } : p
+    );
+
+    const updatedComandas = table.comandas.map((c) =>
+      c.id === comandaId ? { ...c, items: updatedItems, advancePayments: updatedAdvances } : c
     );
 
     const { error } = await supabase
       .from('dining_tables')
-      .update({ items: updatedItems, advance_payments: updatedAdvances })
+      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
       .eq('id', tableId);
 
     if (error) { addToast('error', 'Erro ao estornar adiantamento', error.message); return; }
 
     addToast('warning', 'Adiantamento estornado', `Adiantamento de R$ ${paymentToCancel.amount.toFixed(2)} foi estornado com sucesso.`);
-    logAudit('Estorno de Adiantamento', 'Caixa / Atendimento', `Mesa ${table.number} - Estornado R$ ${paymentToCancel.amount.toFixed(2)}`);
+    logAudit('Estorno de Adiantamento', 'Caixa / Atendimento', `Mesa ${table.number} - ${comanda.personName} - Estornado R$ ${paymentToCancel.amount.toFixed(2)}`);
   };
 
   // ---- Kitchen & Delivery Order Flow ----
@@ -976,6 +1065,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Cadastro de Categoria', 'Produtos', `Categoria: ${category.name}`);
   };
 
+  const deleteCategory = async (categoryId: string) => {
+    const { error } = await supabase.from('categories').delete().eq('id', categoryId);
+    if (error) { addToast('error', 'Erro ao remover categoria', error.message); return; }
+    addToast('warning', 'Categoria removida');
+    logAudit('Exclusão de Categoria', 'Produtos', `ID da categoria: ${categoryId}`);
+  };
+
+  // ---- Ingredient Category (Grupos de Insumos) CRUD ----
+  const saveIngredientCategory = async (category: IngredientCategory) => {
+    const { error } = await supabase.from('ingredient_categories').upsert(toRow(category));
+    if (error) { addToast('error', 'Erro ao salvar grupo de insumo', error.message); return; }
+    addToast('success', 'Grupo de insumo salvo', category.name);
+    logAudit('Cadastro de Grupo de Insumo', 'Estoque', `Grupo: ${category.name}`);
+  };
+
+  const deleteIngredientCategory = async (categoryId: string) => {
+    const { error } = await supabase.from('ingredient_categories').delete().eq('id', categoryId);
+    if (error) { addToast('error', 'Erro ao remover grupo de insumo', error.message); return; }
+    addToast('warning', 'Grupo de insumo removido');
+    logAudit('Exclusão de Grupo de Insumo', 'Estoque', `ID do grupo: ${categoryId}`);
+  };
+
   const saveSaleUnit = async (saleUnit: SaleUnit) => {
     const { error } = await supabase.from('sale_units').upsert(toRow(saleUnit));
     if (error) { addToast('error', 'Erro ao salvar unidade', error.message); return; }
@@ -1003,6 +1114,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { error } = await supabase.from('ingredients').upsert(toRow(ingredient));
     if (error) { addToast('error', 'Erro ao salvar insumo', error.message); return; }
     addToast('success', 'Insumo salvo', ingredient.name);
+  };
+
+  const deleteIngredient = async (ingredientId: string) => {
+    const { error } = await supabase.from('ingredients').delete().eq('id', ingredientId);
+    if (error) { addToast('error', 'Erro ao remover insumo', error.message); return; }
+    addToast('warning', 'Insumo removido');
+    logAudit('Exclusão de Insumo', 'Estoque', `ID do insumo: ${ingredientId}`);
   };
 
   const recordStockEntry = async (ingredientId: string, qty: number, costUnit: number) => {
@@ -1097,9 +1215,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setCourtesyRecords((prev) => [newCourtesy, ...prev]);
 
-    if (data.tableId) {
+    if (data.tableId && data.comandaId) {
       const table = tables.find((t) => t.id === data.tableId);
-      if (table) {
+      const comanda = table?.comandas.find((c) => c.id === data.comandaId);
+      if (table && comanda) {
         const newTableItem: TableItem = {
           id: 'item-' + Date.now(),
           productId: prod.id,
@@ -1108,7 +1227,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           unitPrice: 0,
           additions: [],
           notes: `Cortesia: ${data.reason.replace('_', ' ')} (Aut: ${data.authorizedBy})`,
-          status: 'entregue',
+          status: 'ativo',
           createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           waiterName: currentUser.name,
           isCourtesy: true,
@@ -1117,7 +1236,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isPaid: true,
         };
 
-        await supabase.from('dining_tables').update({ items: [...table.items, newTableItem] }).eq('id', data.tableId);
+        const updatedComandas = table.comandas.map((c) =>
+          c.id === data.comandaId ? { ...c, items: [...c.items, newTableItem] } : c
+        );
+
+        await supabase.from('dining_tables').update({ comandas: updatedComandas }).eq('id', data.tableId);
       }
     }
 
@@ -1179,6 +1302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         users,
         updateUserProfile,
         categories,
+        ingredientCategories,
         saleUnits,
         products,
         ingredients,
@@ -1204,11 +1328,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         createTable,
         deleteTable,
-        openTable,
-        addTableItem,
-        cancelTableItem,
-        transferTable,
-        closeTableAndPay,
+        openComanda,
+        openComandas,
+        addComandaItem,
+        cancelComandaItem,
+        transferComanda,
+        closeComandaAndPay,
         addPartialPayment,
         cancelPartialPayment,
         updateOrderStatus,
@@ -1219,10 +1344,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeCashShift,
         addCashMovement,
         saveCategory,
+        deleteCategory,
+        saveIngredientCategory,
+        deleteIngredientCategory,
         saveSaleUnit,
         saveProduct,
         deleteProduct,
         saveIngredient,
+        deleteIngredient,
         recordStockEntry,
         recordProductStockEntry,
         recordLoss,

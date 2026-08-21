@@ -78,6 +78,11 @@ export interface Category {
   showsInStock: boolean;
 }
 
+export interface IngredientCategory {
+  id: string;
+  name: string;
+}
+
 export interface SaleUnit {
   id: string;
   name: string;
@@ -121,7 +126,7 @@ export interface Product {
 export interface Ingredient {
   id: string;
   name: string;
-  category: 'carnes' | 'laticinios' | 'hortifruti' | 'bebidas' | 'embalagens' | 'outros';
+  category: string;
   stockQuantity: number;
   minStock: number;
   unit: 'KG' | 'G' | 'L' | 'ML' | 'UN' | 'CX';
@@ -129,7 +134,7 @@ export interface Ingredient {
   expiryDate?: string;
 }
 
-export type TableStatus = 'livre' | 'ocupada' | 'aguardando_pedido' | 'em_preparo' | 'pedido_pronto' | 'aguardando_fechamento';
+export type TableStatus = 'livre' | 'ocupada';
 
 export interface TableItem {
   id: string;
@@ -139,7 +144,7 @@ export interface TableItem {
   unitPrice: number;
   additions: ProductAddition[];
   notes?: string;
-  status: 'solicitado' | 'em_preparo' | 'pronto' | 'entregue' | 'cancelado';
+  status: 'ativo' | 'cancelado';
   createdAt: string;
   waiterName?: string;
   isPaid?: boolean;
@@ -154,6 +159,7 @@ export interface PartialPayment {
   id: string;
   tableId: string;
   tableNumber: number;
+  comandaId: string;
   amount: number;
   paymentMethod: PaymentMethod | string;
   splitPayments?: { method: PaymentMethod; amount: number }[];
@@ -170,24 +176,30 @@ export interface PartialPayment {
   remainingBalanceAfter: number;
 }
 
+export interface Comanda {
+  id: string;
+  personName: string;
+  guestCount?: number;
+  openedAt: string;
+  waiterId?: string;
+  waiterName?: string;
+  items: TableItem[];
+  subtotal: number;
+  status: 'aberta' | 'aguardando_fechamento';
+  advancePayments?: PartialPayment[];
+}
+
 export interface DiningTable {
   id: string;
   number: number;
   sector: 'Salão Principal' | 'Varanda' | 'Área VIP' | 'Delivery / Balcão';
   capacity: number;
   status: TableStatus;
-  guestCount?: number;
-  clientName?: string;
-  openedAt?: string;
-  waiterId?: string;
-  waiterName?: string;
-  items: TableItem[];
-  subtotal: number;
-  advancePayments?: PartialPayment[];
+  comandas: Comanda[];
 }
 
 export type OrderChannel = 'pdv' | 'garcom' | 'online' | 'balcao' | 'whatsapp' | 'telefone';
-export type PaymentMethod = 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'multiplo';
+export type PaymentMethod = 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'boleto' | 'multiplo';
 export type OrderStatus = 'novo' | 'aceito' | 'em_preparo' | 'pronto' | 'saiu_entrega' | 'concluido' | 'cancelado';
 export type PaymentStatus = 'aguardando_pagamento' | 'pagamento_aprovado' | 'pagamento_recusado' | 'pagamento_cancelado' | 'pagamento_estornado';
 

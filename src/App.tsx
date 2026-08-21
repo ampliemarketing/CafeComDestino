@@ -4,7 +4,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
-import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users } from 'lucide-react';
+import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags } from 'lucide-react';
 
 import { DashboardView } from './components/dashboard/DashboardView';
 import { OnlineMenuCatalog } from './components/online-menu/OnlineMenuCatalog';
@@ -16,6 +16,7 @@ import { TableManagement } from './components/tables/TableManagement';
 import { SalesManagement } from './components/sales/SalesManagement';
 import { ProductManagement } from './components/products/ProductManagement';
 import { InventoryManagement } from './components/inventory/InventoryManagement';
+import { GroupManagement } from './components/groups/GroupManagement';
 import { FinancialManagement } from './components/finance/FinancialManagement';
 import { FiscalManagement } from './components/fiscal/FiscalManagement';
 import { DeliveryManagement } from './components/delivery/DeliveryManagement';
@@ -53,6 +54,8 @@ const AppContent: React.FC = () => {
       case 'inventory':
       case 'suppliers':
         return <InventoryManagement />;
+      case 'groups':
+        return <GroupManagement />;
       case 'finance':
       case 'financial':
         return <FinancialManagement />;
@@ -94,6 +97,7 @@ const AppContent: React.FC = () => {
       items: [
         { id: 'products', label: 'Produtos', icon: Package },
         { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes },
+        { id: 'groups', label: 'Grupos', icon: Tags },
         { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
         { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },
         { id: 'finance', label: 'Financeiro', icon: Wallet },

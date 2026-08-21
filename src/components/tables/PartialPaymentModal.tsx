@@ -22,10 +22,12 @@ interface PartialPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   table: DiningTable;
+  comandaId: string;
 }
 
-export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen, onClose, table }) => {
+export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen, onClose, table, comandaId }) => {
   const { addPartialPayment, currentUser } = useApp();
+  const comanda = table.comandas.find((c) => c.id === comandaId);
 
   const [paymentType, setPaymentType] = useState<'by_item' | 'by_amount'>('by_item');
 
@@ -51,20 +53,20 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
   const [completedPayment, setCompletedPayment] = useState<PartialPayment | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
-  if (!isOpen) return null;
+  if (!isOpen || !comanda) return null;
 
-  // Compute table financial state
-  const activeAdvances = (table.advancePayments || []).filter((p) => p.status === 'ativo');
+  // Compute comanda financial state
+  const activeAdvances = (comanda.advancePayments || []).filter((p) => p.status === 'ativo');
   const totalAdvancesAmount = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
 
-  const totalConsumed = table.items
+  const totalConsumed = comanda.items
     .filter((i) => i.status !== 'cancelado')
     .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
   const remainingBalance = Math.max(0, totalConsumed - totalAdvancesAmount);
 
   // Unpaid items that can be selected
-  const availableItems = table.items.filter((i) => i.status !== 'cancelado' && !i.isPaid && i.unitPrice > 0);
+  const availableItems = comanda.items.filter((i) => i.status !== 'cancelado' && !i.isPaid && i.unitPrice > 0);
 
   // Calculate total for selected items
   const selectedItemsTotal = availableItems
@@ -114,12 +116,12 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
       finalSplitPayments = parsedSplits;
     }
 
-    const created = await addPartialPayment(table.id, {
+    const created = await addPartialPayment(table.id, comandaId, {
       amount: effectivePaymentAmount,
       paymentMethod: isSplitPayment ? 'multiplo' : singleMethod,
       type: paymentType,
       itemIdsPaid: paymentType === 'by_item' ? selectedItemIds : undefined,
-      customerName: customerName.trim() || 'Cliente Mesa',
+      customerName: customerName.trim() || comanda.personName,
       notes,
       splitPayments: finalSplitPayments,
     });
@@ -143,7 +145,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
               <div>
                 <h3 className="font-bold text-base sm:text-lg">Adiantamento Parcial • Mesa #{table.number}</h3>
                 <p className="text-xs text-stone-400">
-                  {table.clientName ? `Cliente: ${table.clientName}` : 'Pagamento de saída antecipada ou divisão de conta'}
+                  Comanda: {comanda.personName}
                 </p>
               </div>
             </div>

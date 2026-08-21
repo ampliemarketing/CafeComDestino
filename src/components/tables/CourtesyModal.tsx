@@ -16,13 +16,15 @@ interface CourtesyModalProps {
   onClose: () => void;
   tableId?: string;
   tableNumber?: number;
+  comandaId?: string;
 }
 
 export const CourtesyModal: React.FC<CourtesyModalProps> = ({
   isOpen,
   onClose,
   tableId,
-  tableNumber
+  tableNumber,
+  comandaId
 }) => {
   const { products, users, recordCourtesy, currentUser } = useApp();
 
@@ -68,6 +70,7 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
       authorizedBy: `${authorizer.name} (${authorizer.role.toUpperCase()})`,
       notes: notes || undefined,
       tableId,
+      comandaId,
     });
 
     onClose();

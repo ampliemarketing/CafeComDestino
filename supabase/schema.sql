@@ -75,11 +75,17 @@ create table categories (
   shows_in_stock boolean not null default true
 );
 
+-- Grupos/categorias de insumos (ex: Carnes, Laticínios) — mesmo conceito de
+-- "categories" acima, só que para insumos em vez de produtos vendáveis.
+create table ingredient_categories (
+  id text primary key,
+  name text not null
+);
+
 create table ingredients (
   id text primary key,
   name text not null,
-  category text not null default 'outros'
-    check (category in ('carnes', 'laticinios', 'hortifruti', 'bebidas', 'embalagens', 'outros')),
+  category text references ingredient_categories(id) on delete set null,
   stock_quantity numeric(10,3) not null default 0,
   min_stock numeric(10,3) not null default 0,
   unit text not null default 'UN' check (unit in ('KG', 'G', 'L', 'ML', 'UN', 'CX')),
@@ -126,6 +132,8 @@ create table technical_sheets (
 -- ----------------------------------------------------------------------------
 -- 3. Mesas, Pedidos e Caixa
 -- ----------------------------------------------------------------------------
+-- Cada mesa guarda um array de comandas independentes (uma por pessoa/grupo),
+-- cada uma com seus próprios itens, subtotal, garçom e adiantamentos parciais.
 create table dining_tables (
   id text primary key,
   number int not null unique,
@@ -133,15 +141,8 @@ create table dining_tables (
     check (sector in ('Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão')),
   capacity int not null default 2,
   status text not null default 'livre'
-    check (status in ('livre', 'ocupada', 'aguardando_pedido', 'em_preparo', 'pedido_pronto', 'aguardando_fechamento')),
-  guest_count int,
-  client_name text,
-  opened_at text,
-  waiter_id uuid references profiles(id) on delete set null,
-  waiter_name text,
-  items jsonb not null default '[]'::jsonb,
-  subtotal numeric(10,2) not null default 0,
-  advance_payments jsonb not null default '[]'::jsonb
+    check (status in ('livre', 'ocupada')),
+  comandas jsonb not null default '[]'::jsonb
 );
 
 create table orders (
@@ -156,7 +157,7 @@ create table orders (
   delivery_fee numeric(10,2) not null default 0,
   discount numeric(10,2) not null default 0,
   total numeric(10,2) not null default 0,
-  payment_method text not null check (payment_method in ('pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'multiplo')),
+  payment_method text not null check (payment_method in ('pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'multiplo')),
   payment_status text not null check (payment_status in ('aguardando_pagamento', 'pagamento_aprovado', 'pagamento_recusado', 'pagamento_cancelado', 'pagamento_estornado')),
   order_status text not null check (order_status in ('novo', 'aceito', 'em_preparo', 'pronto', 'saiu_entrega', 'concluido', 'cancelado')),
   created_at timestamptz not null default now(),
@@ -208,6 +209,7 @@ create table cash_movements (
 -- ----------------------------------------------------------------------------
 alter table profiles enable row level security;
 alter table categories enable row level security;
+alter table ingredient_categories enable row level security;
 alter table sale_units enable row level security;
 alter table ingredients enable row level security;
 alter table products enable row level security;
@@ -221,6 +223,7 @@ create policy "authenticated_read_profiles" on profiles for select using (auth.r
 create policy "self_update_profile" on profiles for update using (auth.uid() = id);
 
 create policy "authenticated_all_categories" on categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated_all_ingredient_categories" on ingredient_categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_sale_units" on sale_units for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredients" on ingredients for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_products" on products for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -233,7 +236,7 @@ create policy "authenticated_all_cash_movements" on cash_movements for all using
 -- ----------------------------------------------------------------------------
 -- 5. Realtime — cozinha/garçom/caixa recebem mudanças ao vivo
 -- ----------------------------------------------------------------------------
-alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredients, cash_shifts, cash_movements;
+alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements;
 
 -- ----------------------------------------------------------------------------
 -- 6. Funções RPC transacionais para os fluxos financeiros críticos
@@ -320,8 +323,27 @@ end;
 $$;
 
 -- Fecha uma mesa (zera itens/subtotal) e cria o pedido correspondente + credita o caixa.
-create or replace function public.close_table_and_pay(
+-- Calcula o status agregado da mesa a partir de todas as comandas abertas.
+-- Pedidos feitos dentro do restaurante não têm status de preparo (isso é
+-- exclusivo do fluxo de delivery/online) — a mesa é só 'livre' ou 'ocupada'.
+create or replace function public.compute_table_status(p_comandas jsonb)
+returns text
+language plpgsql
+as $$
+begin
+  if jsonb_array_length(coalesce(p_comandas, '[]'::jsonb)) = 0 then
+    return 'livre';
+  end if;
+  return 'ocupada';
+end;
+$$;
+
+-- Fecha e paga uma comanda específica de uma mesa (as demais comandas da
+-- mesma mesa não são afetadas): gera o pedido/crédito de caixa e remove só
+-- essa comanda do array, recalculando o status agregado da mesa.
+create or replace function public.close_comanda_and_pay(
   p_table_id text,
+  p_comanda_id text,
   p_order jsonb,
   p_cash_amount numeric,
   p_payment_method text
@@ -330,16 +352,18 @@ returns void
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  v_remaining jsonb;
 begin
   perform public.create_order_and_credit_cash(p_order, p_cash_amount, p_payment_method);
 
+  select coalesce(jsonb_agg(elem), '[]'::jsonb) into v_remaining
+  from jsonb_array_elements((select comandas from dining_tables where id = p_table_id)) as elem
+  where elem->>'id' <> p_comanda_id;
+
   update dining_tables set
-    status = 'livre',
-    guest_count = 0,
-    client_name = null,
-    opened_at = null,
-    items = '[]'::jsonb,
-    subtotal = 0
+    comandas = v_remaining,
+    status = public.compute_table_status(v_remaining)
   where id = p_table_id;
 end;
 $$;

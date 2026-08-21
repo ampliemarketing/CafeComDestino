@@ -5,12 +5,12 @@ import {
   Plus,
   Search,
   Edit2,
-  Trash2,
   Boxes,
   CheckCircle2,
   X,
   FileText,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { Product, ProductAddition, Category, SaleUnit } from '../../types';
 
@@ -18,6 +18,7 @@ export const ProductManagement: React.FC = () => {
   const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Product Form Modal
@@ -46,13 +47,28 @@ export const ProductManagement: React.FC = () => {
   const filteredProducts = products.filter((p) => {
     const matchCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.code.includes(searchQuery);
-    return matchCat && matchSearch;
+    const matchStatus = statusFilter === 'todos' || (statusFilter === 'ativos' ? p.available : !p.available);
+    return matchCat && matchSearch && matchStatus;
   });
+
+  const handleDeleteProduct = (p: Product) => {
+    if (confirm(`Excluir o produto "${p.name}"? Essa ação não pode ser desfeita. Para apenas ocultá-lo do PDV/Cardápio, use "Desativar" em vez de excluir.`)) {
+      deleteProduct(p.id);
+    }
+  };
+
+  const getNextProductCode = () => {
+    const maxCode = products.reduce((max, p) => {
+      const num = parseInt(p.code, 10);
+      return Number.isFinite(num) && num > max ? num : max;
+    }, 100);
+    return String(maxCode + 1);
+  };
 
   const handleOpenCreate = () => {
     setEditingProduct({
       id: 'prod-' + Date.now(),
-      code: String(100 + products.length + 1),
+      code: getNextProductCode(),
       name: '',
       categoryId: categories[0]?.id || '',
       description: '',
@@ -62,7 +78,7 @@ export const ProductManagement: React.FC = () => {
       imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
       available: true,
       requiresPreparation: true,
-      trackStock: true,
+      trackStock: categories[0] ? categories[0].showsInStock !== false : true,
       stockQuantity: 0,
       minStock: 0,
       additions: [],
@@ -94,7 +110,15 @@ export const ProductManagement: React.FC = () => {
       addToast('error', 'Unidade de venda obrigatória', 'Selecione ou crie uma unidade de venda para o produto.');
       return;
     }
-    saveProduct(editingProduct as Product);
+
+    // trackStock é herdado da categoria: categorias marcadas "Ir para o Estoque"
+    // controlam estoque no produto; categorias desmarcadas (ex: pratos prontos
+    // feitos na hora) não controlam, mesmo que o produto já tivesse sido salvo
+    // com outro valor antes.
+    const category = categories.find((c) => c.id === editingProduct.categoryId);
+    const trackStock = category ? category.showsInStock !== false : true;
+
+    saveProduct({ ...editingProduct, trackStock } as Product);
     setIsModalOpen(false);
   };
 
@@ -124,19 +148,35 @@ export const ProductManagement: React.FC = () => {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-          <input
-            type="text"
-            placeholder="Buscar por nome ou código..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700"
-          />
+      <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              placeholder="Buscar por nome ou código..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700"
+            />
+          </div>
+
+          <div className="flex gap-1.5 bg-stone-100 p-1 rounded-xl text-xs font-bold shrink-0">
+            {(['ativos', 'inativos', 'todos'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 rounded-lg capitalize transition ${
+                  statusFilter === s ? 'bg-amber-800 text-white shadow' : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto text-xs font-semibold">
+        <div className="flex gap-1.5 overflow-x-auto w-full text-xs font-semibold">
           <button
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${
@@ -171,7 +211,7 @@ export const ProductManagement: React.FC = () => {
                 <th className="p-3.5">Preço Venda</th>
                 <th className="p-3.5">Custo Aprox.</th>
                 <th className="p-3.5">Unidade de Venda</th>
-                <th className="p-3.5">Disponível</th>
+                <th className="p-3.5">Status</th>
                 <th className="p-3.5 text-center">Ações</th>
               </tr>
             </thead>
@@ -202,15 +242,19 @@ export const ProductManagement: React.FC = () => {
                       <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                         p.available ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
                       }`}>
-                        {p.available ? 'SIM' : 'NÃO'}
+                        {p.available ? 'ATIVO' : 'INATIVO'}
                       </span>
                     </td>
                     <td className="p-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => handleOpenEdit(p)} className="p-1.5 text-stone-600 hover:text-stone-900">
+                        <button onClick={() => handleOpenEdit(p)} title="Editar produto" className="p-1.5 text-stone-600 hover:text-stone-900">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button onClick={() => deleteProduct(p.id)} className="p-1.5 text-rose-600 hover:text-rose-800">
+                        <button
+                          onClick={() => handleDeleteProduct(p)}
+                          title="Excluir produto"
+                          className="p-1.5 text-rose-600 hover:text-rose-800"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -236,12 +280,14 @@ export const ProductManagement: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Código do Produto *</label>
+                <label className="font-semibold text-stone-700 block mb-1">Código do Produto</label>
                 <input
                   type="text"
                   value={editingProduct.code || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  readOnly
+                  disabled
+                  title="Código fixo, gerado automaticamente em sequência."
+                  className="w-full border rounded-xl p-2.5 bg-stone-100 text-stone-500 cursor-not-allowed"
                 />
               </div>
 
@@ -372,14 +418,14 @@ export const ProductManagement: React.FC = () => {
 
             <div className="flex justify-between items-center pt-3 border-t">
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" title="Produto inativo some do PDV e do Cardápio Online, mas continua cadastrado (histórico de vendas preservado). Use em vez de excluir.">
                   <input
                     type="checkbox"
                     checked={editingProduct.available || false}
                     onChange={(e) => setEditingProduct({ ...editingProduct, available: e.target.checked })}
                     className="rounded text-amber-800"
                   />
-                  <span>Disponível para Venda</span>
+                  <span>Produto Ativo</span>
                 </label>
 
                 <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" title="Desmarque para itens que não passam pela cozinha, como bebidas prontas — entram direto como Pronto na comanda.">

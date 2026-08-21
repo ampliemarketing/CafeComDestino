@@ -1,19 +1,18 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  Smartphone, 
-  Utensils, 
-  Plus, 
-  Search, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  Users, 
-  Receipt, 
-  ArrowRightLeft, 
-  Send, 
-  ChevronRight, 
+import {
+  Smartphone,
+  Utensils,
+  Plus,
+  Search,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  X,
+  Receipt,
+  ArrowRightLeft,
+  Send,
+  ChevronLeft,
   Minus,
   Sparkles,
   Printer,
@@ -23,26 +22,31 @@ import {
   Coffee,
   UtensilsCrossed
 } from 'lucide-react';
-import { DiningTable, Product, ProductAddition, TableStatus } from '../../types';
+import { DiningTable, Product, ProductAddition, TableStatus, PaymentMethod, Order } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
+import { PartialPaymentModal } from '../tables/PartialPaymentModal';
+
+const SECTORS: DiningTable['sector'][] = ['Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão'];
 
 export const WaiterApp: React.FC = () => {
-  const { 
-    tables, 
-    products, 
-    categories, 
-    currentUser, 
+  const {
+    tables,
+    products,
+    categories,
+    currentUser,
     companyProfile,
-    openTable, 
-    addTableItem, 
-    cancelTableItem, 
-    transferTable, 
-    closeTableAndPay,
-    addToast 
+    createTable,
+    openComandas,
+    addComandaItem,
+    cancelComandaItem,
+    transferComanda,
+    closeComandaAndPay,
+    addToast
   } = useApp();
 
   const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null);
+  const [selectedComandaId, setSelectedComandaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'map' | 'order' | 'comanda'>('map');
 
   // KG Weight Modal State
@@ -52,11 +56,16 @@ export const WaiterApp: React.FC = () => {
   const lunchPrice = companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00;
   const breakfastPrice = companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99;
 
-  // Open table modal
-  const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
-  const [tableToOpen, setTableToOpen] = useState<DiningTable | null>(null);
-  const [guestCountInput, setGuestCountInput] = useState(2);
-  const [clientNameInput, setClientNameInput] = useState('');
+  // New table modal
+  const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
+  const [newTableNumber, setNewTableNumber] = useState<number>(1);
+  const [newTableSector, setNewTableSector] = useState<DiningTable['sector']>('Salão Principal');
+  const [newTableCapacity, setNewTableCapacity] = useState<number>(2);
+
+  // New comanda modal (opens a free table, or adds another person to one already occupied)
+  const [isNewComandaModalOpen, setIsNewComandaModalOpen] = useState(false);
+  const [tableForNewComanda, setTableForNewComanda] = useState<DiningTable | null>(null);
+  const [comandaNamesInput, setComandaNamesInput] = useState<string[]>(['']);
 
   // Order Launch State
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -66,16 +75,38 @@ export const WaiterApp: React.FC = () => {
   const [selectedAdditions, setSelectedAdditions] = useState<ProductAddition[]>([]);
   const [customNotes, setCustomNotes] = useState('');
 
-  // Split bill calculator modal
-  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
-  const [splitPeopleCount, setSplitPeopleCount] = useState(2);
+  // Partial payment modal
+  const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
 
-  // Transfer Table modal
+  // Transfer comanda modal
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferTargetTableId, setTransferTargetTableId] = useState('');
 
   // Pre-bill print modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Final payment (close comanda) modal
+  const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
+  const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
+
+  // Fiscal receipt printed right after a comanda is closed & paid
+  const [isFinalReceiptModalOpen, setIsFinalReceiptModalOpen] = useState(false);
+  const [lastFinalizedOrder, setLastFinalizedOrder] = useState<Order | null>(null);
+
+  const currentActiveTable = selectedTable ? tables.find((t) => t.id === selectedTable.id) || null : null;
+  const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
+
+  const currentComandaAdvancesTotal = (currentComanda?.advancePayments || [])
+    .filter((p) => p.status === 'ativo')
+    .reduce((sum, p) => sum + p.amount, 0);
+  const currentComandaRemainingTotal = currentComanda
+    ? Math.max(0, currentComanda.subtotal - currentComandaAdvancesTotal)
+    : 0;
+
+  const selectedProductCategoryName = selectedProduct
+    ? categories.find((cat) => cat.id === selectedProduct.categoryId)?.name
+    : undefined;
+  const isPratoFeitoProduct = selectedProductCategoryName?.trim().toLowerCase() === 'prato feito';
 
   const handleConfirmKgTableItem = (kgData: {
     productId: string;
@@ -85,56 +116,63 @@ export const WaiterApp: React.FC = () => {
     totalPrice: number;
     notes: string;
   }) => {
-    if (!currentActiveTable) return;
-    addTableItem(currentActiveTable.id, kgData.productId, 1, [], kgData.notes, kgData.totalPrice);
+    if (!currentActiveTable || !selectedComandaId) return;
+    addComandaItem(currentActiveTable.id, selectedComandaId, kgData.productId, 1, [], kgData.notes, kgData.totalPrice);
     addToast('success', 'Item por Quilo Adicionado', `${kgData.productName} (R$ ${kgData.totalPrice.toFixed(2).replace('.', ',')}) na Mesa #${currentActiveTable.number}`);
   };
   const getStatusBadge = (status: TableStatus) => {
     switch (status) {
-      case 'livre': return { label: 'Livre', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
       case 'ocupada': return { label: 'Ocupada', class: 'bg-amber-100 text-amber-800 border-amber-300' };
-      case 'em_preparo': return { label: 'Em Preparo', class: 'bg-orange-100 text-orange-800 border-orange-300' };
-      case 'pedido_pronto': return { label: 'Pedido Pronto!', class: 'bg-blue-100 text-blue-800 border-blue-400 animate-pulse' };
-      case 'aguardando_fechamento': return { label: 'Fechamento', class: 'bg-rose-100 text-rose-800 border-rose-300' };
-      default: return { label: 'Livre', class: 'bg-stone-100 text-stone-700' };
+      default: return { label: 'Livre', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
     }
   };
 
   const handleOpenTableClick = (tb: DiningTable) => {
-    if (tb.status === 'livre') {
-      setTableToOpen(tb);
-      setGuestCountInput(2);
-      setClientNameInput('');
-      setIsOpenModalOpen(true);
+    setSelectedTable(tb);
+    if (tb.comandas.length === 0) {
+      setTableForNewComanda(tb);
+      setComandaNamesInput(['']);
+      setIsNewComandaModalOpen(true);
     } else {
-      setSelectedTable(tb);
+      setSelectedComandaId(tb.comandas[0].id);
       setActiveTab('comanda');
     }
   };
 
-  const confirmOpenTable = () => {
-    if (!tableToOpen) return;
-    openTable(tableToOpen.id, guestCountInput, clientNameInput);
-    setIsOpenModalOpen(false);
-    
-    // Select newly opened table
-    const updated = tables.find((t) => t.id === tableToOpen.id);
-    if (updated) setSelectedTable(updated);
-    setActiveTab('order');
+  const handleOpenNewComandaModal = (tb: DiningTable) => {
+    setTableForNewComanda(tb);
+    setComandaNamesInput(['']);
+    setIsNewComandaModalOpen(true);
+  };
+
+  const confirmOpenComanda = async () => {
+    if (!tableForNewComanda) return;
+    const validNames = comandaNamesInput.map((n) => n.trim()).filter((n) => n.length > 0);
+    if (validNames.length === 0) return;
+
+    setIsNewComandaModalOpen(false);
+    setSelectedTable(tableForNewComanda);
+
+    const created = await openComandas(tableForNewComanda.id, validNames);
+
+    if (created.length > 0) {
+      setSelectedComandaId(created[0].id);
+      setActiveTab('order');
+    } else {
+      setActiveTab('map');
+    }
   };
 
   const handleSendItemToKitchen = () => {
-    if (!selectedTable || !selectedProduct) return;
-    addTableItem(selectedTable.id, selectedProduct.id, productQty, selectedAdditions, customNotes);
-    
+    if (!currentActiveTable || !selectedComandaId || !selectedProduct) return;
+    addComandaItem(currentActiveTable.id, selectedComandaId, selectedProduct.id, productQty, selectedAdditions, customNotes);
+
     setSelectedProduct(null);
     setProductQty(1);
     setSelectedAdditions([]);
     setCustomNotes('');
-    addToast('success', 'Pedido enviado à Cozinha!', `Mesa #${selectedTable.number}`);
+    addToast('success', 'Pedido enviado à Cozinha!', `Mesa #${currentActiveTable.number}`);
   };
-
-  const currentActiveTable = selectedTable ? tables.find((t) => t.id === selectedTable.id) : null;
 
   return (
     <div className="min-h-screen bg-[#F6F1EA] text-stone-900 pb-20 p-3 sm:p-5 max-w-4xl mx-auto space-y-4">
@@ -159,7 +197,7 @@ export const WaiterApp: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('map')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition border ${
             activeTab === 'map' ? 'bg-amber-800 text-white border-amber-700' : 'bg-stone-800 text-stone-300 border-stone-700 hover:text-white'
           }`}
         >
@@ -174,15 +212,31 @@ export const WaiterApp: React.FC = () => {
             <h3 className="font-bold text-stone-900 text-xs uppercase tracking-wider">
               Mesas e Comandas do Salão
             </h3>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-              {tables.filter((t) => t.status === 'livre').length} livres
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                {tables.filter((t) => t.status === 'livre').length} livres
+              </span>
+              <button
+                onClick={() => {
+                  const nextNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) + 1 : 1;
+                  setNewTableNumber(nextNumber);
+                  setNewTableSector('Salão Principal');
+                  setNewTableCapacity(2);
+                  setIsNewTableModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nova Mesa</span>
+              </button>
+            </div>
           </div>
 
           {/* Tables Cards Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {tables.map((tb) => {
               const badge = getStatusBadge(tb.status);
+              const tableSubtotal = tb.comandas.reduce((sum, c) => sum + c.subtotal, 0);
               return (
                 <div
                   key={tb.id}
@@ -203,12 +257,16 @@ export const WaiterApp: React.FC = () => {
                     </span>
                   </div>
 
-                  {tb.status !== 'livre' ? (
+                  {tb.comandas.length > 0 ? (
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold text-stone-800 truncate">{tb.clientName}</p>
+                      <p className="text-xs font-semibold text-stone-800 truncate">
+                        {tb.comandas.length} comanda{tb.comandas.length > 1 ? 's' : ''} aberta{tb.comandas.length > 1 ? 's' : ''}
+                      </p>
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-stone-500">{tb.guestCount} pess • {tb.openedAt}</span>
-                        <span className="font-bold text-amber-800">R$ {tb.subtotal.toFixed(2)}</span>
+                        <span className="text-stone-500">{tb.comandas.map((c) => c.personName).join(', ')}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-amber-800">R$ {tableSubtotal.toFixed(2)}</span>
                       </div>
                     </div>
                   ) : (
@@ -224,23 +282,25 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Order Launch View for Selected Table */}
-      {activeTab === 'order' && currentActiveTable && (
+      {/* Order Launch View for Selected Comanda */}
+      {activeTab === 'order' && currentActiveTable && currentComanda && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-stone-200 flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-stone-900 text-sm">
-                Novo Pedido • Mesa #{currentActiveTable.number} ({currentActiveTable.clientName})
-              </h3>
-              <p className="text-xs text-stone-500">Selecione os produtos para enviar à cozinha</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setActiveTab('comanda')}
+                className="bg-stone-800 text-white p-3 rounded-xl hover:bg-stone-700"
+                title="Voltar"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h3 className="font-bold text-stone-900 text-sm">
+                  Novo Pedido • Mesa #{currentActiveTable.number} ({currentComanda.personName})
+                </h3>
+                <p className="text-xs text-stone-500">Selecione os produtos para enviar à cozinha</p>
+              </div>
             </div>
-            <button
-              onClick={() => setActiveTab('comanda')}
-              className="bg-stone-800 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1"
-            >
-              <span>Ver Comanda</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           </div>
 
           {/* Quick Quilo Launch for Waiter */}
@@ -301,7 +361,7 @@ export const WaiterApp: React.FC = () => {
             <div className="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
               <button
                 onClick={() => setSelectedCategory('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${
+                className={`px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap ${
                   selectedCategory === 'all' ? 'bg-amber-800 text-white' : 'bg-white border text-stone-700'
                 }`}
               >
@@ -311,7 +371,7 @@ export const WaiterApp: React.FC = () => {
                 <button
                   key={c.id}
                   onClick={() => setSelectedCategory(c.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${
+                  className={`px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap ${
                     selectedCategory === c.id ? 'bg-amber-800 text-white' : 'bg-white border text-stone-700'
                   }`}
                 >
@@ -346,8 +406,8 @@ export const WaiterApp: React.FC = () => {
                     <p className="text-[10px] text-stone-500 line-clamp-1">{p.description}</p>
                     <p className="text-xs font-bold text-amber-800 mt-1">R$ {p.price.toFixed(2)}</p>
                   </div>
-                  <button className="bg-amber-800 text-white p-2 rounded-xl text-xs font-bold">
-                    <Plus className="w-4 h-4" />
+                  <button className="bg-amber-800 text-white p-3 rounded-xl text-xs font-bold">
+                    <Plus className="w-5 h-5" />
                   </button>
                 </div>
               ))}
@@ -364,8 +424,8 @@ export const WaiterApp: React.FC = () => {
                 <h3 className="font-bold text-sm text-stone-900">{selectedProduct.name}</h3>
                 <p className="text-xs text-stone-500">Mesa #{currentActiveTable.number}</p>
               </div>
-              <button onClick={() => setSelectedProduct(null)} className="p-1 text-stone-400">
-                <X className="w-5 h-5" />
+              <button onClick={() => setSelectedProduct(null)} className="p-2 text-stone-400">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
@@ -375,48 +435,38 @@ export const WaiterApp: React.FC = () => {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setProductQty(Math.max(1, productQty - 1))}
-                  className="w-8 h-8 rounded-lg bg-stone-200 font-bold text-stone-800 flex items-center justify-center"
+                  className="w-11 h-11 rounded-lg bg-stone-200 font-bold text-stone-800 text-lg flex items-center justify-center"
                 >
                   -
                 </button>
-                <span className="font-bold text-sm">{productQty}</span>
+                <span className="font-bold text-base">{productQty}</span>
                 <button
                   onClick={() => setProductQty(productQty + 1)}
-                  className="w-8 h-8 rounded-lg bg-stone-200 font-bold text-stone-800 flex items-center justify-center"
+                  className="w-11 h-11 rounded-lg bg-stone-200 font-bold text-stone-800 text-lg flex items-center justify-center"
                 >
                   +
                 </button>
               </div>
             </div>
 
-            {/* Fast Preset Notes for Garçom */}
-            <div className="space-y-1">
-              <span className="text-xs font-semibold text-stone-700 block">Observações do Prato</span>
-              <div className="flex flex-wrap gap-1.5 pb-2">
-                {['Sem cebola', 'Carne bem passada', 'Pouco sal', 'Sem molho', 'Sem acompanhamento'].map((note) => (
-                  <button
-                    key={note}
-                    onClick={() => setCustomNotes((prev) => (prev ? `${prev}, ${note}` : note))}
-                    className="text-[10px] bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-700 px-2 py-1 rounded-lg"
-                  >
-                    + {note}
-                  </button>
-                ))}
+            {isPratoFeitoProduct && (
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-stone-700 block">Observação do Prato</span>
+                <textarea
+                  placeholder="Ex: sem cebola, carne bem passada..."
+                  value={customNotes}
+                  onChange={(e) => setCustomNotes(e.target.value)}
+                  className="w-full border rounded-xl p-2 text-xs focus:ring-2 focus:ring-amber-700"
+                  rows={2}
+                />
               </div>
-              <textarea
-                placeholder="Ex: sem cebola, carne bem passada..."
-                value={customNotes}
-                onChange={(e) => setCustomNotes(e.target.value)}
-                className="w-full border rounded-xl p-2 text-xs focus:ring-2 focus:ring-amber-700"
-                rows={2}
-              />
-            </div>
+            )}
 
             <button
               onClick={handleSendItemToKitchen}
-              className="w-full bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2"
+              className="w-full bg-amber-800 hover:bg-amber-900 text-white py-4 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
               <span>Enviar para Cozinha • R$ {(selectedProduct.price * productQty).toFixed(2)}</span>
             </button>
           </div>
@@ -424,34 +474,69 @@ export const WaiterApp: React.FC = () => {
       )}
 
       {/* Active Comanda & Actions View */}
-      {activeTab === 'comanda' && currentActiveTable && (
+      {activeTab === 'comanda' && currentActiveTable && currentComanda && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-stone-200 flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-stone-900 text-base">Comanda Mesa #{currentActiveTable.number}</h3>
-              <p className="text-xs text-stone-500">
-                Cliente: <strong className="text-stone-800">{currentActiveTable.clientName}</strong> ({currentActiveTable.guestCount} pessoas)
-              </p>
+          <div className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setActiveTab('map'); setSelectedTable(null); setSelectedComandaId(null); }}
+                  className="bg-stone-800 text-white p-3 rounded-xl hover:bg-stone-700"
+                  title="Voltar"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">Comanda Mesa #{currentActiveTable.number}</h3>
+                  <p className="text-xs text-stone-500">
+                    Cliente: <strong className="text-stone-800">{currentComanda.personName}</strong>{currentComanda.guestCount ? ` (${currentComanda.guestCount} pessoas)` : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleOpenNewComandaModal(currentActiveTable)}
+                  className="bg-stone-800 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nova Comanda</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('order')}
+                  className="bg-amber-800 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Mais Itens</span>
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setActiveTab('order')}
-                className="bg-amber-800 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Mais Itens</span>
-              </button>
-            </div>
+
+            {currentActiveTable.comandas.length > 1 && (
+              <div>
+                <label className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block mb-1">Selecionar Cliente</label>
+                <select
+                  value={currentComanda.id}
+                  onChange={(e) => setSelectedComandaId(e.target.value)}
+                  className="w-full border rounded-xl p-3 text-sm bg-white font-semibold"
+                >
+                  {currentActiveTable.comandas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.personName} • R$ {c.subtotal.toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Comanda Items List */}
           <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
-            <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Consumo da Mesa</h4>
-            {currentActiveTable.items.length === 0 ? (
+            <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Consumo da Comanda</h4>
+            {currentComanda.items.length === 0 ? (
               <p className="text-xs text-stone-400 py-6 text-center">Nenhum item lançado ainda.</p>
             ) : (
               <div className="space-y-2">
-                {currentActiveTable.items.map((item) => (
+                {currentComanda.items.map((item) => (
                   <div key={item.id} className="p-3 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
                     <div>
                       <p className="font-bold text-stone-900">{item.quantity}x {item.productName}</p>
@@ -462,11 +547,11 @@ export const WaiterApp: React.FC = () => {
                       <span className="font-bold text-amber-800 text-xs">R$ {(item.unitPrice * item.quantity).toFixed(2)}</span>
                       {item.status !== 'cancelado' && (
                         <button
-                          onClick={() => cancelTableItem(currentActiveTable.id, item.id, 'Solicitado pelo cliente')}
-                          className="text-rose-600 hover:text-rose-800 p-1"
+                          onClick={() => cancelComandaItem(currentActiveTable.id, currentComanda.id, item.id, 'Solicitado pelo cliente')}
+                          className="text-rose-600 hover:text-rose-800 p-2"
                           title="Cancelar item"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-5 h-5" />
                         </button>
                       )}
                     </div>
@@ -475,138 +560,291 @@ export const WaiterApp: React.FC = () => {
               </div>
             )}
 
-            <div className="border-t pt-3 flex justify-between items-center text-sm">
-              <span className="font-bold text-stone-700">Subtotal Parcial:</span>
-              <span className="font-bold text-lg text-stone-900">R$ {currentActiveTable.subtotal.toFixed(2)}</span>
+            <div className="border-t pt-3 space-y-1.5">
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-semibold text-stone-600">Subtotal Parcial:</span>
+                <span className="font-bold text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</span>
+              </div>
+              {currentComandaAdvancesTotal > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-semibold text-emerald-700">Adiantamento:</span>
+                  <span className="font-bold text-emerald-700">- R$ {currentComandaAdvancesTotal.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center border-t pt-1.5">
+                <span className="font-bold text-stone-700">Total:</span>
+                <span className="font-bold text-lg text-stone-900">R$ {currentComandaRemainingTotal.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
           {/* Comanda Operational Actions */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
-              onClick={() => setIsSplitModalOpen(true)}
-              className="p-3 bg-white rounded-2xl border border-stone-200 font-semibold text-xs text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
+              onClick={() => setIsPartialModalOpen(true)}
+              className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
             >
-              <Users className="w-4 h-4 text-amber-700" />
-              <span>Dividir Conta</span>
+              <Receipt className="w-5 h-5 text-amber-700" />
+              <span>Pagamento Parcial</span>
             </button>
 
             <button
               onClick={() => setIsTransferModalOpen(true)}
-              className="p-3 bg-white rounded-2xl border border-stone-200 font-semibold text-xs text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
+              className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
             >
-              <ArrowRightLeft className="w-4 h-4 text-blue-700" />
-              <span>Transferir Mesa</span>
+              <ArrowRightLeft className="w-5 h-5 text-blue-700" />
+              <span>Transferir Comanda</span>
             </button>
 
             <button
               onClick={() => setIsPrintModalOpen(true)}
-              className="p-3 bg-white rounded-2xl border border-stone-200 font-semibold text-xs text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
+              className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
             >
-              <Printer className="w-4 h-4 text-emerald-700" />
+              <Printer className="w-5 h-5 text-emerald-700" />
               <span>Imprimir Pré-Conta</span>
             </button>
 
             <button
               onClick={() => {
-                closeTableAndPay(currentActiveTable.id, 'pix', 0);
-                setActiveTab('map');
+                setFinalPaymentMethod('pix');
+                setIsFinalPayModalOpen(true);
               }}
-              className="p-3 bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow hover:bg-emerald-800 flex items-center justify-center gap-2"
+              className="p-4 bg-emerald-700 text-white rounded-2xl font-bold text-sm shadow hover:bg-emerald-800 flex items-center justify-center gap-2"
             >
-              <DollarSign className="w-4 h-4" />
+              <DollarSign className="w-5 h-5" />
               <span>Encerrar & Receber</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Open Table Modal */}
-      {isOpenModalOpen && tableToOpen && (
+      {/* New Table Modal */}
+      {isNewTableModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
-            <h3 className="font-bold text-stone-900 text-base">Abrir Mesa #{tableToOpen.number}</h3>
+            <h3 className="font-bold text-stone-900 text-base">Nova Mesa</h3>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Quantidade de Pessoas</label>
+                <label className="font-semibold text-stone-700 block mb-1">Número da Mesa</label>
                 <input
                   type="number"
                   min="1"
-                  value={guestCountInput}
-                  onChange={(e) => setGuestCountInput(Number(e.target.value))}
-                  className="w-full border rounded-xl p-2.5"
+                  value={newTableNumber}
+                  onChange={(e) => setNewTableNumber(Number(e.target.value))}
+                  className="w-full border rounded-xl p-3 text-sm"
                 />
               </div>
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente (Opcional)</label>
+                <label className="font-semibold text-stone-700 block mb-1">Setor</label>
+                <select
+                  value={newTableSector}
+                  onChange={(e) => setNewTableSector(e.target.value as DiningTable['sector'])}
+                  className="w-full border rounded-xl p-3 text-sm bg-white font-semibold"
+                >
+                  {SECTORS.map((sec) => (
+                    <option key={sec} value={sec}>{sec}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Capacidade (lugares)</label>
                 <input
-                  type="text"
-                  placeholder="Ex: Família Silva"
-                  value={clientNameInput}
-                  onChange={(e) => setClientNameInput(e.target.value)}
-                  className="w-full border rounded-xl p-2.5"
+                  type="number"
+                  min="1"
+                  value={newTableCapacity}
+                  onChange={(e) => setNewTableCapacity(Number(e.target.value))}
+                  className="w-full border rounded-xl p-3 text-sm"
                 />
               </div>
             </div>
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2">
               <button
-                onClick={() => setIsOpenModalOpen(false)}
-                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+                onClick={() => setIsNewTableModalOpen(false)}
+                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm"
               >
                 Cancelar
               </button>
               <button
-                onClick={confirmOpenTable}
-                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+                onClick={() => {
+                  if (tables.some((t) => t.number === newTableNumber)) {
+                    addToast('error', 'Número já existe', `Já existe uma mesa com o número ${newTableNumber}.`);
+                    return;
+                  }
+                  createTable(newTableNumber, newTableSector, newTableCapacity);
+                  setIsNewTableModalOpen(false);
+                }}
+                className="flex-1 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow"
               >
-                Confirmar Abertura
+                Criar Mesa
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Split Bill Calculator Modal */}
-      {isSplitModalOpen && currentActiveTable && (
+      {/* New Comanda Modal */}
+      {isNewComandaModalOpen && tableForNewComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
-            <h3 className="font-bold text-stone-900 text-base">Divisão da Conta • Mesa #{currentActiveTable.number}</h3>
-            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-1">
-              <p className="font-semibold text-stone-700">Subtotal Total: R$ {currentActiveTable.subtotal.toFixed(2)}</p>
-              <p className="text-amber-900 font-bold text-base">
-                R$ {(currentActiveTable.subtotal / Math.max(1, splitPeopleCount)).toFixed(2)} / pessoa
-              </p>
+            <h3 className="font-bold text-stone-900 text-base">Nova Comanda • Mesa #{tableForNewComanda.number}</h3>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Pessoas / Comandas</label>
+                <div className="space-y-2">
+                  {comandaNamesInput.map((name, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder={`Nome da pessoa ${idx + 1}`}
+                        value={name}
+                        onChange={(e) => {
+                          const updated = [...comandaNamesInput];
+                          updated[idx] = e.target.value;
+                          setComandaNamesInput(updated);
+                        }}
+                        className="flex-1 border rounded-xl p-3 text-sm"
+                      />
+                      {comandaNamesInput.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setComandaNamesInput(comandaNamesInput.filter((_, i) => i !== idx))}
+                          className="p-2.5 text-rose-600 hover:text-rose-800"
+                          title="Remover"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setComandaNamesInput([...comandaNamesInput, ''])}
+                  className="mt-2 flex items-center gap-1.5 text-amber-800 font-bold text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Adicionar Pessoa</span>
+                </button>
+              </div>
             </div>
-            <div className="space-y-1 text-xs">
-              <label className="font-semibold text-stone-700 block">Número de Pessoas</label>
-              <input
-                type="number"
-                min="1"
-                value={splitPeopleCount}
-                onChange={(e) => setSplitPeopleCount(Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5"
-              />
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setIsNewComandaModalOpen(false)}
+                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmOpenComanda}
+                disabled={!comandaNamesInput.some((n) => n.trim().length > 0)}
+                className="flex-1 py-3.5 bg-amber-800 text-white font-bold rounded-xl text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Abrir Comanda{comandaNamesInput.filter((n) => n.trim().length > 0).length > 1 ? 's' : ''}
+              </button>
             </div>
-            <button
-              onClick={() => setIsSplitModalOpen(false)}
-              className="w-full py-2.5 bg-stone-800 text-white font-bold rounded-xl text-xs"
-            >
-              Concluído
-            </button>
           </div>
         </div>
       )}
 
-      {/* Transfer Table Modal */}
-      {isTransferModalOpen && currentActiveTable && (
+      {/* Partial Payment Modal */}
+      {isPartialModalOpen && currentActiveTable && currentComanda && (
+        <PartialPaymentModal
+          isOpen={isPartialModalOpen}
+          onClose={() => setIsPartialModalOpen(false)}
+          table={currentActiveTable}
+          comandaId={currentComanda.id}
+        />
+      )}
+
+      {/* Final Payment Modal (Encerrar & Receber) */}
+      {isFinalPayModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
-            <h3 className="font-bold text-stone-900 text-base">Transferir Mesa #{currentActiveTable.number}</h3>
+            <h3 className="font-bold text-stone-900 text-base">
+              Fechar e Receber • {currentComanda.personName} (Mesa #{currentActiveTable.number})
+            </h3>
+
+            <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-1.5 text-xs">
+              <div className="flex justify-between text-stone-600">
+                <span>Subtotal Parcial:</span>
+                <strong className="text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</strong>
+              </div>
+              {currentComandaAdvancesTotal > 0 && (
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>Adiantamento:</span>
+                  <span>- R$ {currentComandaAdvancesTotal.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-emerald-950 font-bold text-sm border-t pt-1.5">
+                <span>Total a Cobrar Agora:</span>
+                <strong className="text-base text-emerald-800">R$ {currentComandaRemainingTotal.toFixed(2)}</strong>
+              </div>
+            </div>
+
+            <div>
+              <label className="font-bold text-stone-700 block mb-1.5 text-xs">Forma de Pagamento</label>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {[
+                  { id: 'pix', label: 'PIX', icon: '⚡' },
+                  { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
+                  { id: 'cartao_debito', label: 'Débito', icon: '💳' },
+                  { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                  { id: 'boleto', label: 'Boleto', icon: '🧾' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setFinalPaymentMethod(m.id as PaymentMethod)}
+                    className={`p-2.5 rounded-xl border font-bold transition flex flex-col items-center justify-center gap-1 ${
+                      finalPaymentMethod === m.id
+                        ? 'bg-amber-800 text-white border-amber-800'
+                        : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    <span className="text-base">{m.icon}</span>
+                    <span>{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setIsFinalPayModalOpen(false)}
+                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const finishedOrder = await closeComandaAndPay(currentActiveTable.id, currentComanda.id, finalPaymentMethod, 0);
+                  setIsFinalPayModalOpen(false);
+                  setSelectedComandaId(null);
+                  setActiveTab('map');
+                  if (finishedOrder) {
+                    setLastFinalizedOrder(finishedOrder);
+                    setIsFinalReceiptModalOpen(true);
+                  }
+                }}
+                className="flex-1 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow"
+              >
+                Confirmar e Finalizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Comanda Modal */}
+      {isTransferModalOpen && currentActiveTable && currentComanda && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <h3 className="font-bold text-stone-900 text-base">Transferir Comanda de {currentComanda.personName}</h3>
             <p className="text-xs text-stone-500">Selecione a mesa de destino:</p>
             <select
               value={transferTargetTableId}
               onChange={(e) => setTransferTargetTableId(e.target.value)}
-              className="w-full border rounded-xl p-2.5 text-xs"
+              className="w-full border rounded-xl p-3 text-sm"
             >
               <option value="">Selecione uma mesa livre ou ocupada...</option>
               {tables
@@ -620,19 +858,20 @@ export const WaiterApp: React.FC = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => setIsTransferModalOpen(false)}
-                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => {
                   if (transferTargetTableId) {
-                    transferTable(currentActiveTable.id, transferTargetTableId);
+                    transferComanda(currentActiveTable.id, currentComanda.id, transferTargetTableId);
                     setIsTransferModalOpen(false);
+                    setSelectedComandaId(null);
                     setActiveTab('map');
                   }
                 }}
-                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+                className="flex-1 py-3.5 bg-amber-800 text-white font-bold rounded-xl text-sm shadow"
               >
                 Confirmar
               </button>
@@ -642,19 +881,41 @@ export const WaiterApp: React.FC = () => {
       )}
 
       {/* Pre-bill Thermal Ticket Modal */}
-      {isPrintModalOpen && currentActiveTable && (
+      {isPrintModalOpen && currentActiveTable && currentComanda && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}
           onClose={() => setIsPrintModalOpen(false)}
           title="Impressão de Pré-Conta"
           receiptData={{
             tableNumber: currentActiveTable.number,
-            customerName: currentActiveTable.clientName,
-            waiterName: currentActiveTable.waiterName || currentUser.name,
-            items: currentActiveTable.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
-            subtotal: currentActiveTable.subtotal,
-            total: currentActiveTable.subtotal,
+            customerName: currentComanda.personName,
+            waiterName: currentComanda.waiterName || currentUser.name,
+            items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
+            subtotal: currentComanda.subtotal,
+            total: currentComanda.subtotal,
             type: 'pre_conta',
+          }}
+        />
+      )}
+
+      {/* Fiscal Receipt Modal (printed right after closing & paying a comanda) */}
+      {isFinalReceiptModalOpen && lastFinalizedOrder && (
+        <PrintReceiptModal
+          isOpen={isFinalReceiptModalOpen}
+          onClose={() => setIsFinalReceiptModalOpen(false)}
+          title="Cupom Fiscal"
+          receiptData={{
+            orderNumber: lastFinalizedOrder.orderNumber,
+            tableNumber: lastFinalizedOrder.tableNumber,
+            customerName: lastFinalizedOrder.customer.name,
+            waiterName: lastFinalizedOrder.waiterName,
+            items: lastFinalizedOrder.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
+            subtotal: lastFinalizedOrder.subtotal,
+            discount: lastFinalizedOrder.discount,
+            total: lastFinalizedOrder.total,
+            paymentMethod: lastFinalizedOrder.paymentMethod,
+            nfceKey: lastFinalizedOrder.nfceKey,
+            type: 'caixa',
           }}
         />
       )}
