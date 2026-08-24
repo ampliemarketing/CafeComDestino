@@ -400,9 +400,9 @@ export const InventoryManagement: React.FC = () => {
 
           {/* Ingredients Table */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0 z-10">
                   <tr>
                     <th className="p-3.5">Cód Insumo</th>
                     <th className="p-3.5">Nome do Insumo</th>
@@ -471,9 +471,9 @@ export const InventoryManagement: React.FC = () => {
                 <span>Produtos Finais & Estoque de Venda ({filteredProducts.length})</span>
               </h3>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0 z-10">
                   <tr>
                     <th className="p-3.5">Cód</th>
                     <th className="p-3.5">Produto</th>
@@ -593,9 +593,9 @@ export const InventoryManagement: React.FC = () => {
               </h3>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0 z-10">
                   <tr>
                     <th className="p-3.5">Data/Hora</th>
                     <th className="p-3.5">Tipo</th>
@@ -698,9 +698,9 @@ export const InventoryManagement: React.FC = () => {
               </h3>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0 z-10">
                   <tr>
                     <th className="p-3.5">Data/Hora</th>
                     <th className="p-3.5">Produto Concedido</th>

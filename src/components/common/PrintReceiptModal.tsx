@@ -132,9 +132,21 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               </div>
             </div>
 
-            {receiptData.paymentMethod && (
+            {receiptData.paymentMethod && (!receiptData.splitPayments || receiptData.splitPayments.length === 0) && (
               <div className="py-2 text-center text-[10px] uppercase font-bold text-stone-700">
                 PAGAMENTO: {receiptData.paymentMethod}
+              </div>
+            )}
+
+            {receiptData.splitPayments && receiptData.splitPayments.length > 0 && (
+              <div className="py-2 border-t border-dashed border-stone-400 space-y-1">
+                <p className="text-[10px] uppercase font-bold text-stone-700 text-center">Pagamento Misto</p>
+                {receiptData.splitPayments.map((sp, idx) => (
+                  <div key={idx} className="flex justify-between text-[10px] uppercase">
+                    <span>{sp.method}:</span>
+                    <span className="font-semibold">R$ {sp.amount.toFixed(2)}</span>
+                  </div>
+                ))}
               </div>
             )}
 

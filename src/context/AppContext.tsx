@@ -7,6 +7,7 @@ import {
   CompanyProfileData,
   Category,
   IngredientCategory,
+  TableSector,
   SaleUnit,
   Product,
   Ingredient,
@@ -68,6 +69,7 @@ const formatTime = (iso?: string | null) =>
 
 const mapCategory = (row: any): Category => rowToCamel<Category>(row);
 const mapIngredientCategory = (row: any): IngredientCategory => rowToCamel<IngredientCategory>(row);
+const mapTableSector = (row: any): TableSector => rowToCamel<TableSector>(row);
 const mapSaleUnit = (row: any): SaleUnit => rowToCamel<SaleUnit>(row);
 const mapIngredient = (row: any): Ingredient => rowToCamel<Ingredient>(row);
 const mapProduct = (row: any): Product => rowToCamel<Product>(row);
@@ -175,6 +177,7 @@ interface AppContextType {
   updateUserProfile: (userId: string, patch: Partial<Pick<User, 'role' | 'active' | 'code' | 'phone' | 'name'>>) => Promise<void>;
   categories: Category[];
   ingredientCategories: IngredientCategory[];
+  tableSectors: TableSector[];
   saleUnits: SaleUnit[];
   products: Product[];
   ingredients: Ingredient[];
@@ -211,7 +214,7 @@ interface AppContextType {
   addComandaItem: (tableId: string, comandaId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
   cancelComandaItem: (tableId: string, comandaId: string, itemId: string, reason: string) => Promise<void>;
   transferComanda: (fromTableId: string, comandaId: string, toTableId: string) => Promise<void>;
-  closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number) => Promise<Order | null>;
+  closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order | null>;
   addPartialPayment: (
     tableId: string,
     comandaId: string,
@@ -231,7 +234,7 @@ interface AppContextType {
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<void>;
 
   createOnlineOrder: (orderData: Partial<Order>) => Promise<Order>;
-  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number) => Promise<Order>;
+  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order>;
 
   openCashShift: (initialFloat: number) => Promise<void>;
   closeCashShift: (actualTotal: number, notes?: string) => Promise<void>;
@@ -241,6 +244,8 @@ interface AppContextType {
   deleteCategory: (categoryId: string) => Promise<void>;
   saveIngredientCategory: (category: IngredientCategory) => Promise<void>;
   deleteIngredientCategory: (categoryId: string) => Promise<void>;
+  saveTableSector: (sector: TableSector) => Promise<void>;
+  deleteTableSector: (sectorId: string) => Promise<void>;
   saveSaleUnit: (saleUnit: SaleUnit) => Promise<void>;
   saveProduct: (product: Product) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
@@ -364,6 +369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
   const [ingredientCategories] = useSupabaseCollection<IngredientCategory>('ingredient_categories', session, mapIngredientCategory, 'id');
+  const [tableSectors] = useSupabaseCollection<TableSector>('table_sectors', session, mapTableSector, 'id');
   const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
   const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id');
@@ -673,7 +679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Transferência de Comanda', 'Atendimento', `${comanda.personName} - Da Mesa ${sourceTable.number} para Mesa ${targetTable.number}`);
   };
 
-  const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0): Promise<Order | null> => {
+  const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0, splitPayments?: { method: PaymentMethod; amount: number }[]): Promise<Order | null> => {
     if (!currentUser) return null;
     const table = tables.find((t) => t.id === tableId);
     const comanda = table?.comandas.find((c) => c.id === comandaId);
@@ -702,6 +708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       discount,
       total: finalTotal,
       paymentMethod,
+      splitPayments,
       paymentStatus: 'pagamento_aprovado',
       orderStatus: 'concluido',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -717,6 +724,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       p_order: newOrder,
       p_cash_amount: cashShift.status === 'aberto' ? finalTotal : null,
       p_payment_method: paymentMethod,
+      p_split_payments: splitPayments && splitPayments.length > 0 ? splitPayments : null,
     });
 
     if (error) { addToast('error', 'Erro ao fechar comanda', error.message); return null; }
@@ -946,7 +954,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     paymentMethod: PaymentMethod,
     serviceType: Order['serviceType'],
     customerName = 'Cliente Balcão',
-    discount = 0
+    discount = 0,
+    splitPayments?: { method: PaymentMethod; amount: number }[]
   ): Promise<Order> => {
     const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const total = Math.max(0, subtotal - discount);
@@ -963,6 +972,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       discount,
       total,
       paymentMethod,
+      splitPayments,
       paymentStatus: 'pagamento_aprovado',
       orderStatus: 'concluido',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -976,6 +986,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       p_cash_amount: cashShift.status === 'aberto' ? total : null,
       p_payment_method: paymentMethod,
       p_stock_items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      p_split_payments: splitPayments && splitPayments.length > 0 ? splitPayments : null,
     });
 
     if (error) {
@@ -1085,6 +1096,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (error) { addToast('error', 'Erro ao remover grupo de insumo', error.message); return; }
     addToast('warning', 'Grupo de insumo removido');
     logAudit('Exclusão de Grupo de Insumo', 'Estoque', `ID do grupo: ${categoryId}`);
+  };
+
+  // ---- Table Sector (Áreas do Restaurante) CRUD ----
+  const saveTableSector = async (sector: TableSector) => {
+    const { error } = await supabase.from('table_sectors').upsert(toRow(sector));
+    if (error) { addToast('error', 'Erro ao salvar área', error.message); return; }
+    addToast('success', 'Área salva', sector.name);
+    logAudit('Cadastro de Área do Restaurante', 'Mesas', `Área: ${sector.name}`);
+  };
+
+  const deleteTableSector = async (sectorId: string) => {
+    const { error } = await supabase.from('table_sectors').delete().eq('id', sectorId);
+    if (error) { addToast('error', 'Erro ao remover área', error.message); return; }
+    addToast('warning', 'Área removida');
+    logAudit('Exclusão de Área do Restaurante', 'Mesas', `ID da área: ${sectorId}`);
   };
 
   const saveSaleUnit = async (saleUnit: SaleUnit) => {
@@ -1303,6 +1329,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserProfile,
         categories,
         ingredientCategories,
+        tableSectors,
         saleUnits,
         products,
         ingredients,
@@ -1347,6 +1374,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCategory,
         saveIngredientCategory,
         deleteIngredientCategory,
+        saveTableSector,
+        deleteTableSector,
         saveSaleUnit,
         saveProduct,
         deleteProduct,

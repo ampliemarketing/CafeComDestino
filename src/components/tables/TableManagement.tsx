@@ -18,18 +18,19 @@ import {
   CreditCard,
   ShieldAlert,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  Search
 } from 'lucide-react';
 import { DiningTable, TableStatus, PaymentMethod } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { PartialPaymentModal } from './PartialPaymentModal';
 import { CourtesyModal } from './CourtesyModal';
 
-const SECTORS: DiningTable['sector'][] = ['Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão'];
-
 export const TableManagement: React.FC = () => {
   const {
     tables,
+    tableSectors,
     createTable,
     deleteTable,
     openComanda,
@@ -42,6 +43,7 @@ export const TableManagement: React.FC = () => {
   } = useApp();
 
   const [selectedSector, setSelectedSector] = useState<string>('todos');
+  const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [activeTable, setActiveTable] = useState<DiningTable | null>(null);
   const [selectedComandaId, setSelectedComandaId] = useState<string | null>(null);
 
@@ -53,7 +55,7 @@ export const TableManagement: React.FC = () => {
   // New Table Modal
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState<number>(1);
-  const [newTableSector, setNewTableSector] = useState<DiningTable['sector']>('Salão Principal');
+  const [newTableSector, setNewTableSector] = useState<string>('');
   const [newTableCapacity, setNewTableCapacity] = useState<number>(2);
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -67,7 +69,21 @@ export const TableManagement: React.FC = () => {
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
   const [finalDiscount, setFinalDiscount] = useState<number>(0);
 
-  const filteredTables = tables.filter((t) => selectedSector === 'todos' || t.sector === selectedSector);
+  // Delete Table Confirmation Modal
+  const [tableToDelete, setTableToDelete] = useState<DiningTable | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+
+  const normalizedTableSearch = tableSearchQuery.trim().toLowerCase();
+  const filteredTables = tables
+    .filter((t) => selectedSector === 'todos' || t.sector === selectedSector)
+    .filter((t) =>
+      !normalizedTableSearch ||
+      String(t.number).includes(normalizedTableSearch) ||
+      t.sector.toLowerCase().includes(normalizedTableSearch) ||
+      t.comandas.some((c) => c.personName.toLowerCase().includes(normalizedTableSearch))
+    )
+    .slice()
+    .sort((a, b) => a.number - b.number);
 
   // Keep activeTable/currentComanda updated when tables state changes
   const currentActiveTable = activeTable ? tables.find((t) => t.id === activeTable.id) || null : null;
@@ -112,14 +128,14 @@ export const TableManagement: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {/* Sector Tabs */}
-          <div className="flex gap-1.5 bg-stone-800 p-1.5 rounded-xl border border-stone-700 text-xs font-semibold">
-            {['todos', ...SECTORS].map((sec) => (
+          <div className="flex gap-1.5 bg-stone-800 p-1.5 rounded-xl border border-stone-700 text-xs font-semibold overflow-x-auto">
+            {['todos', ...tableSectors.map((s) => s.name)].map((sec) => (
               <button
                 key={sec}
                 onClick={() => setSelectedSector(sec)}
-                className={`px-3 py-1.5 rounded-lg transition capitalize ${
+                className={`px-3 py-1.5 rounded-lg transition capitalize whitespace-nowrap ${
                   selectedSector === sec ? 'bg-amber-800 text-white shadow' : 'text-stone-300 hover:text-white'
                 }`}
               >
@@ -130,9 +146,13 @@ export const TableManagement: React.FC = () => {
 
           <button
             onClick={() => {
+              if (tableSectors.length === 0) {
+                addToast('error', 'Nenhuma área cadastrada', 'Crie uma área do restaurante em Grupos antes de cadastrar mesas.');
+                return;
+              }
               const nextNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) + 1 : 1;
               setNewTableNumber(nextNumber);
-              setNewTableSector('Salão Principal');
+              setNewTableSector(tableSectors[0].name);
               setNewTableCapacity(2);
               setIsNewTableModalOpen(true);
             }}
@@ -144,7 +164,28 @@ export const TableManagement: React.FC = () => {
         </div>
       </div>
 
+      {(!currentActiveTable || currentActiveTable.status === 'livre') && (
+        <>
+      {/* Table Search */}
+      <div className="bg-white p-3.5 rounded-2xl border border-stone-200">
+        <div className="relative">
+          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Buscar mesa por número, setor ou cliente..."
+            value={tableSearchQuery}
+            onChange={(e) => setTableSearchQuery(e.target.value)}
+            className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-amber-700"
+          />
+        </div>
+      </div>
+
       {/* Grid of Tables */}
+      {filteredTables.length === 0 ? (
+        <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">
+          Nenhuma mesa encontrada{tableSearchQuery ? ` para "${tableSearchQuery}"` : ''}.
+        </div>
+      ) : (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
         {filteredTables.map((tb) => {
           const badge = getStatusBadge(tb.status);
@@ -185,7 +226,8 @@ export const TableManagement: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Remover a Mesa ${tb.number}?`)) deleteTable(tb.id);
+                        setTableToDelete(tb);
+                        setDeleteConfirmInput('');
                       }}
                       className="text-stone-300 hover:text-rose-600 p-0.5"
                       title="Remover mesa"
@@ -234,14 +276,26 @@ export const TableManagement: React.FC = () => {
           );
         })}
       </div>
+      )}
+        </>
+      )}
 
       {/* Comandas list of the selected table */}
       {currentActiveTable && currentActiveTable.status !== 'livre' && (
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-md space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
-            <h3 className="font-bold text-lg text-stone-900">
-              Mesa #{currentActiveTable.number} — {currentActiveTable.comandas.length} comanda(s) aberta(s)
-            </h3>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setActiveTable(null); setSelectedComandaId(null); }}
+                className="bg-stone-800 hover:bg-stone-700 text-white p-2.5 rounded-xl transition"
+                title="Voltar para todas as mesas"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <h3 className="font-bold text-lg text-stone-900">
+                Mesa #{currentActiveTable.number} — {currentActiveTable.comandas.length} comanda(s) aberta(s)
+              </h3>
+            </div>
             <button
               onClick={handleOpenNewComandaModal}
               className="bg-amber-800 hover:bg-amber-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
@@ -520,11 +574,11 @@ export const TableManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Setor</label>
                 <select
                   value={newTableSector}
-                  onChange={(e) => setNewTableSector(e.target.value as DiningTable['sector'])}
+                  onChange={(e) => setNewTableSector(e.target.value)}
                   className="w-full border rounded-xl p-2.5 bg-white font-semibold"
                 >
-                  {SECTORS.map((sec) => (
-                    <option key={sec} value={sec}>{sec}</option>
+                  {tableSectors.map((sec) => (
+                    <option key={sec.id} value={sec.name}>{sec.name}</option>
                   ))}
                 </select>
               </div>
@@ -558,6 +612,56 @@ export const TableManagement: React.FC = () => {
                 className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow"
               >
                 Criar Mesa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Delete Table Confirmation */}
+      {tableToDelete && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-stone-900 text-base">Remover Mesa {tableToDelete.number}?</h3>
+                <p className="text-xs text-stone-500">Essa ação não pode ser desfeita.</p>
+              </div>
+            </div>
+
+            <div className="text-xs">
+              <label className="font-semibold text-stone-700 block mb-1">
+                Digite <strong className="text-rose-700">{tableToDelete.number}</strong> para confirmar a exclusão
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder={`${tableToDelete.number}`}
+                className="w-full border rounded-xl p-2.5 font-bold focus:ring-2 focus:ring-rose-600"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTableToDelete(null)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  deleteTable(tableToDelete.id);
+                  setTableToDelete(null);
+                }}
+                disabled={deleteConfirmInput.trim() !== String(tableToDelete.number)}
+                className="flex-1 py-2.5 bg-rose-700 hover:bg-rose-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow"
+              >
+                Confirmar Exclusão
               </button>
             </div>
           </div>

@@ -6,12 +6,10 @@ import {
   Barcode, 
   Plus, 
   Minus, 
-  X, 
-  Trash2, 
-  DollarSign, 
-  CreditCard, 
-  QrCode, 
-  Printer, 
+  X,
+  Trash2,
+  DollarSign,
+  Printer,
   CheckCircle2, 
   Percent, 
   User, 
@@ -42,6 +40,11 @@ export const PdvView: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [cashTendered, setCashTendered] = useState<number>(0);
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [splitRows, setSplitRows] = useState<{ method: PaymentMethod; amount: string }[]>([
+    { method: 'pix', amount: '0' },
+    { method: 'dinheiro', amount: '0' },
+  ]);
 
   // Print Receipt modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -127,7 +130,7 @@ export const PdvView: React.FC = () => {
   const total = Math.max(0, subtotal - discountInput);
   const changeDue = Math.max(0, cashTendered - total);
 
-  const handleFinalizeSale = () => {
+  const handleFinalizeSale = async () => {
     if (cartItems.length === 0) {
       addToast('error', 'Carrinho Vazio', 'Adicione produtos antes de finalizar.');
       return;
@@ -137,12 +140,27 @@ export const PdvView: React.FC = () => {
       addToast('warning', 'Caixa Fechado', 'Abra o caixa no módulo Controle de Caixa antes de lançar vendas.');
     }
 
-    const sale = createPdvSale(
+    let splitPayments: { method: PaymentMethod; amount: number }[] | undefined = undefined;
+
+    if (isSplitPayment) {
+      const parsedSplits = splitRows
+        .map((r) => ({ method: r.method, amount: parseFloat(r.amount) || 0 }))
+        .filter((r) => r.amount > 0);
+      const splitSum = parsedSplits.reduce((acc, r) => acc + r.amount, 0);
+      if (Math.abs(splitSum - total) > 0.05) {
+        addToast('error', 'Soma das formas de pagamento incorreta', `A soma (R$ ${splitSum.toFixed(2)}) deve ser igual ao total a pagar (R$ ${total.toFixed(2)}).`);
+        return;
+      }
+      splitPayments = parsedSplits;
+    }
+
+    const sale = await createPdvSale(
       cartItems,
-      paymentMethod,
+      isSplitPayment ? 'multiplo' : paymentMethod,
       serviceType,
       customerNameInput || 'Cliente Balcão',
-      discountInput
+      discountInput,
+      splitPayments
     );
 
     setLastCompletedSale(sale);
@@ -154,6 +172,11 @@ export const PdvView: React.FC = () => {
     setDiscountInput(0);
     setCustomerNameInput('Cliente Balcão');
     setCashTendered(0);
+    setIsSplitPayment(false);
+    setSplitRows([
+      { method: 'pix', amount: '0' },
+      { method: 'dinheiro', amount: '0' },
+    ]);
   };
 
   return (
@@ -436,32 +459,100 @@ export const PdvView: React.FC = () => {
 
             {/* Payment Method Selector */}
             <div className="space-y-2 text-xs">
-              <span className="font-semibold text-stone-700 block">Forma de Pagamento</span>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'pix' as PaymentMethod, label: 'Pix QR Code', icon: QrCode },
-                  { id: 'cartao_credito' as PaymentMethod, label: 'Cartão Crédito', icon: CreditCard },
-                  { id: 'cartao_debito' as PaymentMethod, label: 'Cartão Débito', icon: CreditCard },
-                  { id: 'dinheiro' as PaymentMethod, label: 'Dinheiro Espécie', icon: DollarSign },
-                ].map((m) => {
-                  const Icon = m.icon;
-                  return (
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-stone-700 block">Forma de Pagamento</span>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={isSplitPayment}
+                    onChange={(e) => setIsSplitPayment(e.target.checked)}
+                    className="w-4 h-4 accent-amber-800 rounded cursor-pointer"
+                  />
+                  <span>Múltiplas Formas / Pagamento Misto</span>
+                </label>
+              </div>
+
+              {!isSplitPayment ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'pix' as PaymentMethod, label: 'PIX', icon: '⚡' },
+                    { id: 'cartao_credito' as PaymentMethod, label: 'Crédito', icon: '💳' },
+                    { id: 'cartao_debito' as PaymentMethod, label: 'Débito', icon: '💳' },
+                    { id: 'dinheiro' as PaymentMethod, label: 'Dinheiro', icon: '💵' },
+                    { id: 'boleto' as PaymentMethod, label: 'Boleto', icon: '🧾' },
+                  ].map((m) => (
                     <button
                       key={m.id}
+                      type="button"
                       onClick={() => setPaymentMethod(m.id)}
-                      className={`p-3 rounded-xl border text-left font-bold flex items-center gap-2 ${
-                        paymentMethod === m.id ? 'bg-amber-800 text-white border-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700'
+                      className={`p-2.5 rounded-xl border font-bold transition flex flex-col items-center justify-center gap-1 ${
+                        paymentMethod === m.id
+                          ? 'bg-amber-800 text-white border-amber-800'
+                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
                       }`}
                     >
-                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="text-base">{m.icon}</span>
                       <span>{m.label}</span>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2 bg-stone-50 p-3 rounded-xl border border-stone-200">
+                  <p className="text-[11px] text-stone-500 font-semibold">
+                    Divida o valor de R$ {total.toFixed(2)} entre mais de uma forma:
+                  </p>
+                  {splitRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        value={row.method}
+                        onChange={(e) => {
+                          const val = e.target.value as PaymentMethod;
+                          setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, method: val } : r)));
+                        }}
+                        className="border rounded-xl p-2 bg-white font-semibold text-xs"
+                      >
+                        <option value="pix">PIX</option>
+                        <option value="cartao_credito">Cartão de Crédito</option>
+                        <option value="cartao_debito">Cartão de Débito</option>
+                        <option value="dinheiro">Dinheiro</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 top-2 text-stone-400 font-bold">R$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={row.amount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
+                          }}
+                          className="w-full border rounded-xl pl-8 pr-2 py-2 font-bold bg-white text-xs"
+                        />
+                      </div>
+                      {splitRows.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setSplitRows((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-rose-600 p-1 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setSplitRows((prev) => [...prev, { method: 'dinheiro', amount: '0' }])}
+                    className="text-amber-800 hover:underline font-bold text-xs flex items-center gap-1 mt-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar outra forma</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {paymentMethod === 'dinheiro' && (
+            {!isSplitPayment && paymentMethod === 'dinheiro' && (
               <div className="space-y-2 text-xs pt-2">
                 <label className="font-semibold text-stone-700 block">Valor Entregue pelo Cliente (R$)</label>
                 <input
@@ -502,6 +593,7 @@ export const PdvView: React.FC = () => {
             discount: lastCompletedSale.discount,
             total: lastCompletedSale.total,
             paymentMethod: lastCompletedSale.paymentMethod,
+            splitPayments: lastCompletedSale.splitPayments,
             nfceKey: lastCompletedSale.nfceKey,
             type: 'caixa',
           }}

@@ -1,22 +1,26 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Tags, Boxes, Package, Plus, Edit2, Trash2, X } from 'lucide-react';
-import { Category, IngredientCategory } from '../../types';
+import { Tags, Boxes, Package, MapPin, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Category, IngredientCategory, TableSector } from '../../types';
 
 export const GroupManagement: React.FC = () => {
   const {
     categories,
     ingredientCategories,
+    tableSectors,
     products,
     ingredients,
+    tables,
     saveCategory,
     deleteCategory,
     saveIngredientCategory,
     deleteIngredientCategory,
+    saveTableSector,
+    deleteTableSector,
     addToast
   } = useApp();
 
-  const [groupType, setGroupType] = useState<'ingredient' | 'product'>('ingredient');
+  const [groupType, setGroupType] = useState<'ingredient' | 'product' | 'area'>('ingredient');
 
   // Create/Edit modal (shared for both types)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,6 +48,12 @@ export const GroupManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleOpenEditTableSector = (sector: TableSector) => {
+    setEditingId(sector.id);
+    setNameInput(sector.name);
+    setIsModalOpen(true);
+  };
+
   const handleSaveGroup = () => {
     if (!nameInput.trim()) {
       addToast('error', 'Nome obrigatório', 'Informe o nome do grupo.');
@@ -62,6 +72,12 @@ export const GroupManagement: React.FC = () => {
         showsInStock: showsInStockInput,
       };
       saveCategory(saved);
+    } else if (groupType === 'area') {
+      const saved: TableSector = {
+        id: editingId || 'sector-' + Date.now(),
+        name: nameInput.trim(),
+      };
+      saveTableSector(saved);
     } else {
       const saved: IngredientCategory = {
         id: editingId || 'ingcat-' + Date.now(),
@@ -89,6 +105,14 @@ export const GroupManagement: React.FC = () => {
     }
   };
 
+  const handleDeleteTableSector = (sector: TableSector) => {
+    const usageCount = tables.filter((t) => t.sector === sector.name).length;
+    const usageWarning = usageCount > 0 ? ` ${usageCount} mesa(s) cadastrada(s) nessa área continuarão existindo, só deixam de aparecer nesse filtro.` : '';
+    if (confirm(`Excluir a área "${sector.name}"?${usageWarning}`)) {
+      deleteTableSector(sector.id);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
       {/* Header Banner */}
@@ -100,7 +124,7 @@ export const GroupManagement: React.FC = () => {
           <div>
             <h2 className="text-xl font-bold tracking-tight">Grupos</h2>
             <p className="text-xs text-stone-400 mt-0.5">
-              Categorias de insumos e de produtos usadas no Cadastro de Produtos e na Gestão de Estoque.
+              Categorias de insumos, de produtos e áreas do salão usadas em Produtos, Estoque e Mesas & Comandas.
             </p>
           </div>
         </div>
@@ -110,7 +134,11 @@ export const GroupManagement: React.FC = () => {
           className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          <span>{groupType === 'ingredient' ? 'Novo Grupo de Insumo' : 'Nova Categoria de Produto'}</span>
+          <span>
+            {groupType === 'ingredient' && 'Novo Grupo de Insumo'}
+            {groupType === 'product' && 'Nova Categoria de Produto'}
+            {groupType === 'area' && 'Nova Área do Restaurante'}
+          </span>
         </button>
       </div>
 
@@ -135,13 +163,23 @@ export const GroupManagement: React.FC = () => {
           <Package className="w-4 h-4" />
           <span>Produtos ({categories.length})</span>
         </button>
+
+        <button
+          onClick={() => setGroupType('area')}
+          className={`flex-1 py-3 rounded-xl transition flex items-center justify-center gap-2 ${
+            groupType === 'area' ? 'bg-amber-800 text-white shadow' : 'text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Áreas do Restaurante ({tableSectors.length})</span>
+        </button>
       </div>
 
       {/* List */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+            <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0 z-10">
               <tr>
                 <th className="p-3.5">Nome do Grupo</th>
                 {groupType === 'product' && <th className="p-3.5">Vai para o Estoque</th>}
@@ -186,38 +224,74 @@ export const GroupManagement: React.FC = () => {
                     );
                   })
                 )
-              ) : categories.length === 0 ? (
+              ) : groupType === 'product' ? (
+                categories.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-6 text-center text-stone-400 italic">
+                      Nenhuma categoria de produto cadastrada até o momento.
+                    </td>
+                  </tr>
+                ) : (
+                  categories.map((cat) => {
+                    const usageCount = products.filter((p) => p.categoryId === cat.id).length;
+                    return (
+                      <tr key={cat.id} className="hover:bg-stone-50 transition">
+                        <td className="p-3.5 font-bold text-stone-900">{cat.name}</td>
+                        <td className="p-3.5">
+                          <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                            cat.showsInStock !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                          }`}>
+                            {cat.showsInStock !== false ? 'SIM' : 'NÃO'}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-stone-600 font-semibold">{usageCount} produto(s)</td>
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenEditProductCategory(cat)}
+                              title="Editar categoria"
+                              className="p-1.5 text-stone-600 hover:text-stone-900"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProductCategory(cat)}
+                              title="Excluir categoria"
+                              className="p-1.5 text-rose-600 hover:text-rose-800"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )
+              ) : tableSectors.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-6 text-center text-stone-400 italic">
-                    Nenhuma categoria de produto cadastrada até o momento.
+                  <td colSpan={3} className="p-6 text-center text-stone-400 italic">
+                    Nenhuma área cadastrada até o momento. Crie a primeira área para poder cadastrar mesas.
                   </td>
                 </tr>
               ) : (
-                categories.map((cat) => {
-                  const usageCount = products.filter((p) => p.categoryId === cat.id).length;
+                tableSectors.map((sector) => {
+                  const usageCount = tables.filter((t) => t.sector === sector.name).length;
                   return (
-                    <tr key={cat.id} className="hover:bg-stone-50 transition">
-                      <td className="p-3.5 font-bold text-stone-900">{cat.name}</td>
-                      <td className="p-3.5">
-                        <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                          cat.showsInStock !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
-                        }`}>
-                          {cat.showsInStock !== false ? 'SIM' : 'NÃO'}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-stone-600 font-semibold">{usageCount} produto(s)</td>
+                    <tr key={sector.id} className="hover:bg-stone-50 transition">
+                      <td className="p-3.5 font-bold text-stone-900">{sector.name}</td>
+                      <td className="p-3.5 text-stone-600 font-semibold">{usageCount} mesa(s)</td>
                       <td className="p-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
-                            onClick={() => handleOpenEditProductCategory(cat)}
-                            title="Editar categoria"
+                            onClick={() => handleOpenEditTableSector(sector)}
+                            title="Editar área"
                             className="p-1.5 text-stone-600 hover:text-stone-900"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteProductCategory(cat)}
-                            title="Excluir categoria"
+                            onClick={() => handleDeleteTableSector(sector)}
+                            title="Excluir área"
                             className="p-1.5 text-rose-600 hover:text-rose-800"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -239,7 +313,10 @@ export const GroupManagement: React.FC = () => {
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-stone-900 text-base">
-                {editingId ? 'Editar' : 'Novo'} {groupType === 'ingredient' ? 'Grupo de Insumo' : 'Categoria de Produto'}
+                {editingId ? 'Editar' : 'Novo'}{' '}
+                {groupType === 'ingredient' && 'Grupo de Insumo'}
+                {groupType === 'product' && 'Categoria de Produto'}
+                {groupType === 'area' && 'Área do Restaurante'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="p-1 text-stone-400">
                 <X className="w-5 h-5" />
@@ -247,11 +324,15 @@ export const GroupManagement: React.FC = () => {
             </div>
 
             <div className="text-xs">
-              <label className="font-semibold text-stone-700 block mb-1">Nome do Grupo *</label>
+              <label className="font-semibold text-stone-700 block mb-1">
+                {groupType === 'area' ? 'Nome da Área *' : 'Nome do Grupo *'}
+              </label>
               <input
                 type="text"
                 autoFocus
-                placeholder={groupType === 'ingredient' ? 'Ex: Carnes' : 'Ex: Bebidas & Sucos'}
+                placeholder={
+                  groupType === 'ingredient' ? 'Ex: Carnes' : groupType === 'product' ? 'Ex: Bebidas & Sucos' : 'Ex: Salão Principal'
+                }
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
                 className="w-full border rounded-xl p-2.5"
@@ -281,7 +362,7 @@ export const GroupManagement: React.FC = () => {
                 onClick={handleSaveGroup}
                 className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
               >
-                {editingId ? 'Salvar' : 'Criar'} Grupo
+                {editingId ? 'Salvar' : 'Criar'} {groupType === 'area' ? 'Área' : 'Grupo'}
               </button>
             </div>
           </div>

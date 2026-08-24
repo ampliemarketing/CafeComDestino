@@ -132,13 +132,21 @@ create table technical_sheets (
 -- ----------------------------------------------------------------------------
 -- 3. Mesas, Pedidos e Caixa
 -- ----------------------------------------------------------------------------
+-- Áreas/setores do salão (ex: Salão Principal, Varanda), cadastráveis pelo
+-- usuário em Grupos — mesmo conceito de ingredient_categories, mas para mesas.
+create table table_sectors (
+  id text primary key,
+  name text not null unique
+);
+
 -- Cada mesa guarda um array de comandas independentes (uma por pessoa/grupo),
 -- cada uma com seus próprios itens, subtotal, garçom e adiantamentos parciais.
+-- "sector" guarda o nome do setor (texto livre, sem FK) — assim, remover um
+-- setor em Grupos não quebra mesas já cadastradas com esse nome.
 create table dining_tables (
   id text primary key,
   number int not null unique,
-  sector text not null default 'Salão Principal'
-    check (sector in ('Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão')),
+  sector text not null default '',
   capacity int not null default 2,
   status text not null default 'livre'
     check (status in ('livre', 'ocupada')),
@@ -169,7 +177,8 @@ create table orders (
   waiter_name text,
   notes text,
   fiscal_issued boolean not null default false,
-  nfce_key text
+  nfce_key text,
+  split_payments jsonb
 );
 
 create table cash_shifts (
@@ -214,6 +223,7 @@ alter table sale_units enable row level security;
 alter table ingredients enable row level security;
 alter table products enable row level security;
 alter table technical_sheets enable row level security;
+alter table table_sectors enable row level security;
 alter table dining_tables enable row level security;
 alter table orders enable row level security;
 alter table cash_shifts enable row level security;
@@ -228,6 +238,7 @@ create policy "authenticated_all_sale_units" on sale_units for all using (auth.r
 create policy "authenticated_all_ingredients" on ingredients for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_products" on products for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_technical_sheets" on technical_sheets for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated_all_table_sectors" on table_sectors for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_dining_tables" on dining_tables for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_orders" on orders for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_cash_shifts" on cash_shifts for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -236,7 +247,7 @@ create policy "authenticated_all_cash_movements" on cash_movements for all using
 -- ----------------------------------------------------------------------------
 -- 5. Realtime — cozinha/garçom/caixa recebem mudanças ao vivo
 -- ----------------------------------------------------------------------------
-alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements;
+alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements, table_sectors;
 
 -- ----------------------------------------------------------------------------
 -- 6. Funções RPC transacionais para os fluxos financeiros críticos
@@ -284,7 +295,8 @@ create or replace function public.create_order_and_credit_cash(
   p_order jsonb,
   p_cash_amount numeric,
   p_payment_method text,
-  p_stock_items jsonb default '[]'::jsonb
+  p_stock_items jsonb default '[]'::jsonb,
+  p_split_payments jsonb default null
 )
 returns void
 language plpgsql
@@ -299,7 +311,7 @@ begin
     id, order_number, channel, table_number, customer, items, service_type,
     subtotal, delivery_fee, discount, total, payment_method, payment_status,
     order_status, prepared_at, delivered_at, tuna_transaction_id,
-    delivery_driver_name, waiter_name, notes, fiscal_issued, nfce_key
+    delivery_driver_name, waiter_name, notes, fiscal_issued, nfce_key, split_payments
   )
   select
     p_order->>'id', (p_order->>'orderNumber')::int, p_order->>'channel',
@@ -308,16 +320,33 @@ begin
     (p_order->>'discount')::numeric, (p_order->>'total')::numeric, p_order->>'paymentMethod',
     p_order->>'paymentStatus', p_order->>'orderStatus', p_order->>'preparedAt', p_order->>'deliveredAt',
     p_order->>'tunaTransactionId', p_order->>'deliveryDriverName', p_order->>'waiterName',
-    p_order->>'notes', (p_order->>'fiscalIssued')::boolean, p_order->>'nfceKey';
+    p_order->>'notes', (p_order->>'fiscalIssued')::boolean, p_order->>'nfceKey', p_split_payments;
 
   select id into v_shift_id from cash_shifts where status = 'aberto' limit 1;
 
-  if v_shift_id is not null and p_cash_amount is not null then
-    update cash_shifts set
-      sales_cash = sales_cash + case when p_payment_method = 'dinheiro' then p_cash_amount else 0 end,
-      sales_card = sales_card + case when p_payment_method in ('cartao_credito','cartao_debito') then p_cash_amount else 0 end,
-      sales_pix  = sales_pix  + case when p_payment_method = 'pix' then p_cash_amount else 0 end
-    where id = v_shift_id;
+  if v_shift_id is not null then
+    if p_split_payments is not null and jsonb_array_length(p_split_payments) > 0 then
+      update cash_shifts set
+        sales_cash = sales_cash + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' = 'dinheiro'
+        ), 0),
+        sales_card = sales_card + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' in ('cartao_credito', 'cartao_debito')
+        ), 0),
+        sales_pix = sales_pix + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' = 'pix'
+        ), 0)
+      where id = v_shift_id;
+    elsif p_cash_amount is not null then
+      update cash_shifts set
+        sales_cash = sales_cash + case when p_payment_method = 'dinheiro' then p_cash_amount else 0 end,
+        sales_card = sales_card + case when p_payment_method in ('cartao_credito','cartao_debito') then p_cash_amount else 0 end,
+        sales_pix  = sales_pix  + case when p_payment_method = 'pix' then p_cash_amount else 0 end
+      where id = v_shift_id;
+    end if;
   end if;
 end;
 $$;
@@ -346,7 +375,8 @@ create or replace function public.close_comanda_and_pay(
   p_comanda_id text,
   p_order jsonb,
   p_cash_amount numeric,
-  p_payment_method text
+  p_payment_method text,
+  p_split_payments jsonb default null
 )
 returns void
 language plpgsql
@@ -355,7 +385,7 @@ as $$
 declare
   v_remaining jsonb;
 begin
-  perform public.create_order_and_credit_cash(p_order, p_cash_amount, p_payment_method);
+  perform public.create_order_and_credit_cash(p_order, p_cash_amount, p_payment_method, '[]'::jsonb, p_split_payments);
 
   select coalesce(jsonb_agg(elem), '[]'::jsonb) into v_remaining
   from jsonb_array_elements((select comandas from dining_tables where id = p_table_id)) as elem

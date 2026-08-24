@@ -27,8 +27,27 @@ import { OnlineOrderTrackingModal } from './OnlineOrderTrackingModal';
 export const OnlineMenuCatalog: React.FC = () => {
   const { companyProfile, categories, products, orders, createOnlineOrder, addToast } = useApp();
 
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const findPratoFeitoCategoryId = (cats: typeof categories) =>
+    cats.find((c) => c.name.trim().toLowerCase() === 'prato feito')?.id;
+
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    () => findPratoFeitoCategoryId(categories) || categories[0]?.id || ''
+  );
+  const [hasManuallySelectedCategory, setHasManuallySelectedCategory] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Assim que as categorias carregarem (ex: primeiro acesso antes do fetch
+  // terminar), abre o cardápio já em "Prato Feito" — só respeita a escolha
+  // do cliente depois que ele mesmo trocar de categoria.
+  useEffect(() => {
+    if (hasManuallySelectedCategory || selectedCategory) return;
+    const pratoFeitoId = findPratoFeitoCategoryId(categories);
+    if (pratoFeitoId) {
+      setSelectedCategory(pratoFeitoId);
+    } else if (categories[0]) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, hasManuallySelectedCategory, selectedCategory]);
   
   // Product Detail Modal State
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -82,8 +101,9 @@ export const OnlineMenuCatalog: React.FC = () => {
   const latestActiveOrder = myPlacedOrders.find((o) => o.orderStatus !== 'concluido' && o.orderStatus !== 'cancelado');
 
   // Filter products
+  const isSearching = searchQuery.trim().length > 0;
   const filteredProducts = products.filter((p) => {
-    const matchesCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
+    const matchesCat = isSearching || !selectedCategory || p.categoryId === selectedCategory;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCat && matchesSearch && p.available;
   });
@@ -270,20 +290,10 @@ export const OnlineMenuCatalog: React.FC = () => {
 
           {/* Categories Pill List */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
-            <button
-              onClick={() => setSelectedCategory('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-                selectedCategory === 'all'
-                  ? 'bg-amber-800 text-white shadow-sm'
-                  : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
-              }`}
-            >
-              Todos os Itens
-            </button>
             {categories.map((cat) => (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => { setSelectedCategory(cat.id); setHasManuallySelectedCategory(true); }}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
                   selectedCategory === cat.id
                     ? 'bg-amber-800 text-white shadow-sm'

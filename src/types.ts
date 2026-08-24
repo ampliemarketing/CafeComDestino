@@ -83,6 +83,11 @@ export interface IngredientCategory {
   name: string;
 }
 
+export interface TableSector {
+  id: string;
+  name: string;
+}
+
 export interface SaleUnit {
   id: string;
   name: string;
@@ -192,7 +197,7 @@ export interface Comanda {
 export interface DiningTable {
   id: string;
   number: number;
-  sector: 'Salão Principal' | 'Varanda' | 'Área VIP' | 'Delivery / Balcão';
+  sector: string;
   capacity: number;
   status: TableStatus;
   comandas: Comanda[];
@@ -236,6 +241,7 @@ export interface Order {
   discount: number;
   total: number;
   paymentMethod: PaymentMethod;
+  splitPayments?: { method: PaymentMethod; amount: number }[];
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
   createdAt: string;

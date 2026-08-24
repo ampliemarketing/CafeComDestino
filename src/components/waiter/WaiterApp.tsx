@@ -27,11 +27,10 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
 import { PartialPaymentModal } from '../tables/PartialPaymentModal';
 
-const SECTORS: DiningTable['sector'][] = ['Salão Principal', 'Varanda', 'Área VIP', 'Delivery / Balcão'];
-
 export const WaiterApp: React.FC = () => {
   const {
     tables,
+    tableSectors,
     products,
     categories,
     currentUser,
@@ -48,6 +47,7 @@ export const WaiterApp: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null);
   const [selectedComandaId, setSelectedComandaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'map' | 'order' | 'comanda'>('map');
+  const [tableSearchQuery, setTableSearchQuery] = useState('');
 
   // KG Weight Modal State
   const [isKgModalOpen, setIsKgModalOpen] = useState(false);
@@ -59,7 +59,7 @@ export const WaiterApp: React.FC = () => {
   // New table modal
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState<number>(1);
-  const [newTableSector, setNewTableSector] = useState<DiningTable['sector']>('Salão Principal');
+  const [newTableSector, setNewTableSector] = useState<string>('');
   const [newTableCapacity, setNewTableCapacity] = useState<number>(2);
 
   // New comanda modal (opens a free table, or adds another person to one already occupied)
@@ -88,6 +88,11 @@ export const WaiterApp: React.FC = () => {
   // Final payment (close comanda) modal
   const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
+  const [isFinalSplitPayment, setIsFinalSplitPayment] = useState(false);
+  const [finalSplitRows, setFinalSplitRows] = useState<{ method: PaymentMethod; amount: string }[]>([
+    { method: 'pix', amount: '0' },
+    { method: 'dinheiro', amount: '0' },
+  ]);
 
   // Fiscal receipt printed right after a comanda is closed & paid
   const [isFinalReceiptModalOpen, setIsFinalReceiptModalOpen] = useState(false);
@@ -95,6 +100,16 @@ export const WaiterApp: React.FC = () => {
 
   const currentActiveTable = selectedTable ? tables.find((t) => t.id === selectedTable.id) || null : null;
   const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
+
+  const normalizedTableSearch = tableSearchQuery.trim().toLowerCase();
+  const filteredTables = (normalizedTableSearch
+    ? tables.filter((t) =>
+        String(t.number).includes(normalizedTableSearch) ||
+        t.sector.toLowerCase().includes(normalizedTableSearch) ||
+        t.comandas.some((c) => c.personName.toLowerCase().includes(normalizedTableSearch))
+      )
+    : tables
+  ).slice().sort((a, b) => a.number - b.number);
 
   const currentComandaAdvancesTotal = (currentComanda?.advancePayments || [])
     .filter((p) => p.status === 'ativo')
@@ -208,33 +223,55 @@ export const WaiterApp: React.FC = () => {
       {/* Main Table Map View */}
       {activeTab === 'map' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-stone-200">
-            <h3 className="font-bold text-stone-900 text-xs uppercase tracking-wider">
-              Mesas e Comandas do Salão
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                {tables.filter((t) => t.status === 'livre').length} livres
-              </span>
-              <button
-                onClick={() => {
-                  const nextNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) + 1 : 1;
-                  setNewTableNumber(nextNumber);
-                  setNewTableSector('Salão Principal');
-                  setNewTableCapacity(2);
-                  setIsNewTableModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nova Mesa</span>
-              </button>
+          <div className="bg-white p-3.5 rounded-2xl border border-stone-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-stone-900 text-xs uppercase tracking-wider">
+                Mesas e Comandas do Salão
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                  {tables.filter((t) => t.status === 'livre').length} livres
+                </span>
+                <button
+                  onClick={() => {
+                    if (tableSectors.length === 0) {
+                      addToast('error', 'Nenhuma área cadastrada', 'Peça para um gerente cadastrar uma área do restaurante em Grupos antes de criar mesas.');
+                      return;
+                    }
+                    const nextNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) + 1 : 1;
+                    setNewTableNumber(nextNumber);
+                    setNewTableSector(tableSectors[0].name);
+                    setNewTableCapacity(2);
+                    setIsNewTableModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3.5 py-2 rounded-lg text-xs font-bold shadow transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nova Mesa</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Buscar mesa por número, setor ou nome do cliente..."
+                value={tableSearchQuery}
+                onChange={(e) => setTableSearchQuery(e.target.value)}
+                className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-amber-700"
+              />
             </div>
           </div>
 
           {/* Tables Cards Grid */}
+          {filteredTables.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">
+              Nenhuma mesa encontrada para "{tableSearchQuery}".
+            </div>
+          ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {tables.map((tb) => {
+            {filteredTables.map((tb) => {
               const badge = getStatusBadge(tb.status);
               const tableSubtotal = tb.comandas.reduce((sum, c) => sum + c.subtotal, 0);
               return (
@@ -279,6 +316,7 @@ export const WaiterApp: React.FC = () => {
               );
             })}
           </div>
+          )}
         </div>
       )}
 
@@ -535,7 +573,7 @@ export const WaiterApp: React.FC = () => {
             {currentComanda.items.length === 0 ? (
               <p className="text-xs text-stone-400 py-6 text-center">Nenhum item lançado ainda.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
                 {currentComanda.items.map((item) => (
                   <div key={item.id} className="p-3 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
                     <div>
@@ -607,6 +645,11 @@ export const WaiterApp: React.FC = () => {
             <button
               onClick={() => {
                 setFinalPaymentMethod('pix');
+                setIsFinalSplitPayment(false);
+                setFinalSplitRows([
+                  { method: 'pix', amount: '0' },
+                  { method: 'dinheiro', amount: '0' },
+                ]);
                 setIsFinalPayModalOpen(true);
               }}
               className="p-4 bg-emerald-700 text-white rounded-2xl font-bold text-sm shadow hover:bg-emerald-800 flex items-center justify-center gap-2"
@@ -638,11 +681,11 @@ export const WaiterApp: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Setor</label>
                 <select
                   value={newTableSector}
-                  onChange={(e) => setNewTableSector(e.target.value as DiningTable['sector'])}
+                  onChange={(e) => setNewTableSector(e.target.value)}
                   className="w-full border rounded-xl p-3 text-sm bg-white font-semibold"
                 >
-                  {SECTORS.map((sec) => (
-                    <option key={sec} value={sec}>{sec}</option>
+                  {tableSectors.map((sec) => (
+                    <option key={sec.id} value={sec.name}>{sec.name}</option>
                   ))}
                 </select>
               </div>
@@ -781,31 +824,98 @@ export const WaiterApp: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <label className="font-bold text-stone-700 block mb-1.5 text-xs">Forma de Pagamento</label>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {[
-                  { id: 'pix', label: 'PIX', icon: '⚡' },
-                  { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
-                  { id: 'cartao_debito', label: 'Débito', icon: '💳' },
-                  { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-                  { id: 'boleto', label: 'Boleto', icon: '🧾' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setFinalPaymentMethod(m.id as PaymentMethod)}
-                    className={`p-2.5 rounded-xl border font-bold transition flex flex-col items-center justify-center gap-1 ${
-                      finalPaymentMethod === m.id
-                        ? 'bg-amber-800 text-white border-amber-800'
-                        : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                    }`}
-                  >
-                    <span className="text-base">{m.icon}</span>
-                    <span>{m.label}</span>
-                  </button>
-                ))}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-stone-700 block text-xs">Forma de Pagamento</label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={isFinalSplitPayment}
+                    onChange={(e) => setIsFinalSplitPayment(e.target.checked)}
+                    className="w-4 h-4 accent-amber-800 rounded cursor-pointer"
+                  />
+                  <span>Múltiplas Formas / Pagamento Misto</span>
+                </label>
               </div>
+
+              {!isFinalSplitPayment ? (
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    { id: 'pix', label: 'PIX', icon: '⚡' },
+                    { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
+                    { id: 'cartao_debito', label: 'Débito', icon: '💳' },
+                    { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                    { id: 'boleto', label: 'Boleto', icon: '🧾' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setFinalPaymentMethod(m.id as PaymentMethod)}
+                      className={`p-2.5 rounded-xl border font-bold transition flex flex-col items-center justify-center gap-1 ${
+                        finalPaymentMethod === m.id
+                          ? 'bg-amber-800 text-white border-amber-800'
+                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                      }`}
+                    >
+                      <span className="text-base">{m.icon}</span>
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2 bg-stone-50 p-3 rounded-xl border border-stone-200 text-xs">
+                  <p className="text-[11px] text-stone-500 font-semibold">
+                    Divida o valor de R$ {currentComandaRemainingTotal.toFixed(2)} entre mais de uma forma:
+                  </p>
+                  {finalSplitRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        value={row.method}
+                        onChange={(e) => {
+                          const val = e.target.value as PaymentMethod;
+                          setFinalSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, method: val } : r)));
+                        }}
+                        className="border rounded-xl p-2 bg-white font-semibold text-xs"
+                      >
+                        <option value="pix">PIX</option>
+                        <option value="cartao_credito">Cartão de Crédito</option>
+                        <option value="cartao_debito">Cartão de Débito</option>
+                        <option value="dinheiro">Dinheiro</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 top-2 text-stone-400 font-bold">R$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={row.amount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFinalSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
+                          }}
+                          className="w-full border rounded-xl pl-8 pr-2 py-2 font-bold bg-white text-xs"
+                        />
+                      </div>
+                      {finalSplitRows.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setFinalSplitRows((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-rose-600 p-1 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setFinalSplitRows((prev) => [...prev, { method: 'dinheiro', amount: '0' }])}
+                    className="text-amber-800 hover:underline font-bold text-xs flex items-center gap-1 mt-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar outra forma</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -817,7 +927,27 @@ export const WaiterApp: React.FC = () => {
               </button>
               <button
                 onClick={async () => {
-                  const finishedOrder = await closeComandaAndPay(currentActiveTable.id, currentComanda.id, finalPaymentMethod, 0);
+                  let splitPayments: { method: PaymentMethod; amount: number }[] | undefined = undefined;
+
+                  if (isFinalSplitPayment) {
+                    const parsedSplits = finalSplitRows
+                      .map((r) => ({ method: r.method, amount: parseFloat(r.amount) || 0 }))
+                      .filter((r) => r.amount > 0);
+                    const splitSum = parsedSplits.reduce((acc, r) => acc + r.amount, 0);
+                    if (Math.abs(splitSum - currentComandaRemainingTotal) > 0.05) {
+                      addToast('error', 'Soma das formas de pagamento incorreta', `A soma (R$ ${splitSum.toFixed(2)}) deve ser igual ao total a cobrar (R$ ${currentComandaRemainingTotal.toFixed(2)}).`);
+                      return;
+                    }
+                    splitPayments = parsedSplits;
+                  }
+
+                  const finishedOrder = await closeComandaAndPay(
+                    currentActiveTable.id,
+                    currentComanda.id,
+                    isFinalSplitPayment ? 'multiplo' : finalPaymentMethod,
+                    0,
+                    splitPayments
+                  );
                   setIsFinalPayModalOpen(false);
                   setSelectedComandaId(null);
                   setActiveTab('map');
@@ -914,6 +1044,7 @@ export const WaiterApp: React.FC = () => {
             discount: lastFinalizedOrder.discount,
             total: lastFinalizedOrder.total,
             paymentMethod: lastFinalizedOrder.paymentMethod,
+            splitPayments: lastFinalizedOrder.splitPayments,
             nfceKey: lastFinalizedOrder.nfceKey,
             type: 'caixa',
           }}
