@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
+import { PaymentMethod, OrderChannel } from '../../types';
+import {
   FileText, 
   CheckCircle2, 
   Search, 
@@ -17,16 +18,51 @@ export const FiscalManagement: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'notes' | 'config'>('notes');
   const [searchQuery, setSearchQuery] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'todas'>('todas');
+  const [channelFilter, setChannelFilter] = useState<OrderChannel | 'todos'>('todos');
 
   // Config Form
   const [cnpjInput, setCnpjInput] = useState(companyProfile.cnpj);
   const [ieInput, setIeInput] = useState(companyProfile.ie);
   const [razaoSocialInput, setRazaoSocialInput] = useState(companyProfile.name);
 
+  const paymentLabels: Record<PaymentMethod, string> = {
+    pix: 'Pix',
+    cartao_credito: 'Cartão de Crédito',
+    cartao_debito: 'Cartão de Débito',
+    dinheiro: 'Dinheiro',
+    boleto: 'Boleto',
+    multiplo: 'Múltiplo',
+    vale_refeicao: 'Vale-refeição',
+  };
+
+  const channelLabels: Record<OrderChannel, string> = {
+    pdv: 'PDV',
+    garcom: 'Garçom',
+    online: 'Cardápio Online',
+    balcao: 'Balcão',
+    whatsapp: 'WhatsApp',
+    telefone: 'Telefone',
+  };
+
+  const query = searchQuery.trim().toLowerCase();
+
   const fiscalOrders = orders.filter((o) => o.fiscalIssued);
 
+  const filteredFiscalOrders = fiscalOrders
+    .filter((o) => paymentFilter === 'todas' || o.paymentMethod === paymentFilter)
+    .filter((o) => channelFilter === 'todos' || o.channel === channelFilter)
+    .filter((o) => {
+      if (!query) return true;
+      return (
+        (o.nfceKey || '').toLowerCase().includes(query) ||
+        o.customer.name.toLowerCase().includes(query) ||
+        String(o.orderNumber).includes(query)
+      );
+    });
+
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 min-h-screen">
       {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
@@ -73,20 +109,44 @@ export const FiscalManagement: React.FC = () => {
         {/* Notes List Tab */}
         {activeTab === 'notes' && (
           <div className="space-y-3">
-            <div className="relative">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Buscar nota por chave Sefaz ou cliente..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs"
-              />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Buscar por chave Sefaz, cliente ou nº do pedido..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs"
+                />
+              </div>
+
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value as PaymentMethod | 'todas')}
+                className="border rounded-xl px-3 py-2 text-xs font-semibold text-stone-700 bg-white"
+              >
+                <option value="todas">Todas as formas de pagamento</option>
+                {(Object.keys(paymentLabels) as PaymentMethod[]).map((pm) => (
+                  <option key={pm} value={pm}>{paymentLabels[pm]}</option>
+                ))}
+              </select>
+
+              <select
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value as OrderChannel | 'todos')}
+                className="border rounded-xl px-3 py-2 text-xs font-semibold text-stone-700 bg-white"
+              >
+                <option value="todos">Todos os canais</option>
+                {(Object.keys(channelLabels) as OrderChannel[]).map((ch) => (
+                  <option key={ch} value={ch}>{channelLabels[ch]}</option>
+                ))}
+              </select>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
               <table className="w-full text-xs text-left">
-                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0">
                   <tr>
                     <th className="p-3">Série/Número</th>
                     <th className="p-3">Data/Hora</th>
@@ -97,7 +157,7 @@ export const FiscalManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {fiscalOrders.map((o) => (
+                  {filteredFiscalOrders.map((o) => (
                     <tr key={o.id} className="hover:bg-stone-50">
                       <td className="p-3 font-bold font-mono text-stone-900">001 / #{o.orderNumber}</td>
                       <td className="p-3 text-stone-600">{o.createdAt}</td>
@@ -117,6 +177,13 @@ export const FiscalManagement: React.FC = () => {
                       </td>
                     </tr>
                   ))}
+                  {filteredFiscalOrders.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-stone-400">
+                        Nenhuma nota encontrada com os filtros atuais.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

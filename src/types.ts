@@ -204,7 +204,7 @@ export interface DiningTable {
 }
 
 export type OrderChannel = 'pdv' | 'garcom' | 'online' | 'balcao' | 'whatsapp' | 'telefone';
-export type PaymentMethod = 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'boleto' | 'multiplo';
+export type PaymentMethod = 'pix' | 'cartao_credito' | 'cartao_debito' | 'dinheiro' | 'boleto' | 'multiplo' | 'vale_refeicao';
 export type OrderStatus = 'novo' | 'aceito' | 'em_preparo' | 'pronto' | 'saiu_entrega' | 'concluido' | 'cancelado';
 export type PaymentStatus = 'aguardando_pagamento' | 'pagamento_aprovado' | 'pagamento_recusado' | 'pagamento_cancelado' | 'pagamento_estornado';
 
@@ -254,6 +254,7 @@ export interface Order {
   notes?: string;
   fiscalIssued: boolean;
   nfceKey?: string;
+  shiftId?: string;
 }
 
 export interface FinancialEntry {
@@ -276,13 +277,22 @@ export interface CashShift {
   initialFloat: number; // Valor inicial em caixa
   status: 'aberto' | 'fechado';
   salesCash: number;
-  salesCard: number;
+  salesCard: number; // legado: crédito+débito somados (turnos antes da separação)
+  salesCredit: number;
+  salesDebit: number;
   salesPix: number;
+  salesMealVoucher: number;
+  salesOther: number;
   additions: number; // Reforço
   withdrawals: number; // Sangria
   expectedTotal: number;
-  actualTotal?: number;
-  difference?: number;
+  actualTotal?: number; // valor de dinheiro conferido no fechamento
+  difference?: number; // diferença do dinheiro conferido
+  conferredCredit?: number;
+  conferredDebit?: number;
+  conferredPix?: number;
+  conferredMealVoucher?: number;
+  conferredOther?: number;
   notes?: string;
 }
 

@@ -98,7 +98,11 @@ const EMPTY_CASH_SHIFT: CashShift = {
   status: 'fechado',
   salesCash: 0,
   salesCard: 0,
+  salesCredit: 0,
+  salesDebit: 0,
   salesPix: 0,
+  salesMealVoucher: 0,
+  salesOther: 0,
   additions: 0,
   withdrawals: 0,
   expectedTotal: 0,
@@ -184,6 +188,7 @@ interface AppContextType {
   tables: DiningTable[];
   orders: Order[];
   cashShift: CashShift;
+  cashShiftsHistory: CashShift[];
   cashMovements: CashMovement[];
   suppliers: Supplier[];
   setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
@@ -199,6 +204,8 @@ interface AppContextType {
   // Navigation
   activeView: string;
   setActiveView: (view: string) => void;
+  selectedCashShiftId: string | null;
+  setSelectedCashShiftId: (id: string | null) => void;
 
   // Toast
   addToast: (type: Toast['type'], title: string, message?: string) => void;
@@ -234,10 +241,18 @@ interface AppContextType {
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<void>;
 
   createOnlineOrder: (orderData: Partial<Order>) => Promise<Order>;
-  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order>;
+  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order | null>;
 
-  openCashShift: (initialFloat: number) => Promise<void>;
-  closeCashShift: (actualTotal: number, notes?: string) => Promise<void>;
+  openCashShift: (initialFloat: number) => Promise<string | null>;
+  closeCashShift: (payload: {
+    conferredCash: number;
+    conferredCredit: number;
+    conferredDebit: number;
+    conferredPix: number;
+    conferredMealVoucher: number;
+    conferredOther: number;
+    notes?: string;
+  }) => Promise<void>;
   addCashMovement: (type: 'reforco' | 'sangria', amount: number, reason: string) => Promise<void>;
 
   saveCategory: (category: Category) => Promise<void>;
@@ -361,6 +376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [activeView, setActiveView] = useState<string>('dashboard');
+  const [selectedCashShiftId, setSelectedCashShiftId] = useState<string | null>(null);
 
   useEffect(() => { localStorage.setItem('ampliechef_company', JSON.stringify(companyProfile)); }, [companyProfile]);
   useEffect(() => { localStorage.setItem('ampliechef_losses', JSON.stringify(lossRecords)); }, [lossRecords]);
@@ -395,27 +411,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('success', 'Usuário atualizado');
   };
 
-  const [cashShift, setCashShift] = useState<CashShift>(EMPTY_CASH_SHIFT);
+  const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at');
 
-  useEffect(() => {
-    if (!session) { setCashShift(EMPTY_CASH_SHIFT); return; }
-    let cancelled = false;
-    supabase.from('cash_shifts').select('*').order('created_at', { ascending: false }).limit(1)
-      .then(({ data }) => {
-        if (!cancelled && data && data[0]) setCashShift(mapCashShiftRow(data[0]));
-      });
-
-    const channel = supabase
-      .channel(`public:cash_shifts:${session.user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_shifts' }, (payload) => {
-        if (payload.eventType === 'DELETE') return;
-        const row = mapCashShiftRow(payload.new);
-        setCashShift((prev) => (row.id === prev.id || !prev.id || row.status === 'aberto' ? row : prev));
-      })
-      .subscribe();
-
-    return () => { cancelled = true; supabase.removeChannel(channel); };
-  }, [session?.user?.id]);
+  const cashShift = cashShiftsHistory.find((s) => s.status === 'aberto') ?? cashShiftsHistory[0] ?? EMPTY_CASH_SHIFT;
 
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
 
@@ -681,6 +679,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0, splitPayments?: { method: PaymentMethod; amount: number }[]): Promise<Order | null> => {
     if (!currentUser) return null;
+    if (cashShift.status !== 'aberto') {
+      addToast('error', 'Caixa Fechado', 'Não é possível fechar uma comanda sem um caixa aberto. Abra o caixa antes de vender.');
+      return null;
+    }
     const table = tables.find((t) => t.id === tableId);
     const comanda = table?.comandas.find((c) => c.id === comandaId);
     if (!table || !comanda) return null;
@@ -740,6 +742,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addPartialPayment: AppContextType['addPartialPayment'] = async (tableId, comandaId, paymentData) => {
     if (!currentUser) return null;
+    if (cashShift.status !== 'aberto') {
+      addToast('error', 'Caixa Fechado', 'Não é possível registrar um pagamento sem um caixa aberto. Abra o caixa antes de vender.');
+      return null;
+    }
     const table = tables.find((t) => t.id === tableId);
     const comanda = table?.comandas.find((c) => c.id === comandaId);
     if (!table || !comanda) return null;
@@ -956,7 +962,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     customerName = 'Cliente Balcão',
     discount = 0,
     splitPayments?: { method: PaymentMethod; amount: number }[]
-  ): Promise<Order> => {
+  ): Promise<Order | null> => {
+    if (cashShift.status !== 'aberto') {
+      addToast('error', 'Caixa Fechado', 'Não é possível lançar uma venda sem um caixa aberto. Abra o caixa antes de vender.');
+      return null;
+    }
     const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const total = Math.max(0, subtotal - discount);
 
@@ -1001,8 +1011,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ---- Cash Register Controls ----
-  const openCashShift = async (initialFloat: number) => {
-    if (!currentUser) return;
+  const openCashShift = async (initialFloat: number): Promise<string | null> => {
+    if (!currentUser) return null;
     const newShift: CashShift = {
       id: 'shift-' + Date.now(),
       openedBy: `${currentUser.name} (${currentUser.role})`,
@@ -1011,7 +1021,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'aberto',
       salesCash: 0,
       salesCard: 0,
+      salesCredit: 0,
+      salesDebit: 0,
       salesPix: 0,
+      salesMealVoucher: 0,
+      salesOther: 0,
       additions: 0,
       withdrawals: 0,
       expectedTotal: initialFloat,
@@ -1019,16 +1033,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const { error } = await supabase.from('cash_shifts').insert(toRow(newShift));
-    if (error) { addToast('error', 'Erro ao abrir caixa', error.message); return; }
+    if (error) { addToast('error', 'Erro ao abrir caixa', error.message); return null; }
 
     addToast('success', 'Caixa Aberto', `Fundo inicial de R$ ${initialFloat.toFixed(2)}`);
     logAudit('Abertura de Caixa', 'Controle de Caixa', `Fundo inicial R$ ${initialFloat.toFixed(2)}`);
+    return newShift.id;
   };
 
-  const closeCashShift = async (actualTotal: number, notes?: string) => {
+  const closeCashShift: AppContextType['closeCashShift'] = async (payload) => {
     if (!currentUser || !cashShift.id) return;
     const expected = cashShift.initialFloat + cashShift.salesCash + cashShift.additions - cashShift.withdrawals;
-    const diff = actualTotal - expected;
+    const diff = payload.conferredCash - expected;
 
     const { error } = await supabase
       .from('cash_shifts')
@@ -1037,16 +1052,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closed_at: new Date().toLocaleString('pt-BR'),
         status: 'fechado',
         expected_total: expected,
-        actual_total: actualTotal,
+        actual_total: payload.conferredCash,
         difference: diff,
-        notes: notes || 'Fechamento concluído.',
+        conferred_credit: payload.conferredCredit,
+        conferred_debit: payload.conferredDebit,
+        conferred_pix: payload.conferredPix,
+        conferred_meal_voucher: payload.conferredMealVoucher,
+        conferred_other: payload.conferredOther,
+        notes: payload.notes || 'Fechamento concluído.',
       })
       .eq('id', cashShift.id);
 
     if (error) { addToast('error', 'Erro ao fechar caixa', error.message); return; }
 
     addToast('warning', 'Caixa Fechado', `Diferença apurada: R$ ${diff.toFixed(2)}`);
-    logAudit('Fechamento de Caixa', 'Controle de Caixa', `Total contado R$ ${actualTotal.toFixed(2)} (Dif: R$ ${diff.toFixed(2)})`);
+    logAudit('Fechamento de Caixa', 'Controle de Caixa', `Total contado R$ ${payload.conferredCash.toFixed(2)} (Dif: R$ ${diff.toFixed(2)})`);
   };
 
   const addCashMovement = async (type: 'reforco' | 'sangria', amount: number, reason: string) => {
@@ -1336,7 +1356,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tables,
         orders,
         cashShift,
+        cashShiftsHistory,
         cashMovements,
+        selectedCashShiftId,
+        setSelectedCashShiftId,
         suppliers,
         setSuppliers,
         lossRecords,

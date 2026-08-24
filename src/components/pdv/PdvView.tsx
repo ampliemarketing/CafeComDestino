@@ -137,7 +137,8 @@ export const PdvView: React.FC = () => {
     }
 
     if (cashShift.status !== 'aberto') {
-      addToast('warning', 'Caixa Fechado', 'Abra o caixa no módulo Controle de Caixa antes de lançar vendas.');
+      addToast('error', 'Caixa Fechado', 'Abra o caixa em Caixas antes de lançar vendas.');
+      return;
     }
 
     let splitPayments: { method: PaymentMethod; amount: number }[] | undefined = undefined;
@@ -162,6 +163,8 @@ export const PdvView: React.FC = () => {
       discountInput,
       splitPayments
     );
+
+    if (!sale) return;
 
     setLastCompletedSale(sale);
     setIsPaymentModalOpen(false);

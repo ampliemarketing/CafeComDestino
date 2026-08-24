@@ -4,14 +4,15 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
-import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags } from 'lucide-react';
+import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags, History } from 'lucide-react';
 
 import { DashboardView } from './components/dashboard/DashboardView';
 import { OnlineMenuCatalog } from './components/online-menu/OnlineMenuCatalog';
 import { PdvView } from './components/pdv/PdvView';
 import { WaiterApp } from './components/waiter/WaiterApp';
 import { KitchenKDS } from './components/kitchen/KitchenKDS';
-import { CashierControl } from './components/cashier/CashierControl';
+import { CashShiftsHistory } from './components/cashier/CashShiftsHistory';
+import { CashShiftDetail } from './components/cashier/CashShiftDetail';
 import { TableManagement } from './components/tables/TableManagement';
 import { SalesManagement } from './components/sales/SalesManagement';
 import { ProductManagement } from './components/products/ProductManagement';
@@ -44,7 +45,10 @@ const AppContent: React.FC = () => {
       case 'kitchen_kds':
         return <KitchenKDS />;
       case 'cashier':
-        return <CashierControl />;
+      case 'caixas':
+        return <CashShiftsHistory />;
+      case 'caixa-detalhe':
+        return <CashShiftDetail />;
       case 'tables':
         return <TableManagement />;
       case 'sales':
@@ -88,7 +92,7 @@ const AppContent: React.FC = () => {
         { id: 'tables', label: 'Mesas & Comandas', icon: Grid2X2 },
         { id: 'kitchen', label: 'Painel Cozinha (KDS)', icon: ChefHat },
         { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor },
-        { id: 'cashier', label: 'Controle de Caixa', icon: Wallet },
+        { id: 'caixas', label: 'Caixas', icon: History },
         { id: 'sales', label: 'Gestão de Vendas', icon: Receipt },
       ]
     },

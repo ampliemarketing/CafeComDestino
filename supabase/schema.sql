@@ -165,7 +165,7 @@ create table orders (
   delivery_fee numeric(10,2) not null default 0,
   discount numeric(10,2) not null default 0,
   total numeric(10,2) not null default 0,
-  payment_method text not null check (payment_method in ('pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'multiplo')),
+  payment_method text not null check (payment_method in ('pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'multiplo', 'vale_refeicao')),
   payment_status text not null check (payment_status in ('aguardando_pagamento', 'pagamento_aprovado', 'pagamento_recusado', 'pagamento_cancelado', 'pagamento_estornado')),
   order_status text not null check (order_status in ('novo', 'aceito', 'em_preparo', 'pronto', 'saiu_entrega', 'concluido', 'cancelado')),
   created_at timestamptz not null default now(),
@@ -192,12 +192,21 @@ create table cash_shifts (
   status text not null default 'fechado' check (status in ('aberto', 'fechado')),
   sales_cash numeric(10,2) not null default 0,
   sales_card numeric(10,2) not null default 0,
+  sales_credit numeric(10,2) not null default 0,
+  sales_debit numeric(10,2) not null default 0,
   sales_pix numeric(10,2) not null default 0,
+  sales_meal_voucher numeric(10,2) not null default 0,
+  sales_other numeric(10,2) not null default 0,
   additions numeric(10,2) not null default 0,
   withdrawals numeric(10,2) not null default 0,
   expected_total numeric(10,2) not null default 0,
   actual_total numeric(10,2),
   difference numeric(10,2),
+  conferred_credit numeric(10,2),
+  conferred_debit numeric(10,2),
+  conferred_pix numeric(10,2),
+  conferred_meal_voucher numeric(10,2),
+  conferred_other numeric(10,2),
   notes text
 );
 
@@ -210,6 +219,10 @@ create table cash_movements (
   user_name text not null default '',
   timestamp text not null default ''
 );
+
+-- Liga cada pedido ao turno de caixa em que foi vendido (nulo para pedidos
+-- feitos sem caixa aberto). Referencia cash_shifts, por isso vem depois dela.
+alter table orders add column shift_id text references cash_shifts(id);
 
 -- ----------------------------------------------------------------------------
 -- 4. Row Level Security — qualquer usuário autenticado (funcionário logado)
@@ -231,6 +244,9 @@ alter table cash_movements enable row level security;
 
 create policy "authenticated_read_profiles" on profiles for select using (auth.role() = 'authenticated');
 create policy "self_update_profile" on profiles for update using (auth.uid() = id);
+create policy "admin_update_any_profile" on profiles for update
+  using (exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'))
+  with check (exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'));
 
 create policy "authenticated_all_categories" on categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredient_categories" on ingredient_categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -307,11 +323,14 @@ declare
 begin
   perform public.deduct_stock_for_items(p_stock_items);
 
+  select id into v_shift_id from cash_shifts where status = 'aberto' limit 1;
+
   insert into orders (
     id, order_number, channel, table_number, customer, items, service_type,
     subtotal, delivery_fee, discount, total, payment_method, payment_status,
     order_status, prepared_at, delivered_at, tuna_transaction_id,
-    delivery_driver_name, waiter_name, notes, fiscal_issued, nfce_key, split_payments
+    delivery_driver_name, waiter_name, notes, fiscal_issued, nfce_key,
+    split_payments, shift_id
   )
   select
     p_order->>'id', (p_order->>'orderNumber')::int, p_order->>'channel',
@@ -320,9 +339,8 @@ begin
     (p_order->>'discount')::numeric, (p_order->>'total')::numeric, p_order->>'paymentMethod',
     p_order->>'paymentStatus', p_order->>'orderStatus', p_order->>'preparedAt', p_order->>'deliveredAt',
     p_order->>'tunaTransactionId', p_order->>'deliveryDriverName', p_order->>'waiterName',
-    p_order->>'notes', (p_order->>'fiscalIssued')::boolean, p_order->>'nfceKey', p_split_payments;
-
-  select id into v_shift_id from cash_shifts where status = 'aberto' limit 1;
+    p_order->>'notes', (p_order->>'fiscalIssued')::boolean, p_order->>'nfceKey',
+    p_split_payments, v_shift_id;
 
   if v_shift_id is not null then
     if p_split_payments is not null and jsonb_array_length(p_split_payments) > 0 then
@@ -331,6 +349,14 @@ begin
           select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
           where elem->>'method' = 'dinheiro'
         ), 0),
+        sales_credit = sales_credit + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' = 'cartao_credito'
+        ), 0),
+        sales_debit = sales_debit + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' = 'cartao_debito'
+        ), 0),
         sales_card = sales_card + coalesce((
           select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
           where elem->>'method' in ('cartao_credito', 'cartao_debito')
@@ -338,13 +364,25 @@ begin
         sales_pix = sales_pix + coalesce((
           select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
           where elem->>'method' = 'pix'
+        ), 0),
+        sales_meal_voucher = sales_meal_voucher + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' = 'vale_refeicao'
+        ), 0),
+        sales_other = sales_other + coalesce((
+          select sum((elem->>'amount')::numeric) from jsonb_array_elements(p_split_payments) elem
+          where elem->>'method' not in ('dinheiro', 'cartao_credito', 'cartao_debito', 'pix', 'vale_refeicao')
         ), 0)
       where id = v_shift_id;
     elsif p_cash_amount is not null then
       update cash_shifts set
         sales_cash = sales_cash + case when p_payment_method = 'dinheiro' then p_cash_amount else 0 end,
+        sales_credit = sales_credit + case when p_payment_method = 'cartao_credito' then p_cash_amount else 0 end,
+        sales_debit = sales_debit + case when p_payment_method = 'cartao_debito' then p_cash_amount else 0 end,
         sales_card = sales_card + case when p_payment_method in ('cartao_credito','cartao_debito') then p_cash_amount else 0 end,
-        sales_pix  = sales_pix  + case when p_payment_method = 'pix' then p_cash_amount else 0 end
+        sales_pix  = sales_pix  + case when p_payment_method = 'pix' then p_cash_amount else 0 end,
+        sales_meal_voucher = sales_meal_voucher + case when p_payment_method = 'vale_refeicao' then p_cash_amount else 0 end,
+        sales_other = sales_other + case when p_payment_method not in ('dinheiro','cartao_credito','cartao_debito','pix','vale_refeicao') then p_cash_amount else 0 end
       where id = v_shift_id;
     end if;
   end if;

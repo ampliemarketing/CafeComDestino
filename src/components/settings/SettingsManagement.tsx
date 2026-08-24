@@ -14,7 +14,8 @@ import {
   Upload,
   Image,
   Camera,
-  Globe
+  Globe,
+  KeyRound
 } from 'lucide-react';
 import { UserRole } from '../../types';
 
@@ -26,6 +27,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const { companyProfile, setCompanyProfile, products, saveProduct, users, updateUserProfile, currentUser, addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'printers'>(initialTab);
+  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
     if (initialTab) {
@@ -465,6 +467,43 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       {u.active ? 'Ativo' : 'Inativo'}
                     </button>
                   </div>
+
+                  {currentUser.role === 'admin' && (
+                    <div>
+                      <label className="text-[10px] font-bold text-stone-500 uppercase flex items-center gap-1 mb-1">
+                        <KeyRound className="w-3 h-3" /> PIN de Fechamento de Caixa
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          placeholder="Sem PIN"
+                          value={pinDrafts[u.id] ?? u.code ?? ''}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '');
+                            setPinDrafts((prev) => ({ ...prev, [u.id]: digits }));
+                          }}
+                          className="flex-1 border rounded-lg px-2 py-1 text-[10px] font-mono tracking-widest"
+                        />
+                        <button
+                          onClick={() => {
+                            const value = (pinDrafts[u.id] ?? u.code ?? '').trim();
+                            updateUserProfile(u.id, { code: value });
+                            setPinDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[u.id];
+                              return next;
+                            });
+                          }}
+                          disabled={(pinDrafts[u.id] ?? u.code ?? '') === (u.code ?? '')}
+                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-800 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          Salvar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

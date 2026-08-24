@@ -267,7 +267,7 @@ export const DashboardView: React.FC = () => {
           </div>
 
           <div 
-            onClick={() => setActiveView('cashier')}
+            onClick={() => setActiveView('caixas')}
             className="p-3 rounded-xl bg-amber-50/70 border border-amber-300 text-stone-800 cursor-pointer hover:bg-amber-100 transition"
           >
             <div className="flex items-center justify-between text-amber-900">

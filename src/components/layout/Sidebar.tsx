@@ -6,9 +6,8 @@ import {
   Smartphone, 
   Grid2X2, 
   ChefHat, 
-  Monitor, 
-  Wallet, 
-  Receipt, 
+  Monitor,
+  Receipt,
   Package, 
   Boxes, 
   Truck, 
@@ -20,7 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Tags
+  Tags,
+  History
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -46,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
         { id: 'tables', label: 'Mesas & Comandas', icon: Grid2X2, roles: ['admin', 'gerente', 'caixa', 'garcom'] },
         { id: 'kitchen', label: 'Painel da Cozinha (KDS)', icon: ChefHat, roles: ['admin', 'gerente', 'cozinha'] },
         { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor, roles: ['admin', 'gerente', 'caixa'] },
-        { id: 'cashier', label: 'Controle de Caixa', icon: Wallet, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
+        { id: 'caixas', label: 'Caixas', icon: History, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
         { id: 'sales', label: 'Gestão de Vendas', icon: Receipt, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
       ]
     },
