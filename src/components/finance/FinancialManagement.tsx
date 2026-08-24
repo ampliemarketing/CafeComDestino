@@ -13,9 +13,11 @@ import {
   PieChart as PieChartIcon
 } from 'lucide-react';
 import { FinancialEntry } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 export const FinancialManagement: React.FC = () => {
-  const { orders, addToast } = useApp();
+  const { orders, addToast, currentUser } = useApp();
+  const canLancar = hasPermission(currentUser, 'financeiro_dre.lancar');
 
   const [financialEntries, setFinancialEntries] = useState<FinancialEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dre' | 'contas'>('dre');
@@ -55,6 +57,7 @@ export const FinancialManagement: React.FC = () => {
           </div>
         </div>
 
+        {canLancar && (
         <button
           onClick={() => setIsModalOpen(true)}
           className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
@@ -62,6 +65,7 @@ export const FinancialManagement: React.FC = () => {
           <Plus className="w-4 h-4" />
           <span>Lançar Conta / Despesa</span>
         </button>
+        )}
       </div>
 
       {/* Financial KPIs */}

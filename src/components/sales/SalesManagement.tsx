@@ -14,9 +14,11 @@ import {
 } from 'lucide-react';
 import { Order, OrderChannel, OrderStatus } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
+import { hasPermission } from '../../lib/permissions';
 
 export const SalesManagement: React.FC = () => {
-  const { orders, issueNfce, updateOrderStatus, addToast } = useApp();
+  const { orders, issueNfce, updateOrderStatus, addToast, currentUser } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<string>('todos');
@@ -132,13 +134,15 @@ export const SalesManagement: React.FC = () => {
                   <td className="p-3.5">
                     {ord.fiscalIssued ? (
                       <span className="text-emerald-700 font-bold text-[10px]">Emitida ✅</span>
-                    ) : (
+                    ) : can('vendas.emitir_nfce') ? (
                       <button
                         onClick={() => issueNfce(ord.id)}
                         className="text-[10px] bg-amber-800 text-white px-2 py-0.5 rounded font-bold hover:bg-amber-900"
                       >
                         Emitir NFC-e
                       </button>
+                    ) : (
+                      <span className="text-[10px] text-stone-400">Pendente</span>
                     )}
                   </td>
                   <td className="p-3.5 text-right font-bold text-amber-800 text-sm">
@@ -158,7 +162,8 @@ export const SalesManagement: React.FC = () => {
                           setSelectedOrder(ord);
                           setIsPrintModalOpen(true);
                         }}
-                        className="p-1.5 text-stone-600 hover:text-stone-900 rounded-lg hover:bg-stone-100"
+                        disabled={!can('vendas.reimprimir')}
+                        className="p-1.5 text-stone-600 hover:text-stone-900 rounded-lg hover:bg-stone-100 disabled:opacity-30 disabled:cursor-not-allowed"
                         title="Reimprimir Comprovante"
                       >
                         <Printer className="w-4 h-4" />

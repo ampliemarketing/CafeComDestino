@@ -1,16 +1,17 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
-  Smartphone, 
-  Monitor, 
-  ChefHat, 
-  LayoutDashboard, 
-  ShoppingBag, 
+import {
+  Smartphone,
+  Monitor,
+  ChefHat,
+  LayoutDashboard,
+  ShoppingBag,
   Menu
 } from 'lucide-react';
+import { hasPermission, SCREEN_ACCESS_PERMISSION } from '../../lib/permissions';
 
 export const MobileNav: React.FC<{ onOpenFullMenu: () => void }> = ({ onOpenFullMenu }) => {
-  const { activeView, setActiveView } = useApp();
+  const { activeView, setActiveView, currentUser } = useApp();
 
   const navItems = [
     { id: 'waiter', label: 'Garçom', icon: Smartphone },
@@ -18,7 +19,7 @@ export const MobileNav: React.FC<{ onOpenFullMenu: () => void }> = ({ onOpenFull
     { id: 'kitchen', label: 'Cozinha', icon: ChefHat },
     { id: 'dashboard', label: 'Início', icon: LayoutDashboard },
     { id: 'online-menu', label: 'Cardápio', icon: ShoppingBag },
-  ];
+  ].filter((item) => hasPermission(currentUser, SCREEN_ACCESS_PERMISSION[item.id]));
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-stone-900 border-t border-stone-800 text-stone-300 md:hidden flex items-center justify-around py-1.5 px-2 shadow-lg">

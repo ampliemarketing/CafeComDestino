@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
+import { rowToCamel, toRow } from '../lib/caseMapping';
 import { LoginScreen } from '../components/auth/LoginScreen';
 import {
   User,
@@ -35,7 +36,6 @@ import {
 
 import {
   initialCompanyProfile,
-  initialSuppliers,
   initialLossRecords,
   initialCourtesyRecords,
   initialPrinters,
@@ -43,32 +43,16 @@ import {
   initialAuditLogs
 } from '../data/initialData';
 
-// ----------------------------------------------------------------------------
-// Supabase row <-> app object mapping (snake_case columns <-> camelCase JS).
-// Nested jsonb columns (items, additions, fiscal, customer, advancePayments,
-// fiscal etc.) already store camelCase keys as-is, so only top-level column
-// names need converting.
-// ----------------------------------------------------------------------------
-const toCamelKey = (s: string) => s.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-const toSnakeKey = (s: string) => s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
-
-function rowToCamel<T>(row: Record<string, any>): T {
-  const out: Record<string, any> = {};
-  Object.keys(row).forEach((k) => { out[toCamelKey(k)] = row[k]; });
-  return out as T;
-}
-
-function toRow(obj: Record<string, any>): Record<string, any> {
-  const out: Record<string, any> = {};
-  Object.keys(obj).forEach((k) => { out[toSnakeKey(k)] = obj[k]; });
-  return out;
-}
 
 const formatTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 
 const mapCategory = (row: any): Category => rowToCamel<Category>(row);
 const mapIngredientCategory = (row: any): IngredientCategory => rowToCamel<IngredientCategory>(row);
+const mapSupplier = (row: any): Supplier => {
+  const base = rowToCamel<Supplier>(row);
+  return { ...base, suppliedCategories: base.suppliedCategories || [] };
+};
 const mapTableSector = (row: any): TableSector => rowToCamel<TableSector>(row);
 const mapSaleUnit = (row: any): SaleUnit => rowToCamel<SaleUnit>(row);
 const mapIngredient = (row: any): Ingredient => rowToCamel<Ingredient>(row);
@@ -176,9 +160,10 @@ export interface Toast {
 interface AppContextType {
   currentUser: User;
   companyProfile: CompanyProfileData;
-  setCompanyProfile: React.Dispatch<React.SetStateAction<CompanyProfileData>>;
+  setCompanyProfile: (profile: CompanyProfileData) => void;
   users: User[];
-  updateUserProfile: (userId: string, patch: Partial<Pick<User, 'role' | 'active' | 'code' | 'phone' | 'name'>>) => Promise<void>;
+  updateUserProfile: (userId: string, patch: Partial<Pick<User, 'role' | 'active' | 'code' | 'phone' | 'name' | 'cpf' | 'permissions'>>) => Promise<void>;
+  createUser: (input: { name: string; email: string; password: string; role: User['role']; phone?: string; code?: string; cpf?: string; permissions: string[] }) => Promise<{ error?: string }>;
   categories: Category[];
   ingredientCategories: IngredientCategory[];
   tableSectors: TableSector[];
@@ -191,7 +176,8 @@ interface AppContextType {
   cashShiftsHistory: CashShift[];
   cashMovements: CashMovement[];
   suppliers: Supplier[];
-  setSuppliers: React.Dispatch<React.SetStateAction<Supplier[]>>;
+  saveSupplier: (supplier: Supplier) => Promise<void>;
+  deleteSupplier: (supplierId: string) => Promise<void>;
   lossRecords: LossRecord[];
   courtesyRecords: CourtesyRecord[];
   printers: Printer[];
@@ -253,7 +239,7 @@ interface AppContextType {
     conferredOther: number;
     notes?: string;
   }) => Promise<void>;
-  addCashMovement: (type: 'reforco' | 'sangria', amount: number, reason: string) => Promise<void>;
+  addCashMovement: (type: 'reforco' | 'sangria', amount: number, name: string, reason: string) => Promise<void>;
 
   saveCategory: (category: Category) => Promise<void>;
   deleteCategory: (categoryId: string) => Promise<void>;
@@ -306,6 +292,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [sessionChecked, setSessionChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authBanner, setAuthBanner] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -334,6 +321,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .single()
       .then(({ data }) => {
         if (cancelled) return;
+        if (data && data.active === false) {
+          setCurrentUser(null);
+          setAuthLoading(false);
+          setAuthBanner('Sua conta foi desativada. Fale com um administrador.');
+          supabase.auth.signOut();
+          return;
+        }
+        setAuthBanner(null);
         setCurrentUser(data ? mapProfileRow(data) : null);
         setAuthLoading(false);
       });
@@ -344,24 +339,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await supabase.auth.signOut();
   };
 
-  // ---- Non-core data (still localStorage-backed) ----
-  const [companyProfile, setCompanyProfile] = useState<CompanyProfileData>(() => {
-    const saved = localStorage.getItem('ampliechef_company');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (!parsed.buffetPrices) {
-          parsed.buffetPrices = { lunchPricePerKg: 80.00, breakfastPricePerKg: 54.99, plateTareGrams: 200 };
-        }
-        return parsed;
-      } catch {
-        return initialCompanyProfile;
-      }
-    }
-    return initialCompanyProfile;
-  });
+  // ---- Company Profile (Supabase-backed singleton row `company_profile`,
+  // readable publicly — the public online catalog in PublicOnlineMenu.tsx
+  // needs it without a session) ----
+  const [companyProfile, setCompanyProfileState] = useState<CompanyProfileData>(initialCompanyProfile);
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  useEffect(() => {
+    supabase.from('company_profile').select('*').eq('id', true).single().then(({ data }) => {
+      if (data) setCompanyProfileState(rowToCamel<CompanyProfileData>(data));
+    });
+  }, []);
+
+  const setCompanyProfile = (profile: CompanyProfileData) => {
+    setCompanyProfileState(profile);
+    supabase.from('company_profile').update(toRow(profile)).eq('id', true).then(({ error }) => {
+      if (error) addToast('error', 'Erro ao salvar perfil da empresa', error.message);
+    });
+  };
+
   const [lossRecords, setLossRecords] = useState<LossRecord[]>(() => {
     const saved = localStorage.getItem('ampliechef_losses');
     return saved ? JSON.parse(saved) : initialLossRecords;
@@ -378,13 +373,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [selectedCashShiftId, setSelectedCashShiftId] = useState<string | null>(null);
 
-  useEffect(() => { localStorage.setItem('ampliechef_company', JSON.stringify(companyProfile)); }, [companyProfile]);
   useEffect(() => { localStorage.setItem('ampliechef_losses', JSON.stringify(lossRecords)); }, [lossRecords]);
   useEffect(() => { localStorage.setItem('ampliechef_courtesies', JSON.stringify(courtesyRecords)); }, [courtesyRecords]);
 
   // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
   const [ingredientCategories] = useSupabaseCollection<IngredientCategory>('ingredient_categories', session, mapIngredientCategory, 'id');
+  const [suppliers] = useSupabaseCollection<Supplier>('suppliers', session, mapSupplier, 'id');
   const [tableSectors] = useSupabaseCollection<TableSector>('table_sectors', session, mapTableSector, 'id');
   const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
@@ -409,6 +404,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser((prev) => (prev ? { ...prev, ...patch } : prev));
     }
     addToast('success', 'Usuário atualizado');
+  };
+
+  const createUser: AppContextType['createUser'] = async ({ name, email, password, role, phone, code, cpf, permissions }) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return { error: 'Sessão expirada. Faça login novamente.' };
+
+    const { data, error } = await supabase.functions.invoke('admin-create-user', {
+      body: { name, email, password, role, phone, code, cpf, permissions },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (error) return { error: error.message };
+    if (data?.error) return { error: data.error };
+
+    refreshUsers();
+    addToast('success', 'Usuário criado');
+    return {};
   };
 
   const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at');
@@ -1069,13 +1082,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Fechamento de Caixa', 'Controle de Caixa', `Total contado R$ ${payload.conferredCash.toFixed(2)} (Dif: R$ ${diff.toFixed(2)})`);
   };
 
-  const addCashMovement = async (type: 'reforco' | 'sangria', amount: number, reason: string) => {
+  const addCashMovement = async (type: 'reforco' | 'sangria', amount: number, name: string, reason: string) => {
     if (!currentUser || !cashShift.id) return;
     const newMovement: CashMovement = {
       id: 'mov-' + Date.now(),
       shiftId: cashShift.id,
       type,
       amount,
+      name,
       reason,
       userName: currentUser.name,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1084,8 +1098,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { error } = await supabase.rpc('add_cash_movement', { p_movement: newMovement });
     if (error) { addToast('error', 'Erro ao registrar movimentação', error.message); return; }
 
-    addToast('info', `Movimentação de Caixa: ${type.toUpperCase()}`, `Valor R$ ${amount.toFixed(2)} - ${reason}`);
-    logAudit(`Movimento Caixa (${type})`, 'Caixa', `R$ ${amount.toFixed(2)} - ${reason}`);
+    addToast('info', `Movimentação de Caixa: ${type === 'reforco' ? 'ENTRADA' : 'SAÍDA'}`, `${name} - R$ ${amount.toFixed(2)}`);
+    logAudit(`Movimento Caixa (${type === 'reforco' ? 'entrada' : 'saída'})`, 'Caixa', `${name} - R$ ${amount.toFixed(2)}`);
   };
 
   // ---- Category CRUD ----
@@ -1116,6 +1130,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (error) { addToast('error', 'Erro ao remover grupo de insumo', error.message); return; }
     addToast('warning', 'Grupo de insumo removido');
     logAudit('Exclusão de Grupo de Insumo', 'Estoque', `ID do grupo: ${categoryId}`);
+  };
+
+  // ---- Supplier (Fornecedores) CRUD ----
+  const saveSupplier = async (supplier: Supplier) => {
+    const { error } = await supabase.from('suppliers').upsert(toRow(supplier));
+    if (error) { addToast('error', 'Erro ao salvar fornecedor', error.message); return; }
+    addToast('success', 'Fornecedor salvo', supplier.name);
+    logAudit('Cadastro de Fornecedor', 'Fornecedores', `Fornecedor: ${supplier.name}`);
+  };
+
+  const deleteSupplier = async (supplierId: string) => {
+    const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
+    if (error) { addToast('error', 'Erro ao remover fornecedor', error.message); return; }
+    addToast('warning', 'Fornecedor removido');
+    logAudit('Exclusão de Fornecedor', 'Fornecedores', `ID do fornecedor: ${supplierId}`);
   };
 
   // ---- Table Sector (Áreas do Restaurante) CRUD ----
@@ -1336,7 +1365,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }
 
   if (!session || !currentUser) {
-    return <LoginScreen />;
+    return <LoginScreen banner={authBanner} />;
   }
 
   return (
@@ -1347,6 +1376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCompanyProfile,
         users,
         updateUserProfile,
+        createUser,
         categories,
         ingredientCategories,
         tableSectors,
@@ -1361,7 +1391,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selectedCashShiftId,
         setSelectedCashShiftId,
         suppliers,
-        setSuppliers,
+        saveSupplier,
+        deleteSupplier,
         lossRecords,
         courtesyRecords,
         printers,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { 
+import { hasPermission, SCREEN_ACCESS_PERMISSION } from '../../lib/permissions';
+import {
   LayoutDashboard, 
   ShoppingBag, 
   Smartphone, 
@@ -20,7 +21,8 @@ import {
   ChevronRight,
   Sparkles,
   Tags,
-  History
+  History,
+  Wallet
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,54 +37,55 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
     {
       title: 'INÍCIO',
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'gerente', 'financeiro'] },
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       ]
     },
     {
       title: 'ATENDIMENTO & VENDAS',
       items: [
-        { id: 'online-menu', label: 'Cardápio Online', icon: ShoppingBag, roles: ['admin', 'gerente', 'caixa', 'garcom'] },
-        { id: 'waiter', label: 'App do Garçom', icon: Smartphone, roles: ['admin', 'gerente', 'garcom'] },
-        { id: 'tables', label: 'Mesas & Comandas', icon: Grid2X2, roles: ['admin', 'gerente', 'caixa', 'garcom'] },
-        { id: 'kitchen', label: 'Painel da Cozinha (KDS)', icon: ChefHat, roles: ['admin', 'gerente', 'cozinha'] },
-        { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor, roles: ['admin', 'gerente', 'caixa'] },
-        { id: 'caixas', label: 'Caixas', icon: History, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
-        { id: 'sales', label: 'Gestão de Vendas', icon: Receipt, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
+        { id: 'online-menu', label: 'Cardápio Online', icon: ShoppingBag },
+        { id: 'waiter', label: 'App do Garçom', icon: Smartphone },
+        { id: 'tables', label: 'Mesas & Comandas', icon: Grid2X2 },
+        { id: 'kitchen', label: 'Painel da Cozinha (KDS)', icon: ChefHat },
+        { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor },
+        { id: 'caixas', label: 'Caixas', icon: History },
+        { id: 'sales', label: 'Gestão de Vendas', icon: Receipt },
       ]
     },
     {
       title: 'PRODUTOS & ESTOQUE',
       items: [
-        { id: 'products', label: 'Produtos', icon: Package, roles: ['admin', 'gerente', 'estoque'] },
-        { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes, roles: ['admin', 'gerente', 'estoque'] },
-        { id: 'groups', label: 'Grupos', icon: Tags, roles: ['admin', 'gerente', 'estoque'] },
-        { id: 'suppliers', label: 'Fornecedores', icon: Truck, roles: ['admin', 'gerente', 'estoque'] },
+        { id: 'products', label: 'Produtos', icon: Package },
+        { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes },
+        { id: 'groups', label: 'Grupos', icon: Tags },
+        { id: 'suppliers', label: 'Fornecedores', icon: Truck },
       ]
     },
     {
       title: 'OPERACIONAL & GESTÃO',
       items: [
-        { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck, roles: ['admin', 'gerente', 'caixa'] },
-        { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText, roles: ['admin', 'gerente', 'caixa', 'financeiro'] },
-        { id: 'printers', label: 'Impressoras Térmicas', icon: Printer, roles: ['admin', 'gerente'] },
-        { id: 'reports', label: 'Relatórios Gerenciais', icon: BarChart3, roles: ['admin', 'gerente', 'financeiro'] },
-        { id: 'company', label: 'Perfil da Empresa', icon: Building2, roles: ['admin'] },
-        { id: 'users', label: 'Usuários & Permissões', icon: Users, roles: ['admin'] },
+        { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
+        { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },
+        { id: 'finance', label: 'Gestão Financeira & DRE', icon: Wallet },
+        { id: 'printers', label: 'Impressoras Térmicas', icon: Printer },
+        { id: 'reports', label: 'Relatórios Gerenciais', icon: BarChart3 },
+        { id: 'company', label: 'Perfil da Empresa', icon: Building2 },
+        { id: 'users', label: 'Usuários & Permissões', icon: Users },
       ]
     }
   ];
 
   return (
     <aside
-      className={`bg-stone-900 text-stone-300 border-r border-stone-800 transition-all duration-300 shrink-0 flex flex-col justify-between hidden md:flex ${
+      className={`bg-stone-900 text-stone-300 border-r border-stone-800 transition-all duration-300 shrink-0 flex flex-col hidden md:flex ${
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
       <div className="py-3 px-2 overflow-y-auto flex-1 custom-scrollbar">
         {menuSections.map((section, idx) => {
-          // Filter items based on active role
-          const allowedItems = section.items.filter(
-            (item) => currentUser.role === 'admin' || item.roles.includes(currentUser.role)
+          // Filter items based on the user's permissions
+          const allowedItems = section.items.filter((item) =>
+            hasPermission(currentUser, SCREEN_ACCESS_PERMISSION[item.id])
           );
 
           if (allowedItems.length === 0) return null;
@@ -119,16 +122,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
             </div>
           );
         })}
-      </div>
 
-      {/* Footer Collapse Button */}
-      <div className="p-2 border-t border-stone-800">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center p-2 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition"
-        >
-          {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-        </button>
+        {/* Collapse Button — logo abaixo do último item do menu (Usuários & Permissões) */}
+        <div className="p-2 border-t border-stone-800">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="w-full flex items-center justify-center p-2 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition"
+          >
+            {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
     </aside>
   );

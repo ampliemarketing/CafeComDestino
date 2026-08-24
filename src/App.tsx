@@ -4,10 +4,13 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
+import { SupportButton } from './components/common/SupportButton';
 import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags, History } from 'lucide-react';
+import { hasPermission, SCREEN_ACCESS_PERMISSION } from './lib/permissions';
 
 import { DashboardView } from './components/dashboard/DashboardView';
 import { OnlineMenuCatalog } from './components/online-menu/OnlineMenuCatalog';
+import { PublicOnlineMenu } from './components/online-menu/PublicOnlineMenu';
 import { PdvView } from './components/pdv/PdvView';
 import { WaiterApp } from './components/waiter/WaiterApp';
 import { KitchenKDS } from './components/kitchen/KitchenKDS';
@@ -18,6 +21,7 @@ import { SalesManagement } from './components/sales/SalesManagement';
 import { ProductManagement } from './components/products/ProductManagement';
 import { InventoryManagement } from './components/inventory/InventoryManagement';
 import { GroupManagement } from './components/groups/GroupManagement';
+import { SupplierManagement } from './components/suppliers/SupplierManagement';
 import { FinancialManagement } from './components/finance/FinancialManagement';
 import { FiscalManagement } from './components/fiscal/FiscalManagement';
 import { DeliveryManagement } from './components/delivery/DeliveryManagement';
@@ -25,11 +29,33 @@ import { ReportsView } from './components/reports/ReportsView';
 import { SettingsManagement } from './components/settings/SettingsManagement';
 
 const AppContent: React.FC = () => {
-  const { activeView, setActiveView } = useApp();
+  const { activeView, setActiveView, currentUser } = useApp();
   const [collapsed, setCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Se a tela atual (ex.: o "dashboard" padrão do login) não é permitida
+  // para este usuário, manda ele para a primeira tela que ele pode acessar.
+  React.useEffect(() => {
+    const requiredPermission = SCREEN_ACCESS_PERMISSION[activeView];
+    if (requiredPermission && !hasPermission(currentUser, requiredPermission)) {
+      const firstAllowed = Object.entries(SCREEN_ACCESS_PERMISSION).find(([, perm]) =>
+        hasPermission(currentUser, perm)
+      );
+      if (firstAllowed) setActiveView(firstAllowed[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
   const renderView = () => {
+    const requiredPermission = SCREEN_ACCESS_PERMISSION[activeView];
+    if (requiredPermission && !hasPermission(currentUser, requiredPermission)) {
+      return (
+        <div className="p-8 text-center text-stone-500 text-sm">
+          Você não tem permissão para acessar esta tela. Fale com um administrador.
+        </div>
+      );
+    }
+
     switch (activeView) {
       case 'dashboard':
         return <DashboardView />;
@@ -56,8 +82,9 @@ const AppContent: React.FC = () => {
       case 'products':
         return <ProductManagement />;
       case 'inventory':
-      case 'suppliers':
         return <InventoryManagement />;
+      case 'suppliers':
+        return <SupplierManagement />;
       case 'groups':
         return <GroupManagement />;
       case 'finance':
@@ -102,6 +129,7 @@ const AppContent: React.FC = () => {
         { id: 'products', label: 'Produtos', icon: Package },
         { id: 'inventory', label: 'Gestão de Estoque', icon: Boxes },
         { id: 'groups', label: 'Grupos', icon: Tags },
+        { id: 'suppliers', label: 'Fornecedores', icon: Truck },
         { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
         { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },
         { id: 'finance', label: 'Financeiro', icon: Wallet },
@@ -111,7 +139,12 @@ const AppContent: React.FC = () => {
         { id: 'printers', label: 'Impressoras Térmicas', icon: Printer },
       ]
     }
-  ];
+  ]
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => hasPermission(currentUser, SCREEN_ACCESS_PERMISSION[item.id])),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <div className="min-h-screen bg-[#F6F1EA] text-stone-900 flex flex-col font-sans selection:bg-amber-800 selection:text-white">
@@ -127,6 +160,7 @@ const AppContent: React.FC = () => {
 
       <MobileNav onOpenFullMenu={() => setIsMobileMenuOpen(true)} />
       <NotificationToast />
+      <SupportButton />
 
       {/* Mobile Drawer Menu */}
       {isMobileMenuOpen && (
@@ -191,6 +225,13 @@ const AppContent: React.FC = () => {
 };
 
 export default function App() {
+  // /pedir é o cardápio público (cliente convidado, sem login) — roda fora
+  // do AppProvider de propósito, pra não depender de sessão de funcionário
+  // nem tocar na tabela profiles usada pelo login interno.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/pedir')) {
+    return <PublicOnlineMenu />;
+  }
+
   return (
     <AppProvider>
       <AppContent />

@@ -350,6 +350,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                     { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
                     { id: 'cartao_debito', label: 'Débito', icon: '💳' },
                     { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                    { id: 'vale_refeicao', label: 'Vale-refeição', icon: '🎫' },
                   ].map((m) => (
                     <button
                       key={m.id}
@@ -385,6 +386,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                         <option value="cartao_credito">Cartão de Crédito</option>
                         <option value="cartao_debito">Cartão de Débito</option>
                         <option value="dinheiro">Dinheiro</option>
+                        <option value="vale_refeicao">Vale-refeição</option>
                       </select>
                       <div className="relative flex-1">
                         <span className="absolute left-2.5 top-2 text-stone-400 font-bold">R$</span>

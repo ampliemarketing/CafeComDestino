@@ -16,6 +16,8 @@ export interface User {
   active: boolean;
   phone?: string;
   code?: string; // Short PIN/Code for fast waiter/cashier login
+  cpf?: string;
+  permissions: string[]; // Chaves do catálogo em src/lib/permissions.ts
 }
 
 export interface CompanyProfileData {
@@ -301,6 +303,7 @@ export interface CashMovement {
   shiftId: string;
   type: 'reforco' | 'sangria' | 'venda_dinheiro';
   amount: number;
+  name: string;
   reason: string;
   userName: string;
   timestamp: string;
@@ -315,6 +318,8 @@ export interface Supplier {
   email: string;
   suppliedCategories: string[];
   contactPerson: string;
+  notes?: string;
+  active: boolean;
 }
 
 export type LossReason = 

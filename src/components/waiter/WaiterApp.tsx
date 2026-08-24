@@ -26,6 +26,7 @@ import { DiningTable, Product, ProductAddition, TableStatus, PaymentMethod, Orde
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
 import { PartialPaymentModal } from '../tables/PartialPaymentModal';
+import { hasPermission } from '../../lib/permissions';
 
 export const WaiterApp: React.FC = () => {
   const {
@@ -43,6 +44,8 @@ export const WaiterApp: React.FC = () => {
     closeComandaAndPay,
     addToast
   } = useApp();
+
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null);
   const [selectedComandaId, setSelectedComandaId] = useState<string | null>(null);
@@ -232,6 +235,7 @@ export const WaiterApp: React.FC = () => {
                 <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
                   {tables.filter((t) => t.status === 'livre').length} livres
                 </span>
+                {can('mesas.criar') && (
                 <button
                   onClick={() => {
                     if (tableSectors.length === 0) {
@@ -249,6 +253,7 @@ export const WaiterApp: React.FC = () => {
                   <Plus className="w-4 h-4" />
                   <span>Nova Mesa</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -342,6 +347,7 @@ export const WaiterApp: React.FC = () => {
           </div>
 
           {/* Quick Quilo Launch for Waiter */}
+          {can('mesas.lancar_item') && (
           <div className="bg-gradient-to-r from-amber-900 to-stone-900 text-white p-3 rounded-2xl shadow-sm border border-amber-800 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -382,6 +388,7 @@ export const WaiterApp: React.FC = () => {
               </button>
             </div>
           </div>
+          )}
 
           {/* Search & Categories */}
           <div className="space-y-2">
@@ -502,7 +509,8 @@ export const WaiterApp: React.FC = () => {
 
             <button
               onClick={handleSendItemToKitchen}
-              className="w-full bg-amber-800 hover:bg-amber-900 text-white py-4 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2"
+              disabled={!can('mesas.lancar_item')}
+              className="w-full bg-amber-800 hover:bg-amber-900 text-white py-4 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Send className="w-5 h-5" />
               <span>Enviar para Cozinha • R$ {(selectedProduct.price * productQty).toFixed(2)}</span>
@@ -583,7 +591,7 @@ export const WaiterApp: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-amber-800 text-xs">R$ {(item.unitPrice * item.quantity).toFixed(2)}</span>
-                      {item.status !== 'cancelado' && (
+                      {item.status !== 'cancelado' && can('mesas.cancelar_item') && (
                         <button
                           onClick={() => cancelComandaItem(currentActiveTable.id, currentComanda.id, item.id, 'Solicitado pelo cliente')}
                           className="text-rose-600 hover:text-rose-800 p-2"
@@ -618,6 +626,7 @@ export const WaiterApp: React.FC = () => {
 
           {/* Comanda Operational Actions */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {can('mesas.pagamento_parcial') && (
             <button
               onClick={() => setIsPartialModalOpen(true)}
               className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
@@ -625,7 +634,9 @@ export const WaiterApp: React.FC = () => {
               <Receipt className="w-5 h-5 text-amber-700" />
               <span>Pagamento Parcial</span>
             </button>
+            )}
 
+            {can('mesas.transferir') && (
             <button
               onClick={() => setIsTransferModalOpen(true)}
               className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
@@ -633,7 +644,9 @@ export const WaiterApp: React.FC = () => {
               <ArrowRightLeft className="w-5 h-5 text-blue-700" />
               <span>Transferir Comanda</span>
             </button>
+            )}
 
+            {can('mesas.imprimir') && (
             <button
               onClick={() => setIsPrintModalOpen(true)}
               className="p-4 bg-white rounded-2xl border border-stone-200 font-semibold text-sm text-stone-800 hover:bg-stone-50 flex items-center justify-center gap-2"
@@ -641,7 +654,9 @@ export const WaiterApp: React.FC = () => {
               <Printer className="w-5 h-5 text-emerald-700" />
               <span>Imprimir Pré-Conta</span>
             </button>
+            )}
 
+            {can('mesas.fechar_comanda') && (
             <button
               onClick={() => {
                 setFinalPaymentMethod('pix');
@@ -657,6 +672,7 @@ export const WaiterApp: React.FC = () => {
               <DollarSign className="w-5 h-5" />
               <span>Encerrar & Receber</span>
             </button>
+            )}
           </div>
         </div>
       )}
@@ -779,7 +795,7 @@ export const WaiterApp: React.FC = () => {
               </button>
               <button
                 onClick={confirmOpenComanda}
-                disabled={!comandaNamesInput.some((n) => n.trim().length > 0)}
+                disabled={!can('mesas.abrir_comanda') || !comandaNamesInput.some((n) => n.trim().length > 0)}
                 className="flex-1 py-3.5 bg-amber-800 text-white font-bold rounded-xl text-sm shadow disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Abrir Comanda{comandaNamesInput.filter((n) => n.trim().length > 0).length > 1 ? 's' : ''}
@@ -845,6 +861,7 @@ export const WaiterApp: React.FC = () => {
                     { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
                     { id: 'cartao_debito', label: 'Débito', icon: '💳' },
                     { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                    { id: 'vale_refeicao', label: 'Vale-refeição', icon: '🎫' },
                     { id: 'boleto', label: 'Boleto', icon: '🧾' },
                   ].map((m) => (
                     <button
@@ -881,6 +898,8 @@ export const WaiterApp: React.FC = () => {
                         <option value="cartao_credito">Cartão de Crédito</option>
                         <option value="cartao_debito">Cartão de Débito</option>
                         <option value="dinheiro">Dinheiro</option>
+                        <option value="vale_refeicao">Vale-refeição</option>
+                        <option value="boleto">Boleto</option>
                       </select>
                       <div className="relative flex-1">
                         <span className="absolute left-2.5 top-2 text-stone-400 font-bold">R$</span>

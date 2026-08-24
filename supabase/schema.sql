@@ -82,6 +82,19 @@ create table ingredient_categories (
   name text not null
 );
 
+create table suppliers (
+  id text primary key,
+  name text not null,
+  trade_name text not null default '',
+  cnpj_cpf text not null default '',
+  phone text not null default '',
+  email text not null default '',
+  supplied_categories jsonb not null default '[]'::jsonb,
+  contact_person text not null default '',
+  notes text,
+  active boolean not null default true
+);
+
 create table ingredients (
   id text primary key,
   name text not null,
@@ -215,6 +228,7 @@ create table cash_movements (
   shift_id text not null references cash_shifts(id) on delete cascade,
   type text not null check (type in ('reforco', 'sangria', 'venda_dinheiro')),
   amount numeric(10,2) not null,
+  name text not null default '',
   reason text not null default '',
   user_name text not null default '',
   timestamp text not null default ''
@@ -232,6 +246,7 @@ alter table orders add column shift_id text references cash_shifts(id);
 alter table profiles enable row level security;
 alter table categories enable row level security;
 alter table ingredient_categories enable row level security;
+alter table suppliers enable row level security;
 alter table sale_units enable row level security;
 alter table ingredients enable row level security;
 alter table products enable row level security;
@@ -250,6 +265,7 @@ create policy "admin_update_any_profile" on profiles for update
 
 create policy "authenticated_all_categories" on categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredient_categories" on ingredient_categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated_all_suppliers" on suppliers for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_sale_units" on sale_units for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredients" on ingredients for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_products" on products for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -263,7 +279,7 @@ create policy "authenticated_all_cash_movements" on cash_movements for all using
 -- ----------------------------------------------------------------------------
 -- 5. Realtime — cozinha/garçom/caixa recebem mudanças ao vivo
 -- ----------------------------------------------------------------------------
-alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements, table_sectors;
+alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements, table_sectors, suppliers;
 
 -- ----------------------------------------------------------------------------
 -- 6. Funções RPC transacionais para os fluxos financeiros críticos
@@ -445,10 +461,10 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into cash_movements (id, shift_id, type, amount, reason, user_name, "timestamp")
+  insert into cash_movements (id, shift_id, type, amount, name, reason, user_name, "timestamp")
   values (
     p_movement->>'id', p_movement->>'shiftId', p_movement->>'type',
-    (p_movement->>'amount')::numeric, p_movement->>'reason', p_movement->>'userName', p_movement->>'timestamp'
+    (p_movement->>'amount')::numeric, p_movement->>'name', p_movement->>'reason', p_movement->>'userName', p_movement->>'timestamp'
   );
 
   update cash_shifts set

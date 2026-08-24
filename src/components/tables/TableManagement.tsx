@@ -26,6 +26,7 @@ import { DiningTable, TableStatus, PaymentMethod } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { PartialPaymentModal } from './PartialPaymentModal';
 import { CourtesyModal } from './CourtesyModal';
+import { hasPermission } from '../../lib/permissions';
 
 export const TableManagement: React.FC = () => {
   const {
@@ -41,6 +42,8 @@ export const TableManagement: React.FC = () => {
     addToast,
     currentUser
   } = useApp();
+
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [selectedSector, setSelectedSector] = useState<string>('todos');
   const [tableSearchQuery, setTableSearchQuery] = useState('');
@@ -144,6 +147,7 @@ export const TableManagement: React.FC = () => {
             ))}
           </div>
 
+          {can('mesas.criar') && (
           <button
             onClick={() => {
               if (tableSectors.length === 0) {
@@ -161,6 +165,7 @@ export const TableManagement: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>Nova Mesa</span>
           </button>
+          )}
         </div>
       </div>
 
@@ -222,7 +227,7 @@ export const TableManagement: React.FC = () => {
                   <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${badge.class}`}>
                     {badge.label}
                   </span>
-                  {tb.status === 'livre' && (
+                  {tb.status === 'livre' && can('mesas.excluir') && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -354,6 +359,7 @@ export const TableManagement: React.FC = () => {
 
             {/* Quick Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
+              {can('mesas.transferir') && (
               <button
                 onClick={() => setIsTransferModalOpen(true)}
                 className="bg-stone-100 hover:bg-stone-200 text-stone-800 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-stone-300"
@@ -361,7 +367,9 @@ export const TableManagement: React.FC = () => {
                 <ArrowRightLeft className="w-4 h-4 text-stone-600" />
                 <span>Transferir Comanda</span>
               </button>
+              )}
 
+              {can('mesas.cortesia') && (
               <button
                 onClick={() => setIsCourtesyModalOpen(true)}
                 className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-amber-300"
@@ -369,7 +377,9 @@ export const TableManagement: React.FC = () => {
                 <Gift className="w-4 h-4 text-amber-800" />
                 <span>Lançar Cortesia</span>
               </button>
+              )}
 
+              {can('mesas.pagamento_parcial') && (
               <button
                 onClick={() => setIsPartialModalOpen(true)}
                 className="bg-amber-800 hover:bg-amber-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
@@ -377,7 +387,9 @@ export const TableManagement: React.FC = () => {
                 <Receipt className="w-4 h-4" />
                 <span>Adiantamento Parcial</span>
               </button>
+              )}
 
+              {can('mesas.imprimir') && (
               <button
                 onClick={() => setIsPrintModalOpen(true)}
                 className="bg-stone-800 hover:bg-stone-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
@@ -385,7 +397,9 @@ export const TableManagement: React.FC = () => {
                 <Printer className="w-4 h-4" />
                 <span>Pré-Conta</span>
               </button>
+              )}
 
+              {can('mesas.fechar_comanda') && (
               <button
                 onClick={() => setIsFinalPayModalOpen(true)}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
@@ -393,6 +407,7 @@ export const TableManagement: React.FC = () => {
                 <DollarSign className="w-4 h-4" />
                 <span>Fechar e Receber Comanda</span>
               </button>
+              )}
             </div>
           </div>
 
@@ -473,7 +488,7 @@ export const TableManagement: React.FC = () => {
                       <span className={`font-bold text-xs ${it.isCourtesy ? 'line-through text-stone-400' : 'text-stone-900'}`}>
                         R$ {(it.unitPrice * it.quantity).toFixed(2)}
                       </span>
-                      {!it.isPaid && !it.isCourtesy && (
+                      {!it.isPaid && !it.isCourtesy && can('mesas.cancelar_item') && (
                         <button
                           onClick={() => cancelComandaItem(currentActiveTable.id, currentComanda.id, it.id, 'Cancelado pelo operador')}
                           className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded-lg"
@@ -533,7 +548,7 @@ export const TableManagement: React.FC = () => {
                       <strong className={`font-bold text-sm ${adv.status === 'estornado' ? 'line-through text-stone-400' : 'text-amber-900'}`}>
                         R$ {adv.amount.toFixed(2)}
                       </strong>
-                      {adv.status === 'ativo' && (
+                      {adv.status === 'ativo' && can('mesas.estornar_pagamento_parcial') && (
                         <button
                           onClick={() => {
                             if (confirm(`Estornar o adiantamento de R$ ${adv.amount.toFixed(2)} (${adv.customerName})?`)) {
@@ -708,7 +723,8 @@ export const TableManagement: React.FC = () => {
                   setIsOpenModalOpen(false);
                   if (created) setSelectedComandaId(created.id);
                 }}
-                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+                disabled={!can('mesas.abrir_comanda')}
+                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow disabled:opacity-50"
               >
                 Abrir Comanda
               </button>
@@ -758,6 +774,7 @@ export const TableManagement: React.FC = () => {
                   </div>
 
                   {/* Discount */}
+                  {can('mesas.desconto') && (
                   <div>
                     <label className="font-semibold text-stone-700 block mb-1">Desconto Extra (R$)</label>
                     <input
@@ -769,6 +786,7 @@ export const TableManagement: React.FC = () => {
                       className="w-full border rounded-xl p-2 font-bold"
                     />
                   </div>
+                  )}
 
                   {/* Payment method for remaining */}
                   {finalAmountToCollect > 0 ? (
@@ -780,6 +798,7 @@ export const TableManagement: React.FC = () => {
                           { id: 'cartao_credito', label: 'Crédito', icon: '💳' },
                           { id: 'cartao_debito', label: 'Débito', icon: '💳' },
                           { id: 'dinheiro', label: 'Dinheiro', icon: '💵' },
+                          { id: 'vale_refeicao', label: 'Vale-refeição', icon: '🎫' },
                         ].map((m) => (
                           <button
                             key={m.id}

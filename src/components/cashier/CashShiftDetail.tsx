@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { CashMovement, Order } from '../../types';
 import { fetchShiftOrders, computeShiftStats, diffTone, diffToneClasses } from './shiftStats';
 import { CashShiftPrintReport } from './CashShiftPrintReport';
+import { hasPermission } from '../../lib/permissions';
 import {
   ArrowLeft,
   Wallet,
@@ -35,6 +36,7 @@ const mapMovementRow = (row: any): CashMovement => ({
   shiftId: row.shift_id,
   type: row.type,
   amount: Number(row.amount),
+  name: row.name,
   reason: row.reason,
   userName: row.user_name,
   timestamp: row.timestamp,
@@ -45,14 +47,16 @@ const JUSTIFICATION_THRESHOLD = 10;
 
 export const CashShiftDetail: React.FC = () => {
   const { cashShiftsHistory, selectedCashShiftId, setActiveView, products, categories, currentUser, closeCashShift, addCashMovement } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [shiftOrders, setShiftOrders] = useState<Order[]>([]);
 
-  // Nova Movimentação (sangria/reforço)
+  // Nova Movimentação (entrada/saída)
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const [movType, setMovType] = useState<'reforco' | 'sangria'>('sangria');
-  const [movAmount, setMovAmount] = useState<number>(50);
+  const [movName, setMovName] = useState<string>('');
+  const [movAmount, setMovAmount] = useState<string>('');
   const [movReason, setMovReason] = useState<string>('');
 
   // Conferência / fechamento
@@ -183,12 +187,14 @@ export const CashShiftDetail: React.FC = () => {
         <button onClick={goBack} className="flex items-center gap-1.5 text-xs font-bold text-stone-500 hover:text-stone-800">
           <ArrowLeft className="w-4 h-4" /> Voltar para Caixas
         </button>
+        {can('caixas.imprimir') && (
         <button
           onClick={() => window.print()}
           className="px-3.5 py-2 rounded-xl text-xs font-bold border border-stone-300 text-stone-700 hover:bg-stone-100 flex items-center gap-1.5"
         >
           <Printer className="w-3.5 h-3.5" /> Imprimir Relatório
         </button>
+        )}
       </div>
 
       {/* Header Banner */}
@@ -228,6 +234,7 @@ export const CashShiftDetail: React.FC = () => {
 
         {isOpen && (
           <div className="flex items-center gap-2">
+            {can('caixas.movimentacao') && (
             <button
               onClick={() => setIsMovementModalOpen(true)}
               className="bg-amber-800 hover:bg-amber-900 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow flex items-center gap-1.5"
@@ -235,7 +242,8 @@ export const CashShiftDetail: React.FC = () => {
               <DollarSign className="w-4 h-4" />
               <span>Nova Movimentação</span>
             </button>
-            {!isClosing && (
+            )}
+            {!isClosing && can('caixas.fechar') && (
               <button
                 onClick={startClosing}
                 className="bg-rose-700 hover:bg-rose-800 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
@@ -465,7 +473,8 @@ export const CashShiftDetail: React.FC = () => {
               <tr>
                 <th className="p-2.5">Horário</th>
                 <th className="p-2.5">Tipo</th>
-                <th className="p-2.5">Motivo</th>
+                <th className="p-2.5">Nome</th>
+                <th className="p-2.5">Observação</th>
                 <th className="p-2.5">Operador</th>
                 <th className="p-2.5 text-right">Valor</th>
               </tr>
@@ -473,14 +482,14 @@ export const CashShiftDetail: React.FC = () => {
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-stone-400">
+                  <td colSpan={6} className="p-6 text-center text-stone-400">
                     <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Carregando movimentações...
                   </td>
                 </tr>
               ) : movements.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-stone-400">
-                    Nenhuma sangria ou reforço registrado neste turno.
+                  <td colSpan={6} className="p-6 text-center text-stone-400">
+                    Nenhuma movimentação registrada neste turno.
                   </td>
                 </tr>
               ) : (
@@ -491,10 +500,11 @@ export const CashShiftDetail: React.FC = () => {
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                         m.type === 'reforco' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                       }`}>
-                        {m.type}
+                        {m.type === 'reforco' ? 'Entrada' : 'Saída'}
                       </span>
                     </td>
-                    <td className="p-2.5 text-stone-800">{m.reason}</td>
+                    <td className="p-2.5 font-semibold text-stone-800">{m.name}</td>
+                    <td className="p-2.5 text-stone-600">{m.reason}</td>
                     <td className="p-2.5 text-stone-600">{m.userName}</td>
                     <td className={`p-2.5 text-right font-bold ${m.type === 'reforco' ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {m.type === 'reforco' ? '+' : '-'} R$ {m.amount.toFixed(2)}
@@ -575,7 +585,7 @@ export const CashShiftDetail: React.FC = () => {
                   movType === 'sangria' ? 'bg-rose-700 text-white border-rose-700' : 'bg-stone-50 border-stone-200 text-stone-700'
                 }`}
               >
-                Sangria (Retirada)
+                Saída
               </button>
               <button
                 onClick={() => setMovType('reforco')}
@@ -583,22 +593,33 @@ export const CashShiftDetail: React.FC = () => {
                   movType === 'reforco' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-stone-50 border-stone-200 text-stone-700'
                 }`}
               >
-                Reforço (Entrada)
+                Entrada
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Valor (R$)</label>
+                <label className="font-semibold text-stone-700 block mb-1">Nome</label>
                 <input
-                  type="number"
-                  value={movAmount}
-                  onChange={(e) => setMovAmount(Number(e.target.value))}
+                  type="text"
+                  placeholder="Ex: Troco extra, Compra de gás..."
+                  value={movName}
+                  onChange={(e) => setMovName(e.target.value)}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">Motivo / Justificativa</label>
+                <label className="font-semibold text-stone-700 block mb-1">Valor (R$)</label>
+                <input
+                  type="number"
+                  placeholder="0,00"
+                  value={movAmount}
+                  onChange={(e) => setMovAmount(e.target.value)}
+                  className="w-full border rounded-xl p-2.5 font-bold"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">Observação</label>
                 <input
                   type="text"
                   placeholder="Ex: Pagamento fornecedor hortifruti, troco extra..."
@@ -611,13 +632,17 @@ export const CashShiftDetail: React.FC = () => {
 
             <button
               onClick={() => {
-                if (movAmount > 0 && movReason) {
-                  addCashMovement(movType, movAmount, movReason);
+                const amount = Number(movAmount);
+                if (amount > 0 && movName.trim()) {
+                  addCashMovement(movType, amount, movName.trim(), movReason);
                   setIsMovementModalOpen(false);
+                  setMovName('');
+                  setMovAmount('');
                   setMovReason('');
                 }
               }}
-              className="w-full bg-amber-800 text-white py-3 rounded-xl font-bold text-xs shadow"
+              disabled={!(Number(movAmount) > 0 && movName.trim())}
+              className="w-full bg-amber-800 text-white py-3 rounded-xl font-bold text-xs shadow disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Confirmar Movimento
             </button>

@@ -79,6 +79,8 @@ export const DashboardView: React.FC = () => {
     cartao_credito: 'Cartão de Crédito',
     cartao_debito: 'Cartão de Débito',
     dinheiro: 'Dinheiro',
+    vale_refeicao: 'Vale-refeição',
+    boleto: 'Boleto',
     multiplo: 'Múltiplo',
   };
   const paymentMethodColors: Record<string, string> = {
@@ -86,6 +88,8 @@ export const DashboardView: React.FC = () => {
     cartao_credito: '#A67C52',
     cartao_debito: '#3B82F6',
     dinheiro: '#D98532',
+    vale_refeicao: '#7C3AED',
+    boleto: '#78716C',
     multiplo: '#8B5CF6',
   };
   const paymentBreakdownData = Object.entries(

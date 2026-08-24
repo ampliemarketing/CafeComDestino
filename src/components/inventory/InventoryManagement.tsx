@@ -21,6 +21,7 @@ import {
   Tag
 } from 'lucide-react';
 import { Ingredient, Product, LossReason, CourtesyReason } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 const INGREDIENT_UNITS: Ingredient['unit'][] = ['KG', 'G', 'L', 'ML', 'UN', 'CX'];
 
@@ -44,6 +45,7 @@ export const InventoryManagement: React.FC = () => {
     setActiveView,
     addToast
   } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [activeTab, setActiveTab] = useState<'stock' | 'losses' | 'courtesies'>('stock');
   const [searchQuery, setSearchQuery] = useState('');
@@ -360,6 +362,7 @@ export const InventoryManagement: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+              {can('estoque.criar_insumo') && (
               <button
                 onClick={handleOpenCreateIngredient}
                 title="Insumo é matéria-prima de uso interno (ex: carne, tomate, embalagens). Itens vendáveis do cardápio são cadastrados em Cadastro de Produtos."
@@ -368,7 +371,9 @@ export const InventoryManagement: React.FC = () => {
                 <Plus className="w-4 h-4" />
                 <span>Cadastrar Novo Insumo</span>
               </button>
+              )}
 
+              {can('estoque.entrada') && (
               <button
                 onClick={() => handleOpenStockEntryModal()}
                 className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow transition flex items-center justify-center gap-1.5"
@@ -376,7 +381,9 @@ export const InventoryManagement: React.FC = () => {
                 <Plus className="w-4 h-4" />
                 <span>Adicionar Estoque</span>
               </button>
+              )}
 
+              {can('estoque.perda') && (
               <button
                 onClick={() => handleOpenLossModal('ingredient')}
                 className="flex-1 sm:flex-none px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-xl text-xs shadow transition flex items-center justify-center gap-1.5"
@@ -384,7 +391,9 @@ export const InventoryManagement: React.FC = () => {
                 <TrendingDown className="w-4 h-4" />
                 <span>Registrar Perda</span>
               </button>
+              )}
 
+              {can('estoque.cortesia') && (
               <button
                 onClick={() => {
                   setCourtesyProductId(products[0]?.id || '');
@@ -395,6 +404,7 @@ export const InventoryManagement: React.FC = () => {
                 <Gift className="w-4 h-4" />
                 <span>Registrar Cortesia</span>
               </button>
+              )}
             </div>
           </div>
 
@@ -439,6 +449,7 @@ export const InventoryManagement: React.FC = () => {
                         <td className="p-3.5 font-bold text-amber-900">R$ {(ing.stockQuantity * ing.avgCostUnit).toFixed(2)}</td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            {can('estoque.editar_insumo') && (
                             <button
                               onClick={() => handleOpenEditIngredient(ing)}
                               title="Editar insumo"
@@ -446,6 +457,8 @@ export const InventoryManagement: React.FC = () => {
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
+                            )}
+                            {can('estoque.excluir_insumo') && (
                             <button
                               onClick={() => handleDeleteIngredient(ing)}
                               title="Excluir insumo"
@@ -453,6 +466,7 @@ export const InventoryManagement: React.FC = () => {
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -525,6 +539,7 @@ export const InventoryManagement: React.FC = () => {
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
+                              {can('produtos.excluir') && (
                               <button
                                 onClick={() => handleDeleteProduct(p)}
                                 title="Excluir produto"
@@ -532,6 +547,7 @@ export const InventoryManagement: React.FC = () => {
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -575,12 +591,14 @@ export const InventoryManagement: React.FC = () => {
                 <span className="text-stone-500 text-xs font-semibold block">Ação Recomendada</span>
                 <span className="text-xs text-amber-900 font-bold block mt-1">Conferência semanal de validade</span>
               </div>
+              {can('estoque.perda') && (
               <button
                 onClick={() => handleOpenLossModal('ingredient')}
                 className="bg-rose-700 hover:bg-rose-800 text-white font-bold px-3 py-2 rounded-xl text-xs shadow"
               >
                 + Nova Perda
               </button>
+              )}
             </div>
           </div>
 
@@ -677,6 +695,7 @@ export const InventoryManagement: React.FC = () => {
                 <span className="text-stone-500 text-xs font-semibold block">Itens Cortesia Entregues</span>
                 <strong className="text-stone-900 font-bold text-2xl">{totalCourtesyCount} unidades</strong>
               </div>
+              {can('estoque.cortesia') && (
               <button
                 onClick={() => {
                   setCourtesyProductId(products[0]?.id || '');
@@ -686,6 +705,7 @@ export const InventoryManagement: React.FC = () => {
               >
                 + Nova Cortesia
               </button>
+              )}
             </div>
           </div>
 

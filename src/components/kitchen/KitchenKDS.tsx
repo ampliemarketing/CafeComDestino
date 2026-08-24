@@ -15,9 +15,12 @@ import {
   Volume2
 } from 'lucide-react';
 import { OrderStatus } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 export const KitchenKDS: React.FC = () => {
-  const { orders, updateOrderStatus, addToast } = useApp();
+  const { orders, updateOrderStatus, addToast, currentUser } = useApp();
+  const canAdvance = hasPermission(currentUser, 'kitchen.avancar_status');
+  const canCallSupport = hasPermission(currentUser, 'kitchen.chamar_apoio');
 
   const columns: { status: OrderStatus; title: string; color: string }[] = [
     { status: 'novo', title: 'Novos Recebidos', color: 'border-blue-500 bg-blue-50 text-blue-950' },
@@ -153,6 +156,7 @@ export const KitchenKDS: React.FC = () => {
 
                         {/* Kitchen Action Buttons */}
                         <div className="pt-2 border-t flex flex-col gap-1.5">
+                          {canAdvance && (
                           <button
                             onClick={() => handleAdvanceStatus(ord.id, ord.orderStatus)}
                             className="w-full bg-amber-800 hover:bg-amber-900 text-white py-2 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5"
@@ -165,7 +169,9 @@ export const KitchenKDS: React.FC = () => {
                               {ord.orderStatus === 'pronto' && 'Concluir Expedição'}
                             </span>
                           </button>
+                          )}
 
+                          {canCallSupport && (
                           <button
                             onClick={() => notifyWaiterHelp(ord.orderNumber)}
                             className="w-full bg-stone-100 hover:bg-stone-200 text-stone-700 py-1.5 rounded-xl text-[11px] font-semibold border border-stone-300 flex items-center justify-center gap-1"
@@ -173,6 +179,7 @@ export const KitchenKDS: React.FC = () => {
                             <BellRing className="w-3.5 h-3.5 text-amber-700" />
                             <span>Chamar Garçom / Suporte</span>
                           </button>
+                          )}
                         </div>
                       </div>
                     );

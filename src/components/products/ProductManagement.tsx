@@ -13,9 +13,11 @@ import {
   Trash2
 } from 'lucide-react';
 import { Product, ProductAddition, Category, SaleUnit } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 export const ProductManagement: React.FC = () => {
-  const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast } = useApp();
+  const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
@@ -138,6 +140,7 @@ export const ProductManagement: React.FC = () => {
           </div>
         </div>
 
+        {can('produtos.criar') && (
         <button
           onClick={handleOpenCreate}
           className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
@@ -145,6 +148,7 @@ export const ProductManagement: React.FC = () => {
           <Plus className="w-4 h-4" />
           <span>Cadastrar Novo Produto</span>
         </button>
+        )}
       </div>
 
       {/* Filter bar */}
@@ -247,9 +251,12 @@ export const ProductManagement: React.FC = () => {
                     </td>
                     <td className="p-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {can('produtos.editar') && (
                         <button onClick={() => handleOpenEdit(p)} title="Editar produto" className="p-1.5 text-stone-600 hover:text-stone-900">
                           <Edit2 className="w-4 h-4" />
                         </button>
+                        )}
+                        {can('produtos.excluir') && (
                         <button
                           onClick={() => handleDeleteProduct(p)}
                           title="Excluir produto"
@@ -257,6 +264,7 @@ export const ProductManagement: React.FC = () => {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

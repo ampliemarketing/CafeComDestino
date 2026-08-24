@@ -14,20 +14,25 @@ import {
   Upload,
   Image,
   Camera,
-  Globe,
-  KeyRound
+  Globe
 } from 'lucide-react';
-import { UserRole } from '../../types';
+import { User } from '../../types';
+import { hasPermission } from '../../lib/permissions';
+import { UserFormModal } from './UserFormModal';
 
 interface SettingsManagementProps {
   initialTab?: 'profile' | 'users' | 'printers';
 }
 
 export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialTab = 'profile' }) => {
-  const { companyProfile, setCompanyProfile, products, saveProduct, users, updateUserProfile, currentUser, addToast } = useApp();
+  const { companyProfile, setCompanyProfile, products, saveProduct, users, currentUser, addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'printers'>(initialTab);
-  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
+  const [userModalTarget, setUserModalTarget] = useState<User | 'new' | null>(null);
+
+  const canEditCompanyProfile = hasPermission(currentUser, 'empresa.editar_perfil');
+  const canEditCompanyMedia = hasPermission(currentUser, 'empresa.editar_midia');
+  const canEditBuffetPrices = hasPermission(currentUser, 'empresa.editar_precos_buffet');
 
   React.useEffect(() => {
     if (initialTab) {
@@ -50,6 +55,10 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const [lunchPriceInput, setLunchPriceInput] = useState<number>(companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00);
   const [breakfastPriceInput, setBreakfastPriceInput] = useState<number>(companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99);
   const [tareInput, setTareInput] = useState<number>(companyProfile.buffetPrices?.plateTareGrams ?? 200);
+
+  // Cardápio Online / Entrega State
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState<number>(companyProfile.deliveryFee ?? 0);
+  const [minOrderValueInput, setMinOrderValueInput] = useState<number>(companyProfile.minOrderValue ?? 0);
 
   // File upload handlers
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,7 +141,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
             <div>
               <h3 className="font-bold text-stone-900 text-sm border-b pb-2 mb-3">Identidade Visual & Dados Gerais</h3>
 
-              <div className="space-y-3">
+              <fieldset disabled={!canEditCompanyProfile} className="space-y-3 disabled:opacity-60">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="font-semibold text-stone-700 block mb-1">Nome do Estabelecimento *</label>
@@ -140,7 +149,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       type="text"
                       value={nameInput}
                       onChange={(e) => setNameInput(e.target.value)}
-                      className="w-full border rounded-xl p-2.5 font-bold"
+                      className="w-full border rounded-xl p-2.5 font-bold disabled:bg-stone-100 disabled:text-stone-500"
                     />
                   </div>
 
@@ -189,7 +198,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     <span className="font-mono text-stone-700">{primaryColorInput}</span>
                   </div>
                 </div>
-              </div>
+              </fieldset>
             </div>
 
             {/* Fotos de Perfil e Banner de Capa do Cardápio Online */}
@@ -206,6 +215,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                 </div>
               </div>
 
+              <fieldset disabled={!canEditCompanyMedia} className="space-y-4 disabled:opacity-60">
               {/* Logo / Foto de Perfil */}
               <div className="space-y-2">
                 <label className="font-bold text-stone-800 block">1. Foto de Perfil / Logomarca da Empresa:</label>
@@ -329,6 +339,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   </div>
                 </div>
               </div>
+              </fieldset>
             </div>
 
             {/* Valores de Comida por Quilo (Buffet / Balança) */}
@@ -345,7 +356,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <fieldset disabled={!canEditBuffetPrices} className="grid grid-cols-1 sm:grid-cols-3 gap-3 disabled:opacity-60">
                 <div>
                   <label className="font-semibold text-stone-800 block mb-1">Almoço por Quilo (R$/kg)</label>
                   <div className="relative">
@@ -390,9 +401,56 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   </div>
                   <p className="text-[10px] text-stone-500 mt-1">Peso a descontar na balança</p>
                 </div>
-              </div>
+              </fieldset>
             </div>
 
+            {/* Configurações de Entrega (Cardápio Online) */}
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-800 text-white rounded-lg">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <h4 className="font-bold text-stone-900 text-sm">Configurações de Entrega (Cardápio Online)</h4>
+                </div>
+              </div>
+
+              <fieldset disabled={!canEditCompanyProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-3 disabled:opacity-60">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Taxa de Entrega (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 font-bold text-stone-500">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={deliveryFeeInput}
+                      onChange={(e) => setDeliveryFeeInput(parseFloat(e.target.value) || 0)}
+                      className="w-full border rounded-xl p-2.5 pl-9 font-bold"
+                    />
+                  </div>
+                  <p className="text-[10px] text-stone-500 mt-1">Cobrada nos pedidos com entrega, no Cardápio Online.</p>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Pedido Mínimo (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 font-bold text-stone-500">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={minOrderValueInput}
+                      onChange={(e) => setMinOrderValueInput(parseFloat(e.target.value) || 0)}
+                      className="w-full border rounded-xl p-2.5 pl-9 font-bold"
+                    />
+                  </div>
+                  <p className="text-[10px] text-stone-500 mt-1">Mostrado como referência no cabeçalho do cardápio.</p>
+                </div>
+              </fieldset>
+            </div>
+
+            {(canEditCompanyProfile || canEditCompanyMedia || canEditBuffetPrices) && (
             <button
               onClick={() => {
                 const updatedProfile = {
@@ -407,7 +465,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     lunchPricePerKg: lunchPriceInput,
                     breakfastPricePerKg: breakfastPriceInput,
                     plateTareGrams: tareInput,
-                  }
+                  },
+                  deliveryFee: deliveryFeeInput,
+                  minOrderValue: minOrderValueInput,
                 };
                 setCompanyProfile(updatedProfile);
 
@@ -421,13 +481,14 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   }
                 });
 
-                addToast('success', 'Configurações Salvas', 'Perfil, foto de perfil, banner e valores por quilo atualizados!');
+                addToast('success', 'Configurações Salvas', 'Perfil, foto de perfil, banner, valores por quilo e entrega atualizados!');
               }}
               className="bg-amber-800 hover:bg-amber-900 text-white px-6 py-3 rounded-xl font-bold text-xs shadow transition flex items-center gap-2"
             >
               <CheckCircle2 className="w-4 h-4" />
               Salvar Alterações
             </button>
+            )}
           </div>
         )}
 
@@ -436,78 +497,58 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           <div className="space-y-4 text-xs">
             <div className="flex justify-between items-center border-b pb-2">
               <h3 className="font-bold text-stone-900 text-sm">Usuários Cadastrados no Sistema</h3>
-              <p className="text-[10px] text-stone-500">Novos funcionários criam a própria conta na tela de login ("Criar conta").</p>
+              {hasPermission(currentUser, 'usuarios.criar') && (
+                <button
+                  onClick={() => setUserModalTarget('new')}
+                  className="bg-amber-800 hover:bg-amber-900 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  Novo Usuário
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {users.map((u) => (
                 <div key={u.id} className="p-3 bg-stone-50 rounded-xl border space-y-2">
-                  <div>
-                    <p className="font-bold text-stone-900">{u.name}</p>
-                    <p className="text-[10px] text-stone-500">{u.email}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-stone-900">{u.name}</p>
+                      <p className="text-[10px] text-stone-500">{u.email}</p>
+                    </div>
+                    {hasPermission(currentUser, 'usuarios.editar_permissoes') && (
+                      <button
+                        onClick={() => setUserModalTarget(u)}
+                        className="p-1.5 rounded-lg text-stone-500 hover:text-amber-800 hover:bg-amber-50"
+                        title="Editar usuário"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <select
-                      value={u.role}
-                      onChange={(e) => updateUserProfile(u.id, { role: e.target.value as UserRole })}
-                      disabled={u.id === currentUser.id}
-                      className="flex-1 border rounded-lg px-2 py-1 text-[10px] font-bold uppercase disabled:opacity-50"
-                    >
-                      {(['admin', 'gerente', 'caixa', 'garcom', 'cozinha', 'estoque', 'financeiro'] as UserRole[]).map((r) => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => updateUserProfile(u.id, { active: !u.active })}
-                      disabled={u.id === currentUser.id}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border disabled:opacity-50 ${
+                    <span className="flex-1 border rounded-lg px-2 py-1 text-[10px] font-bold uppercase bg-white text-center">
+                      {u.role}
+                    </span>
+                    <span
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
                         u.active ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-stone-200 text-stone-600 border-stone-300'
                       }`}
                     >
                       {u.active ? 'Ativo' : 'Inativo'}
-                    </button>
+                    </span>
                   </div>
-
-                  {currentUser.role === 'admin' && (
-                    <div>
-                      <label className="text-[10px] font-bold text-stone-500 uppercase flex items-center gap-1 mb-1">
-                        <KeyRound className="w-3 h-3" /> PIN de Fechamento de Caixa
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={6}
-                          placeholder="Sem PIN"
-                          value={pinDrafts[u.id] ?? u.code ?? ''}
-                          onChange={(e) => {
-                            const digits = e.target.value.replace(/\D/g, '');
-                            setPinDrafts((prev) => ({ ...prev, [u.id]: digits }));
-                          }}
-                          className="flex-1 border rounded-lg px-2 py-1 text-[10px] font-mono tracking-widest"
-                        />
-                        <button
-                          onClick={() => {
-                            const value = (pinDrafts[u.id] ?? u.code ?? '').trim();
-                            updateUserProfile(u.id, { code: value });
-                            setPinDrafts((prev) => {
-                              const next = { ...prev };
-                              delete next[u.id];
-                              return next;
-                            });
-                          }}
-                          disabled={(pinDrafts[u.id] ?? u.code ?? '') === (u.code ?? '')}
-                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-800 text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           </div>
+        )}
+
+        {userModalTarget && (
+          <UserFormModal
+            user={userModalTarget === 'new' ? undefined : userModalTarget}
+            onClose={() => setUserModalTarget(null)}
+          />
         )}
 
         {/* Printers Tab */}

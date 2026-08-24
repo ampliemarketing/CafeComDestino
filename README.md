@@ -169,7 +169,15 @@ O sistema é conectado de verdade ao Supabase: categorias, produtos, insumos, fi
 
 **Configuração do banco:** rode o arquivo [`supabase/schema.sql`](supabase/schema.sql) inteiro no **SQL Editor** do seu projeto Supabase. Ele cria as tabelas, ativa Row Level Security, o Realtime e as funções de transação usadas pelo PDV/caixa. **Atenção:** o script começa com `DROP TABLE` nas tabelas antigas — só rode se elas ainda estiverem vazias (faça backup antes se já houver dado real).
 
-**Primeiro acesso:** crie sua conta pela própria tela de login do app ("Criar cadastro"). Toda conta nova nasce com o cargo `garcom`; para virar administrador, abra o projeto no Supabase → **Table Editor** → tabela `profiles` → edite a linha do seu usuário e mude `role` para `admin`. Depois disso, promoções de cargo de outros funcionários já podem ser feitas pela própria tela **Configurações → Usuários**.
+**Primeiro acesso:** não existe mais autocadastro público — a tela de login só permite entrar, não criar conta. Para o primeiro administrador, crie o usuário no Supabase → **Authentication → Users → Add user**, depois abra **Table Editor** → tabela `profiles` → edite a linha desse usuário e mude `role` para `admin`. A partir daí, todos os demais funcionários são criados pelo próprio app, em **Configurações → Usuários & Permissões → Novo Usuário** (visível só para admins).
+
+Esse formulário chama a Edge Function `admin-create-user` (em [`supabase/functions/admin-create-user`](supabase/functions/admin-create-user)), que usa a Service Role Key só no servidor para criar o login e o perfil — a chave nunca fica exposta no frontend. Para publicá-la:
+
+```bash
+supabase functions deploy admin-create-user
+```
+
+A function usa `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, que o Supabase já injeta automaticamente como secrets em toda Edge Function do projeto — não é preciso configurar nada extra.
 
 ---
 

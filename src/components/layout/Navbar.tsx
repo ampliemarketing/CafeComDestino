@@ -32,10 +32,7 @@ export const Navbar: React.FC = () => {
 
   const toggleStoreStatus = () => {
     const newStatus = isStoreOpen ? 'Fechado' : 'Terça a Domingo - 11:30 às 23:30';
-    setCompanyProfile((prev) => ({
-      ...prev,
-      operatingHours: newStatus,
-    }));
+    setCompanyProfile({ ...companyProfile, operatingHours: newStatus });
     addToast('info', 'Status da Loja Alterado', isStoreOpen ? 'Restaurante marcado como FECHADO' : 'Restaurante ABERTO para pedidos');
   };
 

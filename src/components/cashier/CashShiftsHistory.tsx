@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { History, Unlock } from 'lucide-react';
+import { hasPermission } from '../../lib/permissions';
 
 export const CashShiftsHistory: React.FC = () => {
-  const { cashShift, cashShiftsHistory, setSelectedCashShiftId, setActiveView, openCashShift } = useApp();
+  const { cashShift, cashShiftsHistory, setSelectedCashShiftId, setActiveView, openCashShift, currentUser } = useApp();
   const [openFloatInput, setOpenFloatInput] = useState<number>(200);
+  const canOpen = hasPermission(currentUser, 'caixas.abrir');
 
   const openShift = (id: string) => {
     setSelectedCashShiftId(id);
@@ -40,7 +42,7 @@ export const CashShiftsHistory: React.FC = () => {
             <Unlock className="w-4 h-4" />
             <span>Ver Caixa Aberto</span>
           </button>
-        ) : (
+        ) : canOpen ? (
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -57,7 +59,7 @@ export const CashShiftsHistory: React.FC = () => {
               <span>Abrir Caixa</span>
             </button>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* History Table */}

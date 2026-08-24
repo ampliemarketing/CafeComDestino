@@ -18,9 +18,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell 
 } from 'recharts';
+import { hasPermission } from '../../lib/permissions';
 
 export const ReportsView: React.FC = () => {
-  const { orders, products, lossRecords, courtesyRecords, addToast } = useApp();
+  const { orders, products, lossRecords, courtesyRecords, addToast, currentUser } = useApp();
+  const canExport = hasPermission(currentUser, 'relatorios.exportar');
 
   const [activeReportTab, setActiveReportTab] = useState<'sales' | 'losses' | 'courtesies'>('sales');
 
@@ -84,6 +86,7 @@ export const ReportsView: React.FC = () => {
           </div>
         </div>
 
+        {canExport && (
         <button
           onClick={() => addToast('info', 'Exportando Relatório', 'Relatório gerencial exportado com sucesso!')}
           className="bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
@@ -91,6 +94,7 @@ export const ReportsView: React.FC = () => {
           <Download className="w-4 h-4" />
           <span>Exportar Relatórios (PDF / Excel)</span>
         </button>
+        )}
       </div>
 
       {/* Report Sub-Tabs */}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Tags, Boxes, Package, MapPin, Plus, Edit2, Trash2, X } from 'lucide-react';
 import { Category, IngredientCategory, TableSector } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 export const GroupManagement: React.FC = () => {
   const {
@@ -17,8 +18,10 @@ export const GroupManagement: React.FC = () => {
     deleteIngredientCategory,
     saveTableSector,
     deleteTableSector,
-    addToast
+    addToast,
+    currentUser
   } = useApp();
+  const canManage = hasPermission(currentUser, 'grupos.gerenciar');
 
   const [groupType, setGroupType] = useState<'ingredient' | 'product' | 'area'>('ingredient');
 
@@ -129,6 +132,7 @@ export const GroupManagement: React.FC = () => {
           </div>
         </div>
 
+        {canManage && (
         <button
           onClick={handleOpenCreate}
           className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
@@ -140,6 +144,7 @@ export const GroupManagement: React.FC = () => {
             {groupType === 'area' && 'Nova Área do Restaurante'}
           </span>
         </button>
+        )}
       </div>
 
       {/* Type Filter */}
@@ -203,6 +208,7 @@ export const GroupManagement: React.FC = () => {
                         <td className="p-3.5 font-bold text-stone-900">{cat.name}</td>
                         <td className="p-3.5 text-stone-600 font-semibold">{usageCount} insumo(s)</td>
                         <td className="p-3.5 text-center">
+                          {canManage && (
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleOpenEditIngredientCategory(cat)}
@@ -219,6 +225,7 @@ export const GroupManagement: React.FC = () => {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -246,6 +253,7 @@ export const GroupManagement: React.FC = () => {
                         </td>
                         <td className="p-3.5 text-stone-600 font-semibold">{usageCount} produto(s)</td>
                         <td className="p-3.5 text-center">
+                          {canManage && (
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleOpenEditProductCategory(cat)}
@@ -262,6 +270,7 @@ export const GroupManagement: React.FC = () => {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -281,6 +290,7 @@ export const GroupManagement: React.FC = () => {
                       <td className="p-3.5 font-bold text-stone-900">{sector.name}</td>
                       <td className="p-3.5 text-stone-600 font-semibold">{usageCount} mesa(s)</td>
                       <td className="p-3.5 text-center">
+                        {canManage && (
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenEditTableSector(sector)}
@@ -297,6 +307,7 @@ export const GroupManagement: React.FC = () => {
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                        )}
                       </td>
                     </tr>
                   );

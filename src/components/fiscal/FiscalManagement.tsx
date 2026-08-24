@@ -12,9 +12,11 @@ import {
   Sliders,
   Sparkles
 } from 'lucide-react';
+import { hasPermission } from '../../lib/permissions';
 
 export const FiscalManagement: React.FC = () => {
-  const { orders, companyProfile, setCompanyProfile, addToast } = useApp();
+  const { orders, companyProfile, setCompanyProfile, addToast, currentUser } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [activeTab, setActiveTab] = useState<'notes' | 'config'>('notes');
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,7 +170,8 @@ export const FiscalManagement: React.FC = () => {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => addToast('info', 'Download XML', 'Arquivo .xml gerado e baixado.')}
-                            className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg"
+                            disabled={!can('fiscal.baixar_xml')}
+                            className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Baixar XML"
                           >
                             <Download className="w-3.5 h-3.5" />
@@ -195,7 +198,7 @@ export const FiscalManagement: React.FC = () => {
           <div className="max-w-xl space-y-4 text-xs">
             <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Configuração Fiscal da Empresa</h3>
 
-            <div className="space-y-3">
+            <fieldset disabled={!can('fiscal.editar_dados_empresa')} className="space-y-3 disabled:opacity-60">
               <div>
                 <label className="font-semibold text-stone-700 block mb-1">Razão Social Emitente</label>
                 <input
@@ -234,8 +237,9 @@ export const FiscalManagement: React.FC = () => {
                   <option value="lucro_real">Lucro Real</option>
                 </select>
               </div>
-            </div>
+            </fieldset>
 
+            {can('fiscal.editar_dados_empresa') && (
             <button
               onClick={() => {
                 setCompanyProfile({
@@ -250,6 +254,7 @@ export const FiscalManagement: React.FC = () => {
             >
               Salvar Dados Fiscais
             </button>
+            )}
           </div>
         )}
       </div>

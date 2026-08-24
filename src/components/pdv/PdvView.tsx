@@ -22,9 +22,11 @@ import {
 import { Product, PaymentMethod, OrderItem } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
+import { hasPermission } from '../../lib/permissions';
 
 export const PdvView: React.FC = () => {
-  const { products, categories, createPdvSale, cashShift, companyProfile, addToast } = useApp();
+  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser } = useApp();
+  const can = (key: string) => hasPermission(currentUser, key);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -212,6 +214,7 @@ export const PdvView: React.FC = () => {
         {/* Left 7 Columns: Products Catalog Grid */}
         <div className="lg:col-span-7 space-y-4">
           {/* Quick Launch Cards: Comida Por Quilo (Buffet & Balança) */}
+          {can('pdv.lancar_item_kg') && (
           <div className="bg-gradient-to-r from-amber-900 to-amber-950 text-white p-3.5 rounded-2xl shadow-md border border-amber-800/80 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -267,6 +270,7 @@ export const PdvView: React.FC = () => {
               </button>
             </div>
           </div>
+          )}
 
           {/* Search & Barcode Input */}
           <div className="flex gap-2">
@@ -421,9 +425,10 @@ export const PdvView: React.FC = () => {
                 <input
                   type="number"
                   min="0"
+                  disabled={!can('pdv.desconto')}
                   value={discountInput}
                   onChange={(e) => setDiscountInput(Number(e.target.value))}
-                  className="w-20 border rounded-lg p-1 text-right text-xs font-semibold"
+                  className="w-20 border rounded-lg p-1 text-right text-xs font-semibold disabled:bg-stone-100 disabled:text-stone-400"
                 />
               </div>
               <div className="flex justify-between font-bold text-lg text-stone-900 border-t pt-2">
@@ -482,6 +487,7 @@ export const PdvView: React.FC = () => {
                     { id: 'cartao_credito' as PaymentMethod, label: 'Crédito', icon: '💳' },
                     { id: 'cartao_debito' as PaymentMethod, label: 'Débito', icon: '💳' },
                     { id: 'dinheiro' as PaymentMethod, label: 'Dinheiro', icon: '💵' },
+                    { id: 'vale_refeicao' as PaymentMethod, label: 'Vale-refeição', icon: '🎫' },
                     { id: 'boleto' as PaymentMethod, label: 'Boleto', icon: '🧾' },
                   ].map((m) => (
                     <button
@@ -518,6 +524,8 @@ export const PdvView: React.FC = () => {
                         <option value="cartao_credito">Cartão de Crédito</option>
                         <option value="cartao_debito">Cartão de Débito</option>
                         <option value="dinheiro">Dinheiro</option>
+                        <option value="vale_refeicao">Vale-refeição</option>
+                        <option value="boleto">Boleto</option>
                       </select>
                       <div className="relative flex-1">
                         <span className="absolute left-2.5 top-2 text-stone-400 font-bold">R$</span>
@@ -573,7 +581,8 @@ export const PdvView: React.FC = () => {
 
             <button
               onClick={handleFinalizeSale}
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2"
+              disabled={!can('pdv.finalizar_venda')}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Concluir Venda e Emitir NFC-e</span>

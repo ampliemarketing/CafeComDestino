@@ -1,6 +1,5 @@
 import {
   CompanyProfileData,
-  Supplier,
   LossRecord,
   CourtesyRecord,
   Printer,
@@ -62,8 +61,6 @@ export const initialCompanyProfile: CompanyProfileData = {
     nfceNextNumber: 1042,
   },
 };
-
-export const initialSuppliers: Supplier[] = [];
 
 export const initialLossRecords: LossRecord[] = [];
 

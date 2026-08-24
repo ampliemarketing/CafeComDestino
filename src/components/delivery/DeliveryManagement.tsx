@@ -12,9 +12,11 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Order } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 
 export const DeliveryManagement: React.FC = () => {
-  const { orders, deliveryDrivers, updateOrderStatus, addToast } = useApp();
+  const { orders, deliveryDrivers, updateOrderStatus, addToast, currentUser } = useApp();
+  const canDispatch = hasPermission(currentUser, 'entregas.despachar');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [assignedDriverByOrder, setAssignedDriverByOrder] = useState<Record<string, string>>({});
@@ -121,7 +123,8 @@ export const DeliveryManagement: React.FC = () => {
                     updateOrderStatus(ord.id, 'saiu_entrega', driverName);
                     addToast('success', 'Despachado!', `Pedido #${ord.orderNumber} saiu para entrega.`);
                   }}
-                  className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow"
+                  disabled={!canDispatch}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow disabled:opacity-50"
                 >
                   Despachar
                 </button>

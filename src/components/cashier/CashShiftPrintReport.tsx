@@ -74,11 +74,11 @@ export const CashShiftPrintReport: React.FC<CashShiftPrintReportProps> = ({ shif
       </div>
 
       <div className="py-2 border-b border-dashed border-black">
-        <p className="font-bold uppercase mb-1">Sangrias e Suprimentos ({movements.length})</p>
+        <p className="font-bold uppercase mb-1">Movimentações ({movements.length})</p>
         {movements.length === 0 && <p>Nenhuma movimentação registrada.</p>}
         {movements.map((m) => (
           <div key={m.id} className="flex justify-between">
-            <span>{m.timestamp} {m.type === 'reforco' ? '(+)' : '(-)'} {m.reason}</span>
+            <span>{m.timestamp} {m.type === 'reforco' ? '(+)' : '(-)'} {m.name}{m.reason ? ` - ${m.reason}` : ''}</span>
             <span>R$ {m.amount.toFixed(2)}</span>
           </div>
         ))}
