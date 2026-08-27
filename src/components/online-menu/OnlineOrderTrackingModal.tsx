@@ -130,9 +130,10 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
             <input
               type="text"
+              maxLength={40}
               placeholder="Buscar pelo nº do pedido ou WhatsApp..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value.slice(0, 40))}
               className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-amber-800 focus:outline-none"
             />
           </div>

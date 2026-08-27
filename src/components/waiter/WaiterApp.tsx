@@ -27,6 +27,7 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
 import { PartialPaymentModal } from '../tables/PartialPaymentModal';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const WaiterApp: React.FC = () => {
   const {
@@ -262,8 +263,9 @@ export const WaiterApp: React.FC = () => {
               <input
                 type="text"
                 placeholder="Buscar mesa por número, setor ou nome do cliente..."
+                maxLength={60}
                 value={tableSearchQuery}
-                onChange={(e) => setTableSearchQuery(e.target.value)}
+                onChange={(e) => setTableSearchQuery(e.target.value.slice(0, 60))}
                 className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-amber-700"
               />
             </div>
@@ -397,8 +399,9 @@ export const WaiterApp: React.FC = () => {
               <input
                 type="text"
                 placeholder="Buscar produto pelo nome..."
+                maxLength={60}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
                 className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-amber-700"
               />
             </div>
@@ -499,8 +502,9 @@ export const WaiterApp: React.FC = () => {
                 <span className="text-xs font-semibold text-stone-700 block">Observação do Prato</span>
                 <textarea
                   placeholder="Ex: sem cebola, carne bem passada..."
+                  maxLength={MAXLEN.shortNote}
                   value={customNotes}
-                  onChange={(e) => setCustomNotes(e.target.value)}
+                  onChange={(e) => setCustomNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border rounded-xl p-2 text-xs focus:ring-2 focus:ring-amber-700"
                   rows={2}
                 />
@@ -689,7 +693,7 @@ export const WaiterApp: React.FC = () => {
                   type="number"
                   min="1"
                   value={newTableNumber}
-                  onChange={(e) => setNewTableNumber(Number(e.target.value))}
+                  onChange={(e) => setNewTableNumber(toBoundedNumber(e.target.value, 1, 9999, 1))}
                   className="w-full border rounded-xl p-3 text-sm"
                 />
               </div>
@@ -711,7 +715,7 @@ export const WaiterApp: React.FC = () => {
                   type="number"
                   min="1"
                   value={newTableCapacity}
-                  onChange={(e) => setNewTableCapacity(Number(e.target.value))}
+                  onChange={(e) => setNewTableCapacity(toBoundedNumber(e.target.value, 1, 100, 1))}
                   className="w-full border rounded-xl p-3 text-sm"
                 />
               </div>
@@ -754,11 +758,12 @@ export const WaiterApp: React.FC = () => {
                     <div key={idx} className="flex items-center gap-2">
                       <input
                         type="text"
+                        maxLength={MAXLEN.personName}
                         placeholder={`Nome da pessoa ${idx + 1}`}
                         value={name}
                         onChange={(e) => {
                           const updated = [...comandaNamesInput];
-                          updated[idx] = e.target.value;
+                          updated[idx] = sanitizeText(e.target.value, MAXLEN.personName);
                           setComandaNamesInput(updated);
                         }}
                         className="flex-1 border rounded-xl p-3 text-sm"
@@ -906,9 +911,10 @@ export const WaiterApp: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
+                          min="0"
                           value={row.amount}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value === '' ? '' : String(Math.max(0, Number(e.target.value) || 0));
                             setFinalSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
                           }}
                           className="w-full border rounded-xl pl-8 pr-2 py-2 font-bold bg-white text-xs"

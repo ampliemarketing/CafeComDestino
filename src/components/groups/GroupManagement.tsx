@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Tags, Boxes, Package, MapPin, Plus, Edit2, Trash2, X } from 'lucide-react';
 import { Category, IngredientCategory, TableSector } from '../../types';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText } from '../../lib/validation';
 
 export const GroupManagement: React.FC = () => {
   const {
@@ -341,11 +342,12 @@ export const GroupManagement: React.FC = () => {
               <input
                 type="text"
                 autoFocus
+                maxLength={MAXLEN.name}
                 placeholder={
                   groupType === 'ingredient' ? 'Ex: Carnes' : groupType === 'product' ? 'Ex: Bebidas & Sucos' : 'Ex: Salão Principal'
                 }
                 value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
+                onChange={(e) => setNameInput(sanitizeText(e.target.value, MAXLEN.name))}
                 className="w-full border rounded-xl p-2.5"
               />
             </div>

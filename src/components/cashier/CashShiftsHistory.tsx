@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { History, Unlock } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
+import { toBoundedNumber } from '../../lib/validation';
 
 export const CashShiftsHistory: React.FC = () => {
   const { cashShift, cashShiftsHistory, setSelectedCashShiftId, setActiveView, openCashShift, currentUser } = useApp();
@@ -46,9 +47,11 @@ export const CashShiftsHistory: React.FC = () => {
           <div className="flex items-center gap-2">
             <input
               type="number"
+              min="0"
+              step="0.01"
               placeholder="Fundo Inicial"
               value={openFloatInput}
-              onChange={(e) => setOpenFloatInput(Number(e.target.value))}
+              onChange={(e) => setOpenFloatInput(toBoundedNumber(e.target.value, 0, 1_000_000))}
               className="bg-stone-800 text-white border border-stone-700 rounded-xl px-3 py-2 text-xs w-32 font-bold"
             />
             <button

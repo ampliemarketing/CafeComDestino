@@ -19,6 +19,7 @@ import {
 import { User } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { UserFormModal } from './UserFormModal';
+import { MAXLEN, sanitizeText, maskPhone, toBoundedNumber, validateImageFile } from '../../lib/validation';
 
 interface SettingsManagementProps {
   initialTab?: 'profile' | 'users' | 'printers';
@@ -61,32 +62,37 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const [minOrderValueInput, setMinOrderValueInput] = useState<number>(companyProfile.minOrderValue ?? 0);
 
   // File upload handlers
+  const readImageInto = (
+    file: File,
+    setter: (v: string) => void,
+    successTitle: string,
+    successMsg: string,
+  ) => {
+    const problem = validateImageFile(file);
+    if (problem) {
+      addToast('error', 'Imagem inválida', problem);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setter(reader.result);
+        addToast('success', successTitle, successMsg);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setLogoUrlInput(reader.result);
-          addToast('success', 'Foto de Perfil Carregada', 'A nova foto de perfil foi selecionada.');
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+    if (file) readImageInto(file, setLogoUrlInput, 'Foto de Perfil Carregada', 'A nova foto de perfil foi selecionada.');
+    e.target.value = '';
   };
 
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setCoverUrlInput(reader.result);
-          addToast('success', 'Banner de Capa Carregado', 'O novo banner de fundo foi selecionado.');
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+    if (file) readImageInto(file, setCoverUrlInput, 'Banner de Capa Carregado', 'O novo banner de fundo foi selecionado.');
+    e.target.value = '';
   };
 
   return (
@@ -147,8 +153,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     <label className="font-semibold text-stone-700 block mb-1">Nome do Estabelecimento *</label>
                     <input
                       type="text"
+                      maxLength={MAXLEN.tradeName}
                       value={nameInput}
-                      onChange={(e) => setNameInput(e.target.value)}
+                      onChange={(e) => setNameInput(sanitizeText(e.target.value, MAXLEN.tradeName))}
                       className="w-full border rounded-xl p-2.5 font-bold disabled:bg-stone-100 disabled:text-stone-500"
                     />
                   </div>
@@ -157,8 +164,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     <label className="font-semibold text-stone-700 block mb-1">Nome Fantasia</label>
                     <input
                       type="text"
+                      maxLength={MAXLEN.tradeName}
                       value={tradeNameInput}
-                      onChange={(e) => setTradeNameInput(e.target.value)}
+                      onChange={(e) => setTradeNameInput(sanitizeText(e.target.value, MAXLEN.tradeName))}
                       className="w-full border rounded-xl p-2.5"
                     />
                   </div>
@@ -168,9 +176,11 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   <div>
                     <label className="font-semibold text-stone-700 block mb-1">Telefone / WhatsApp</label>
                     <input
-                      type="text"
+                      type="tel"
+                      inputMode="tel"
+                      maxLength={MAXLEN.phone}
                       value={phoneInput}
-                      onChange={(e) => setPhoneInput(e.target.value)}
+                      onChange={(e) => setPhoneInput(maskPhone(e.target.value))}
                       className="w-full border rounded-xl p-2.5"
                     />
                   </div>
@@ -179,8 +189,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     <label className="font-semibold text-stone-700 block mb-1">Endereço Completo</label>
                     <input
                       type="text"
+                      maxLength={MAXLEN.address}
                       value={addressInput}
-                      onChange={(e) => setAddressInput(e.target.value)}
+                      onChange={(e) => setAddressInput(sanitizeText(e.target.value, MAXLEN.address))}
                       className="w-full border rounded-xl p-2.5"
                     />
                   </div>
@@ -241,8 +252,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     <div className="flex gap-2">
                       <input
                         type="text"
+                        maxLength={MAXLEN.url}
                         value={logoUrlInput}
-                        onChange={(e) => setLogoUrlInput(e.target.value)}
+                        onChange={(e) => setLogoUrlInput(e.target.value.slice(0, MAXLEN.url))}
                         placeholder="Link da imagem (URL) ou escolha um arquivo..."
                         className="w-full border rounded-xl p-2 font-mono text-[11px]"
                       />
@@ -301,8 +313,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   <div className="flex gap-2">
                     <input
                       type="text"
+                      maxLength={MAXLEN.url}
                       value={coverUrlInput}
-                      onChange={(e) => setCoverUrlInput(e.target.value)}
+                      onChange={(e) => setCoverUrlInput(e.target.value.slice(0, MAXLEN.url))}
                       placeholder="Link do banner de capa (URL)..."
                       className="w-full border rounded-xl p-2 font-mono text-[11px]"
                     />
@@ -365,7 +378,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       type="number"
                       step="0.01"
                       value={lunchPriceInput}
-                      onChange={(e) => setLunchPriceInput(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setLunchPriceInput(toBoundedNumber(e.target.value, 0, 100_000))}
                       className="w-full border border-amber-300 bg-white rounded-xl p-2.5 pl-9 font-bold text-amber-900"
                     />
                   </div>
@@ -380,7 +393,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       type="number"
                       step="0.01"
                       value={breakfastPriceInput}
-                      onChange={(e) => setBreakfastPriceInput(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setBreakfastPriceInput(toBoundedNumber(e.target.value, 0, 100_000))}
                       className="w-full border border-amber-300 bg-white rounded-xl p-2.5 pl-9 font-bold text-amber-900"
                     />
                   </div>
@@ -394,7 +407,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       type="number"
                       step="5"
                       value={tareInput}
-                      onChange={(e) => setTareInput(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setTareInput(toBoundedNumber(e.target.value, 0, 5_000))}
                       className="w-full border border-stone-300 bg-white rounded-xl p-2.5 pr-8 font-bold text-stone-800"
                     />
                     <span className="absolute right-3 top-2.5 font-bold text-stone-500">g</span>
@@ -425,7 +438,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       step="0.01"
                       min="0"
                       value={deliveryFeeInput}
-                      onChange={(e) => setDeliveryFeeInput(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setDeliveryFeeInput(toBoundedNumber(e.target.value, 0, 100_000))}
                       className="w-full border rounded-xl p-2.5 pl-9 font-bold"
                     />
                   </div>
@@ -441,7 +454,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       step="0.01"
                       min="0"
                       value={minOrderValueInput}
-                      onChange={(e) => setMinOrderValueInput(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setMinOrderValueInput(toBoundedNumber(e.target.value, 0, 100_000))}
                       className="w-full border rounded-xl p-2.5 pl-9 font-bold"
                     />
                   </div>

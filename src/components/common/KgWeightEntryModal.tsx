@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Scale, Coffee, UtensilsCrossed, X, Check, Sparkles, DollarSign, RotateCcw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { toBoundedNumber } from '../../lib/validation';
 
 interface KgWeightEntryModalProps {
   isOpen: boolean;
@@ -203,7 +204,7 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
                   step="10"
                   min="0"
                   value={grossWeightGrams || ''}
-                  onChange={(e) => setGrossWeightGrams(Math.max(0, parseInt(e.target.value) || 0))}
+                  onChange={(e) => setGrossWeightGrams(Math.round(toBoundedNumber(e.target.value, 0, 50_000)))}
                   placeholder="Ex: 450"
                   className="w-full border-2 border-amber-300 focus:border-amber-600 focus:ring-0 bg-white rounded-2xl p-3 text-2xl font-black text-stone-900 text-center tracking-tight"
                 />
@@ -256,7 +257,7 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
                   step="0.50"
                   min="0"
                   value={directValue || ''}
-                  onChange={(e) => setDirectValue(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setDirectValue(toBoundedNumber(e.target.value, 0, 100_000))}
                   placeholder="20,00"
                   className="w-full border-2 border-amber-300 focus:border-amber-600 focus:ring-0 bg-white rounded-2xl p-3 pl-12 text-2xl font-black text-stone-900 tracking-tight"
                 />

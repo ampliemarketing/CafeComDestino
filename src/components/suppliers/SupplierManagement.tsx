@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Supplier } from '../../types';
 import { Truck, Plus, Edit2, Trash2, X, Search, Phone, Mail, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, maskPhone, maskCpfCnpj, isValidCpfCnpj, isValidPhone, isValidEmail } from '../../lib/validation';
 
 const EMPTY_FORM = {
   name: '',
@@ -85,6 +86,18 @@ export const SupplierManagement: React.FC = () => {
       addToast('error', 'Nome obrigatório', 'Informe a razão social do fornecedor.');
       return;
     }
+    if (form.cnpjCpf.trim() && !isValidCpfCnpj(form.cnpjCpf)) {
+      addToast('error', 'CNPJ/CPF inválido', 'Verifique os dígitos informados.');
+      return;
+    }
+    if (form.phone.trim() && !isValidPhone(form.phone)) {
+      addToast('error', 'Telefone inválido', 'Use DDD + número (10 ou 11 dígitos).');
+      return;
+    }
+    if (form.email.trim() && !isValidEmail(form.email)) {
+      addToast('error', 'E-mail inválido', 'Verifique o endereço de e-mail.');
+      return;
+    }
 
     const supplier: Supplier = {
       id: editingId || 'sup-' + Date.now(),
@@ -149,9 +162,10 @@ export const SupplierManagement: React.FC = () => {
           <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
           <input
             type="text"
+            maxLength={60}
             placeholder="Buscar por nome, nome fantasia, CNPJ/CPF ou contato..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
             className="w-full border rounded-xl pl-10 pr-4 py-2.5 text-xs bg-white"
           />
         </div>
@@ -300,9 +314,9 @@ export const SupplierManagement: React.FC = () => {
                 <input
                   type="text"
                   autoFocus
-                  maxLength={150}
+                  maxLength={MAXLEN.tradeName}
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => setForm({ ...form, name: sanitizeText(e.target.value, MAXLEN.tradeName) })}
                   className="w-full border rounded-xl p-2.5"
                   placeholder="Ex: Distribuidora Hortifruti Ltda"
                 />
@@ -311,9 +325,9 @@ export const SupplierManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Nome Fantasia</label>
                 <input
                   type="text"
-                  maxLength={150}
+                  maxLength={MAXLEN.tradeName}
                   value={form.tradeName}
-                  onChange={(e) => setForm({ ...form, tradeName: e.target.value })}
+                  onChange={(e) => setForm({ ...form, tradeName: sanitizeText(e.target.value, MAXLEN.tradeName) })}
                   className="w-full border rounded-xl p-2.5"
                   placeholder="Ex: Hortifruti Bom Preço"
                 />
@@ -322,9 +336,10 @@ export const SupplierManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">CNPJ/CPF</label>
                 <input
                   type="text"
-                  maxLength={18}
+                  inputMode="numeric"
+                  maxLength={MAXLEN.cpfCnpj}
                   value={form.cnpjCpf}
-                  onChange={(e) => setForm({ ...form, cnpjCpf: e.target.value })}
+                  onChange={(e) => setForm({ ...form, cnpjCpf: maskCpfCnpj(e.target.value) })}
                   className="w-full border rounded-xl p-2.5 font-mono"
                   placeholder="00.000.000/0000-00"
                 />
@@ -333,9 +348,9 @@ export const SupplierManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Pessoa de Contato</label>
                 <input
                   type="text"
-                  maxLength={100}
+                  maxLength={MAXLEN.personName}
                   value={form.contactPerson}
-                  onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                  onChange={(e) => setForm({ ...form, contactPerson: sanitizeText(e.target.value, MAXLEN.personName) })}
                   className="w-full border rounded-xl p-2.5"
                   placeholder="Ex: João Silva"
                 />
@@ -343,10 +358,11 @@ export const SupplierManagement: React.FC = () => {
               <div>
                 <label className="font-semibold text-stone-700 block mb-1">Telefone</label>
                 <input
-                  type="text"
-                  maxLength={20}
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={MAXLEN.phone}
                   value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
                   className="w-full border rounded-xl p-2.5"
                   placeholder="(00) 00000-0000"
                 />
@@ -355,9 +371,9 @@ export const SupplierManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">E-mail</label>
                 <input
                   type="email"
-                  maxLength={150}
+                  maxLength={MAXLEN.email}
                   value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  onChange={(e) => setForm({ ...form, email: e.target.value.slice(0, MAXLEN.email) })}
                   className="w-full border rounded-xl p-2.5"
                   placeholder="contato@fornecedor.com"
                 />
@@ -399,10 +415,10 @@ export const SupplierManagement: React.FC = () => {
                 </div>
                 <textarea
                   value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  onChange={(e) => setForm({ ...form, notes: sanitizeText(e.target.value, MAXLEN.description) })}
                   className="w-full border rounded-xl p-2.5"
                   rows={2}
-                  maxLength={500}
+                  maxLength={MAXLEN.description}
                   placeholder="Ex: Entrega às terças e sextas, pedido mínimo R$ 200..."
                 />
               </div>

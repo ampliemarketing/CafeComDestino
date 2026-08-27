@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { rowToCamel } from '../../lib/caseMapping';
+import { MAXLEN, sanitizeText, hasText, isValidPhone, maskPhone } from '../../lib/validation';
 import { Product, ProductAddition, PaymentMethod, Category, CompanyProfileData, OrderItem } from '../../types';
 import { LegalModal } from '../legal/LegalModal';
 
@@ -31,12 +32,17 @@ import { LegalModal } from '../legal/LegalModal';
 // Acompanhamento do pedido depois de feito fica para uma próxima etapa —
 // a tela de confirmação abaixo é só um resumo estático do que foi pedido.
 //
-// Layout: no mobile o carrinho é uma gaveta (overlay) aberta pelo botão do
-// cabeçalho ou pela barra flutuante; a partir de `lg` (1024px) ele vira uma
-// coluna fixa ao lado do cardápio, sempre visível — por isso boa parte das
-// classes do painel do carrinho têm um par "mobile" + "lg:" que o sobrescreve.
+// Visual: header escuro com laranja de ação (design "Cardápio Digital"),
+// carrossel de destaques, busca + chips fixos e itens agrupados por
+// categoria com barra de carrinho flutuante. O carrinho em si (gaveta),
+// o modal do produto e o checkout são as mesmas etapas de antes.
 
 interface Message { type: 'success' | 'error'; text: string }
+
+// Bitter para títulos/preços; o corpo herda Karla do container.
+const BITTER: React.CSSProperties = { fontFamily: "'Bitter', Georgia, 'Times New Roman', serif" };
+
+const money = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
 
 const STEPS: Array<{ key: 'cart' | 'customer' | 'payment'; label: string }> = [
   { key: 'cart', label: 'Carrinho' },
@@ -52,16 +58,53 @@ export const PublicOnlineMenu: React.FC = () => {
   const [message, setMessage] = useState<Message | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     Promise.all([
       supabase.from('company_profile').select('*').eq('id', true).single(),
       supabase.from('categories').select('*'),
       supabase.from('products').select('*'),
     ]).then(([companyRes, categoriesRes, productsRes]) => {
+      if (cancelled) return;
       if (companyRes.data) setCompanyProfile(rowToCamel<CompanyProfileData>(companyRes.data));
       if (categoriesRes.data) setCategories(categoriesRes.data.map((r) => rowToCamel<Category>(r)));
       if (productsRes.data) setProducts(productsRes.data.map((r) => rowToCamel<Product>(r)));
       setLoading(false);
     });
+
+    // Realtime: o cliente com o cardápio aberto vê na hora a troca de
+    // aberto/fechado (company_profile) e mudanças de preço/disponibilidade
+    // (products/categories) feitas no painel interno, sem recarregar.
+    const applyRowChange = (
+      setter: React.Dispatch<React.SetStateAction<any[]>>,
+      payload: any,
+    ) => {
+      setter((prev) => {
+        if (payload.eventType === 'DELETE') {
+          return prev.filter((it) => it.id !== payload.old?.id);
+        }
+        const row = rowToCamel<any>(payload.new);
+        return prev.some((it) => it.id === row.id)
+          ? prev.map((it) => (it.id === row.id ? row : it))
+          : [...prev, row];
+      });
+    };
+
+    const channel = supabase
+      .channel('public-online-menu')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'company_profile' }, (payload) => {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          setCompanyProfile(rowToCamel<CompanyProfileData>(payload.new));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => applyRowChange(setProducts, payload))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, (payload) => applyRowChange(setCategories, payload))
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -70,17 +113,8 @@ export const PublicOnlineMenu: React.FC = () => {
     return () => clearTimeout(timer);
   }, [message]);
 
-  const findPratoFeitoCategoryId = (cats: Category[]) =>
-    cats.find((c) => c.name.trim().toLowerCase() === 'prato feito')?.id;
-
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [hasManuallySelectedCategory, setHasManuallySelectedCategory] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    if (hasManuallySelectedCategory || selectedCategory || categories.length === 0) return;
-    setSelectedCategory(findPratoFeitoCategoryId(categories) || categories[0].id);
-  }, [categories, hasManuallySelectedCategory, selectedCategory]);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productQty, setProductQty] = useState(1);
@@ -112,12 +146,42 @@ export const PublicOnlineMenu: React.FC = () => {
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
 
-  const isSearching = searchQuery.trim().length > 0;
-  const filteredProducts = products.filter((p) => {
-    const matchesCat = isSearching || !selectedCategory || p.categoryId === selectedCategory;
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch && p.available;
-  });
+  // Status aberto/fechado: mesmo critério do toggle no Navbar interno
+  // (companyProfile.operatingHours === 'Fechado'). Fechado = cliente
+  // navega no cardápio, mas não consegue montar carrinho nem concluir pedido.
+  const isStoreOpen = (companyProfile?.operatingHours ?? '') !== 'Fechado';
+
+  // Categorias visíveis, na ordem definida no cadastro.
+  const menuCategories = categories
+    .filter((c) => c.active !== false)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const query = searchQuery.trim().toLowerCase();
+  const isSearching = query.length > 0;
+  const matchesSearch = (p: Product) =>
+    !query || p.name.toLowerCase().includes(query) || p.description.toLowerCase().includes(query);
+
+  const availableProducts = products.filter((p) => p.available);
+
+  // Seções renderizadas: quando "Tudo", todas as categorias com itens;
+  // senão, só a categoria ativa. A busca combina com o filtro (AND).
+  const groups = menuCategories
+    .filter((c) => selectedCategory === 'all' || c.id === selectedCategory)
+    .map((c) => ({
+      id: c.id,
+      label: c.name,
+      items: availableProducts.filter((p) => p.categoryId === c.id && matchesSearch(p)),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  const isEmpty = groups.length === 0;
+
+  // Destaques: promoções primeiro, depois o resto — some durante a busca.
+  const featured = [...availableProducts]
+    .sort((a, b) => Number(Boolean(b.promoPrice)) - Number(Boolean(a.promoPrice)))
+    .slice(0, 8);
+
+  const chips = [{ id: 'all', name: 'Tudo' }, ...menuCategories];
 
   const handleOpenProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -134,6 +198,10 @@ export const PublicOnlineMenu: React.FC = () => {
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
+    if (!isStoreOpen) {
+      setMessage({ type: 'error', text: 'O restaurante está fechado no momento. Não é possível fazer pedidos agora.' });
+      return;
+    }
     const additionsPrice = selectedAdditions.reduce((acc, a) => acc + a.price, 0);
     const unitPrice = (selectedProduct.promoPrice || selectedProduct.price) + additionsPrice;
 
@@ -155,15 +223,27 @@ export const PublicOnlineMenu: React.FC = () => {
   const minOrderProgressPct = minOrderValue > 0 ? Math.max(0, Math.min(100, (cartSubtotal / minOrderValue) * 100)) : 100;
 
   const handleFinalizeOrder = async () => {
+    if (!isStoreOpen) {
+      setMessage({ type: 'error', text: 'O restaurante está fechado no momento. Não é possível concluir o pedido.' });
+      return;
+    }
     if (belowMinOrder) {
       setMessage({ type: 'error', text: `Pedido mínimo de R$ ${minOrderValue.toFixed(2)}. Faltam R$ ${(minOrderValue - cartSubtotal).toFixed(2)}.` });
       return;
     }
-    if (!customerName || !customerPhone) {
+    if (!hasText(customerName) || !hasText(customerPhone)) {
       setMessage({ type: 'error', text: 'Nome e WhatsApp/Telefone são obrigatórios.' });
       return;
     }
-    if (serviceType === 'entrega' && (!street || !number || !neighborhood)) {
+    if (customerName.trim().length < 2) {
+      setMessage({ type: 'error', text: 'Informe seu nome completo.' });
+      return;
+    }
+    if (!isValidPhone(customerPhone)) {
+      setMessage({ type: 'error', text: 'Telefone inválido. Use DDD + número (10 ou 11 dígitos).' });
+      return;
+    }
+    if (serviceType === 'entrega' && (!hasText(street) || !hasText(number) || !hasText(neighborhood))) {
       setMessage({ type: 'error', text: 'Informe rua, número e bairro para entrega.' });
       return;
     }
@@ -186,9 +266,17 @@ export const PublicOnlineMenu: React.FC = () => {
       orderNumber,
       channel: 'online',
       customer: {
-        name: customerName,
-        phone: customerPhone,
-        address: serviceType === 'entrega' ? { street, number, neighborhood, complement, reference } : undefined,
+        name: customerName.trim().slice(0, MAXLEN.personName),
+        phone: customerPhone.trim().slice(0, MAXLEN.phone),
+        address: serviceType === 'entrega'
+          ? {
+              street: street.trim().slice(0, MAXLEN.address),
+              number: number.trim().slice(0, 20),
+              neighborhood: neighborhood.trim().slice(0, MAXLEN.personName),
+              complement: complement.trim().slice(0, MAXLEN.shortNote),
+              reference: reference.trim().slice(0, MAXLEN.shortNote),
+            }
+          : undefined,
       },
       items: orderItems,
       serviceType,
@@ -246,15 +334,15 @@ export const PublicOnlineMenu: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-amber-800 animate-spin" />
+      <div className="min-h-screen bg-[#f6efe4] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#9c4a17] animate-spin" />
       </div>
     );
   }
 
   if (!companyProfile) {
     return (
-      <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center p-4 text-center text-sm text-stone-500">
+      <div className="min-h-screen bg-[#f6efe4] flex items-center justify-center p-4 text-center text-sm text-[#8a7a67]">
         Não foi possível carregar o cardápio agora. Tente novamente em instantes.
       </div>
     );
@@ -263,7 +351,10 @@ export const PublicOnlineMenu: React.FC = () => {
   const activeStepIndex = STEPS.findIndex((s) => s.key === checkoutStep);
 
   return (
-    <div className="min-h-screen bg-[#F6F1EA] text-stone-900 pb-28 lg:pb-0">
+    <div
+      className="min-h-screen bg-[#f6efe4] text-[#241a12]"
+      style={{ fontFamily: "Karla, system-ui, sans-serif" }}
+    >
       {message && (
         <div className="fixed top-4 right-4 z-[70] max-w-sm">
           <div className={`p-3.5 rounded-xl shadow-lg border flex items-start gap-2.5 bg-white ${message.type === 'success' ? 'border-l-4 border-emerald-600' : 'border-l-4 border-rose-600'}`}>
@@ -277,146 +368,243 @@ export const PublicOnlineMenu: React.FC = () => {
         </div>
       )}
 
-      {/* Restaurant Header Banner */}
-      <div className="relative h-48 sm:h-64 lg:h-72 w-full bg-stone-900 overflow-hidden">
-        <img src={companyProfile.coverUrl} alt="Capa Restaurante" className="w-full h-full object-cover opacity-60" />
-        <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/40 to-transparent" />
-
-        <div className="absolute bottom-4 left-4 right-4 max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-white">
-          <div className="flex items-center gap-4">
-            <img src={companyProfile.logoUrl} alt="Logo" className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white/80 object-cover shadow-lg shrink-0" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{companyProfile.tradeName}</h1>
-                <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-700 text-white font-bold px-2 py-0.5 rounded-full uppercase">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
-                  Aberto
-                </span>
+      <div className="max-w-[1240px] mx-auto pb-[110px]">
+        {/* Header da loja */}
+        <header className="bg-[linear-gradient(180deg,#241a12_0%,#100a06_100%)] text-[#f6efe4] px-[22px] pt-[26px] pb-[30px] rounded-b-[26px]">
+          <div className="max-w-[1140px] mx-auto flex flex-wrap items-center justify-between gap-[18px]">
+            <div className="flex items-center gap-4 min-w-[280px]">
+              <div className="w-[74px] h-[74px] rounded-[20px] shrink-0 overflow-hidden border-2 border-[#9c4a17] bg-[#1b120b]">
+                {companyProfile.logoUrl && (
+                  <img src={companyProfile.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                )}
               </div>
-              <p className="text-xs text-stone-300 mt-1 flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-amber-400" />Preparo médio: {companyProfile.avgPrepTimeMinutes} min</span>
-                <span>•</span>
-                <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5 text-amber-400" />Entrega R$ {companyProfile.deliveryFee.toFixed(2)}</span>
-                <span>•</span>
-                <span>Pedido mín: R$ {companyProfile.minOrderValue.toFixed(2)}</span>
-              </p>
-              <p className="text-xs text-stone-300 flex items-center gap-1.5 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                <span>{companyProfile.address.street}, {companyProfile.address.number} - {companyProfile.address.neighborhood}</span>
-              </p>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="m-0 text-[30px] font-extrabold leading-none tracking-[-0.5px]" style={BITTER}>
+                    {companyProfile.tradeName || companyProfile.name}
+                  </h1>
+                  <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[0.08em] px-2.5 py-[5px] rounded-full ${
+                    isStoreOpen ? 'bg-[#0f5132] text-[#c8f4d8]' : 'bg-[#5b2323] text-[#f3c9c9]'
+                  }`}>
+                    <span className={`w-[7px] h-[7px] rounded-full ${isStoreOpen ? 'bg-[#3ddc84] animate-pulse-dot' : 'bg-[#dc6b6b]'}`} />
+                    {isStoreOpen ? 'ABERTO' : 'FECHADO'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-[18px] gap-y-2 text-[13.5px] text-[#c9b8a2]">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-[#f0b071]" />
+                    Preparo médio <strong className="text-[#f6efe4]">{companyProfile.avgPrepTimeMinutes} min</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-[#f0b071]" />
+                    Entrega <strong className="text-[#f6efe4]">{money(companyProfile.deliveryFee)}</strong>
+                  </span>
+                  <span>Pedido mín. <strong className="text-[#f6efe4]">{money(companyProfile.minOrderValue)}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[13px] text-[#9d8b76]">
+                  <MapPin className="w-3.5 h-3.5 text-[#f0b071]" />
+                  <span>{companyProfile.address.street}, {companyProfile.address.number} — {companyProfile.address.neighborhood}</span>
+                </div>
+              </div>
             </div>
+
+            <button
+              onClick={handleOpenCart}
+              className="inline-flex items-center gap-2.5 bg-[#9c4a17] hover:bg-[#b5561c] text-white rounded-full px-[22px] py-3.5 text-[15px] font-bold transition shadow-[0_8px_20px_rgba(156,74,23,0.35)]"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Meu carrinho ({cartItemCount})</span>
+            </button>
           </div>
+        </header>
 
-          <button
-            onClick={handleOpenCart}
-            className="self-start sm:self-auto bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2 border border-amber-600/50 transition"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Meu Carrinho ({cartItemCount})</span>
-            {cartSubtotal > 0 && <span>• R$ {cartSubtotal.toFixed(2)}</span>}
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-[1180px] mx-auto lg:px-4">
-        {/* Menu column */}
-        <div className="flex-1 min-w-0">
-          {/* Sticky search + categories */}
-          <div className="sticky top-0 z-20 bg-[#F6F1EA] px-4 lg:px-0 py-3 border-b border-stone-200/70">
-            <div className="relative max-w-md mb-2.5">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar pratos, bebidas ou sobremesas..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-stone-300 rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700 focus:outline-none shadow-sm"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => { setSelectedCategory(cat.id); setHasManuallySelectedCategory(true); }}
-                  className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                    selectedCategory === cat.id ? 'bg-amber-800 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
-                  }`}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+        {/* Aviso de loja fechada */}
+        {!isStoreOpen && (
+          <div className="mx-[22px] mt-4 flex items-start gap-2 rounded-2xl border border-[#e6b8b8] bg-[#fbeaea] px-4 py-3 text-[13.5px] leading-[1.45] text-[#8a3b3b]">
+            <Clock className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              No momento o restaurante está <strong>fechado</strong>. Você pode ver o cardápio, mas não é
+              possível fazer pedidos agora.
+            </span>
           </div>
+        )}
 
-          <div className="px-4 lg:px-0 py-5 space-y-5">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredProducts.map((prod) => (
-                <div
+        {/* Destaques da casa */}
+        {!isSearching && featured.length > 0 && (
+          <section className="px-[22px] pt-[26px] pb-1.5">
+            <div className="flex items-baseline justify-between gap-3 mb-3.5">
+              <h2 className="m-0 text-[20px] font-bold" style={BITTER}>Destaques da casa</h2>
+              <span className="text-[12.5px] text-[#8a7a67]">arraste para ver mais →</span>
+            </div>
+            <div className="flex gap-4 overflow-x-auto pb-3 custom-scrollbar snap-x snap-mandatory">
+              {featured.map((prod) => (
+                <article
                   key={prod.id}
                   onClick={() => handleOpenProduct(prod)}
-                  className="bg-white p-4 rounded-2xl border border-stone-200 hover:border-amber-700/50 transition cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5 flex items-center justify-between gap-4 group"
+                  className="snap-start shrink-0 w-[320px] rounded-[22px] overflow-hidden bg-[#241a12] text-[#f6efe4] relative cursor-pointer shadow-[0_10px_24px_rgba(36,26,18,0.14)]"
                 >
-                  <div className="space-y-1 flex-1 min-w-0">
-                    {prod.promoPrice && (
-                      <span className="inline-block bg-rose-100 text-rose-700 font-bold text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-1">Promoção</span>
-                    )}
-                    <h3 className="font-bold text-sm text-stone-900 group-hover:text-amber-800 transition">{prod.name}</h3>
-                    <p className="text-xs text-stone-500 line-clamp-2">{prod.description}</p>
-                    <div className="pt-2 flex items-center gap-2">
-                      <span className="text-sm font-bold text-stone-900">R$ {(prod.promoPrice || prod.price).toFixed(2)}</span>
-                      {prod.promoPrice && <span className="text-xs text-stone-400 line-through">R$ {prod.price.toFixed(2)}</span>}
+                  <div className="h-[150px] bg-[#31241a]">
+                    <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="absolute top-3 left-3 bg-[#9c4a17] text-[11px] font-bold tracking-[0.06em] px-2.5 py-[5px] rounded-full">
+                    {prod.promoPrice ? 'PROMOÇÃO' : 'DESTAQUE'}
+                  </div>
+                  <div className="p-[18px] pt-4 flex flex-col gap-2">
+                    <h3 className="m-0 text-[19px] font-bold" style={BITTER}>{prod.name}</h3>
+                    <p className="m-0 text-[13.5px] leading-[1.45] text-[#c1af99] line-clamp-2">{prod.description}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className="text-[20px] font-bold text-[#f0b071]" style={BITTER}>
+                        {money(prod.promoPrice || prod.price)}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOpenProduct(prod); }}
+                        className="bg-[#f6efe4] hover:bg-white text-[#241a12] rounded-full px-[18px] py-2.5 text-[14px] font-bold transition"
+                      >
+                        Adicionar
+                      </button>
                     </div>
                   </div>
-                  <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-stone-100 shrink-0 border border-stone-200">
-                    <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                    <button className="absolute bottom-1 right-1 bg-amber-800 text-white p-1 rounded-lg shadow">
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+                </article>
               ))}
-              {filteredProducts.length === 0 && (
-                <p className="text-xs text-stone-400 text-center py-10 col-span-full">Nenhum produto encontrado.</p>
-              )}
             </div>
+          </section>
+        )}
 
-            {/* Min-order progress trigger */}
-            {cartSubtotal > 0 && minOrderValue > 0 && (
-              <div className={`rounded-2xl border p-4 transition-colors ${minOrderMet ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-stone-200'}`}>
-                <div className="flex items-center justify-between text-[11px] font-bold text-stone-600 mb-2">
-                  {minOrderMet ? (
-                    <span className="flex items-center gap-1.5 text-emerald-700">
-                      <Check className="w-3.5 h-3.5" />
-                      Pedido mínimo liberado
-                    </span>
-                  ) : (
-                    <span>Faltam R$ {(minOrderValue - cartSubtotal).toFixed(2)} para o pedido mínimo</span>
-                  )}
-                  <span>R$ {cartSubtotal.toFixed(2)} / R$ {minOrderValue.toFixed(2)}</span>
-                </div>
-                <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${minOrderMet ? 'bg-emerald-600' : 'bg-amber-700'}`}
-                    style={{ width: `${minOrderProgressPct}%` }}
-                  />
-                </div>
-              </div>
-            )}
+        {/* Busca + filtros (sticky) */}
+        <div className="sticky top-0 z-20 bg-[#f6efe4] px-[22px] pt-3.5 pb-3 border-b border-[#e4d7c2]">
+          <div className="flex items-center gap-2.5 bg-white border border-[#e0d2ba] rounded-full px-[18px] py-3 shadow-[0_2px_8px_rgba(36,26,18,0.05)]">
+            <Search className="w-4 h-4 text-[#a4907a] shrink-0" />
+            <input
+              type="text"
+              maxLength={60}
+              placeholder="Buscar pratos, bebidas ou sobremesas..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
+              className="flex-1 bg-transparent border-0 outline-none text-[15px] text-[#241a12] placeholder:text-[#a4907a]"
+            />
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto pt-3.5 pb-1 custom-scrollbar">
+            {chips.map((chip) => {
+              const on = selectedCategory === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  onClick={() => setSelectedCategory(chip.id)}
+                  className={`shrink-0 rounded-full px-5 py-2.5 text-[14px] font-bold border transition ${
+                    on
+                      ? 'bg-[#9c4a17] text-white border-[#9c4a17]'
+                      : 'bg-white text-[#5d4c39] border-[#e0d2ba] hover:border-[#dcc9ac]'
+                  }`}
+                >
+                  {chip.name}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
 
-      {/* Footer */}
-      <footer className="mt-8 border-t border-stone-200 py-6 px-4 text-center text-[11px] text-stone-500 space-y-1.5">
-        <p>
-          <button type="button" onClick={() => setShowLegalModal(true)} className="underline underline-offset-2 hover:text-stone-700">
-            Termos de Uso e Política de Privacidade
-          </button>
-        </p>
-        <p>&copy; {new Date().getFullYear()} {companyProfile.tradeName || companyProfile.name}. Todos os direitos reservados.</p>
-        <p>Sistema desenvolvido por <span className="font-semibold text-stone-600">Amplie Marketing</span></p>
-      </footer>
+        {/* Lista de itens agrupada por categoria */}
+        <main className="px-[22px] pt-6">
+          {groups.map((group) => (
+            <section key={group.id} className="mb-[38px] animate-rise-in">
+              <div className="flex items-center gap-3.5 mb-4">
+                <h2 className="m-0 text-[23px] font-extrabold tracking-[-0.3px]" style={BITTER}>{group.label}</h2>
+                <span className="text-[12px] font-bold text-[#9c4a17] bg-[#f0e2cd] px-2.5 py-1 rounded-full">
+                  {group.items.length} {group.items.length === 1 ? 'item' : 'itens'}
+                </span>
+                <div className="flex-1 h-px bg-[#e4d7c2]" />
+              </div>
+
+              <div className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+                {group.items.map((prod) => (
+                  <article
+                    key={prod.id}
+                    onClick={() => handleOpenProduct(prod)}
+                    className="group flex gap-3.5 bg-white border border-[#ece0cd] rounded-[20px] p-4 cursor-pointer transition shadow-[0_2px_10px_rgba(36,26,18,0.05)] hover:shadow-[0_10px_26px_rgba(36,26,18,0.13)] hover:border-[#dcc9ac]"
+                  >
+                    <div className="flex-1 min-w-0 flex flex-col gap-[7px]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="m-0 text-[17px] font-bold" style={BITTER}>{prod.name}</h3>
+                        {prod.promoPrice && (
+                          <span className="text-[10.5px] font-bold tracking-[0.06em] text-[#0f5132] bg-[#dcf3e4] px-2 py-[3px] rounded-full">
+                            PROMOÇÃO
+                          </span>
+                        )}
+                      </div>
+                      <p className="m-0 text-[13.5px] leading-[1.45] text-[#7d6c58] line-clamp-2">{prod.description}</p>
+                      <div className="mt-auto pt-2 flex items-center gap-2.5">
+                        <span className="text-[19px] font-bold text-[#241a12]" style={BITTER}>
+                          {money(prod.promoPrice || prod.price)}
+                        </span>
+                        {prod.promoPrice && (
+                          <span className="text-[12px] text-[#a4907a] line-through">{money(prod.price)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="relative shrink-0">
+                      <div className="w-[104px] h-[104px] rounded-[16px] overflow-hidden bg-[#f0e6d6]">
+                        <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOpenProduct(prod); }}
+                        aria-label={`Adicionar ${prod.name}`}
+                        className="absolute -right-1.5 -bottom-1.5 w-[38px] h-[38px] rounded-full border-[3px] border-white bg-[#9c4a17] hover:bg-[#b5561c] text-white text-[19px] font-bold leading-none flex items-center justify-center transition"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          {isEmpty && (
+            <div className="text-center py-[60px] px-5">
+              <div className="text-[20px] text-[#241a12] mb-2" style={BITTER}>Nada encontrado</div>
+              <div className="text-[14px] text-[#8a7a67]">Tente outro termo ou toque em “Tudo”.</div>
+            </div>
+          )}
+
+          {/* Progresso do pedido mínimo */}
+          {cartSubtotal > 0 && minOrderValue > 0 && (
+            <div className={`rounded-2xl border p-4 mb-6 transition-colors ${minOrderMet ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-[#ece0cd]'}`}>
+              <div className="flex items-center justify-between text-[11px] font-bold text-[#7d6c58] mb-2">
+                {minOrderMet ? (
+                  <span className="flex items-center gap-1.5 text-emerald-700">
+                    <Check className="w-3.5 h-3.5" />
+                    Pedido mínimo liberado
+                  </span>
+                ) : (
+                  <span>Faltam {money(minOrderValue - cartSubtotal)} para o pedido mínimo</span>
+                )}
+                <span>{money(cartSubtotal)} / {money(minOrderValue)}</span>
+              </div>
+              <div className="h-2 rounded-full bg-[#e4d7c2] overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${minOrderMet ? 'bg-emerald-600' : 'bg-[#9c4a17]'}`}
+                  style={{ width: `${minOrderProgressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="border-t border-[#e4d7c2] mt-2.5 py-[34px] px-[22px] text-center text-[13px] leading-[1.9] text-[#8a7a67]">
+          <p>
+            <button
+              type="button"
+              onClick={() => setShowLegalModal(true)}
+              className="text-[#9c4a17] hover:text-[#6d3110] underline underline-offset-2"
+            >
+              Termos de Uso e Política de Privacidade
+            </button>
+          </p>
+          <p>&copy; {new Date().getFullYear()} {companyProfile.tradeName || companyProfile.name}. Todos os direitos reservados.</p>
+          <p>Sistema desenvolvido por <span className="font-semibold text-[#7d6c58]">Amplie Marketing</span></p>
+        </footer>
+      </div>
 
       <div className="max-w-[1180px] mx-auto lg:px-4">
         {/* Cart backdrop */}
@@ -518,20 +706,20 @@ export const PublicOnlineMenu: React.FC = () => {
 
                   <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider pt-2">Seus Dados</h4>
                   <div className="space-y-2">
-                    <input type="text" placeholder="Nome completo *" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
-                    <input type="text" placeholder="WhatsApp / Telefone com DDD *" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                    <input type="text" inputMode="text" maxLength={MAXLEN.personName} placeholder="Nome completo *" value={customerName} onChange={(e) => setCustomerName(sanitizeText(e.target.value, MAXLEN.personName))} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                    <input type="tel" inputMode="tel" maxLength={MAXLEN.phone} placeholder="WhatsApp / Telefone com DDD *" value={customerPhone} onChange={(e) => setCustomerPhone(maskPhone(e.target.value))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                   </div>
 
                   {serviceType === 'entrega' && (
                     <div className="space-y-2 pt-2">
                       <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Endereço de Entrega</h4>
-                      <input type="text" placeholder="Rua / Avenida *" value={street} onChange={(e) => setStreet(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                      <input type="text" maxLength={MAXLEN.address} placeholder="Rua / Avenida *" value={street} onChange={(e) => setStreet(sanitizeText(e.target.value, MAXLEN.address))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input type="text" placeholder="Número *" value={number} onChange={(e) => setNumber(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
-                        <input type="text" placeholder="Bairro *" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                        <input type="text" maxLength={20} placeholder="Número *" value={number} onChange={(e) => setNumber(sanitizeText(e.target.value, 20))} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                        <input type="text" maxLength={MAXLEN.personName} placeholder="Bairro *" value={neighborhood} onChange={(e) => setNeighborhood(sanitizeText(e.target.value, MAXLEN.personName))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                       </div>
-                      <input type="text" placeholder="Complemento (Apto, Bloco)" value={complement} onChange={(e) => setComplement(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
-                      <input type="text" placeholder="Ponto de referência" value={reference} onChange={(e) => setReference(e.target.value)} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                      <input type="text" maxLength={MAXLEN.shortNote} placeholder="Complemento (Apto, Bloco)" value={complement} onChange={(e) => setComplement(sanitizeText(e.target.value, MAXLEN.shortNote))} className="w-full border border-stone-300 rounded-xl p-2.5" />
+                      <input type="text" maxLength={MAXLEN.shortNote} placeholder="Ponto de referência" value={reference} onChange={(e) => setReference(sanitizeText(e.target.value, MAXLEN.shortNote))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                     </div>
                   )}
 
@@ -655,11 +843,16 @@ export const PublicOnlineMenu: React.FC = () => {
                       Pedido mínimo de R$ {minOrderValue.toFixed(2)} — faltam R$ {(minOrderValue - cartSubtotal).toFixed(2)}
                     </p>
                   )}
+                  {!isStoreOpen && (
+                    <p className="text-rose-600 text-[11px] font-semibold text-center pt-1">
+                      Restaurante fechado no momento — não é possível concluir o pedido.
+                    </p>
+                  )}
                 </div>
 
                 {checkoutStep === 'cart' && (
                   <button
-                    disabled={cart.length === 0 || belowMinOrder}
+                    disabled={cart.length === 0 || belowMinOrder || !isStoreOpen}
                     onClick={() => setCheckoutStep('customer')}
                     className="w-full bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md disabled:opacity-50"
                   >
@@ -672,7 +865,7 @@ export const PublicOnlineMenu: React.FC = () => {
                     <button onClick={() => setCheckoutStep('cart')} className="px-4 py-3 bg-stone-200 text-stone-700 rounded-xl font-bold text-xs">
                       Voltar
                     </button>
-                    <button onClick={() => setCheckoutStep('payment')} className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md">
+                    <button onClick={() => setCheckoutStep('payment')} disabled={!isStoreOpen} className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md disabled:opacity-50">
                       Ir para Pagamento
                     </button>
                   </div>
@@ -685,7 +878,7 @@ export const PublicOnlineMenu: React.FC = () => {
                     </button>
                     <button
                       onClick={handleFinalizeOrder}
-                      disabled={isPlacingOrder}
+                      disabled={isPlacingOrder || !isStoreOpen}
                       className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       {isPlacingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -745,7 +938,8 @@ export const PublicOnlineMenu: React.FC = () => {
                 <textarea
                   placeholder="Ex: sem cebola, ponto da carne, pouco sal..."
                   value={productNotes}
-                  onChange={(e) => setProductNotes(e.target.value)}
+                  maxLength={MAXLEN.shortNote}
+                  onChange={(e) => setProductNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border border-stone-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-amber-700 focus:outline-none"
                   rows={2}
                 />
@@ -765,36 +959,44 @@ export const PublicOnlineMenu: React.FC = () => {
 
               <button
                 onClick={handleAddToCart}
-                className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-2.5 px-4 rounded-xl font-bold text-xs shadow-md flex items-center justify-between"
+                disabled={!isStoreOpen}
+                className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-2.5 px-4 rounded-xl font-bold text-xs shadow-md flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Adicionar ao Carrinho</span>
-                <span>
-                  R${' '}
-                  {(((selectedProduct.promoPrice || selectedProduct.price) + selectedAdditions.reduce((a, b) => a + b.price, 0)) * productQty).toFixed(2)}
-                </span>
+                {isStoreOpen ? (
+                  <>
+                    <span>Adicionar ao Carrinho</span>
+                    <span>
+                      R${' '}
+                      {(((selectedProduct.promoPrice || selectedProduct.price) + selectedAdditions.reduce((a, b) => a + b.price, 0)) * productQty).toFixed(2)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="w-full text-center">Restaurante fechado no momento</span>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Floating mobile cart bar */}
-      {cartItemCount > 0 && !isCartOpen && (
-        <button
-          onClick={handleOpenCart}
-          className="lg:hidden fixed left-3 right-3 bottom-3 z-30 bg-stone-900 text-white rounded-2xl px-4 py-3 flex items-center justify-between shadow-2xl animate-slide-up"
-        >
-          <div className="flex items-center gap-2.5">
-            <span className="w-7 h-7 rounded-lg bg-amber-800 flex items-center justify-center text-xs font-bold">{cartItemCount}</span>
-            <span className="text-xs text-left">
-              Total<br /><b className="text-sm">R$ {cartTotal.toFixed(2)}</b>
-            </span>
+      {/* Barra fixa do carrinho (aparece só com ≥1 item) */}
+      {cartItemCount > 0 && !isCartOpen && !selectedProduct && (
+        <div className="fixed inset-x-0 bottom-0 z-30 px-[18px] pb-3.5 pt-8 bg-[linear-gradient(180deg,rgba(246,239,228,0)_0%,#f6efe4_45%)]">
+          <div className="max-w-[640px] mx-auto flex items-center gap-3.5 bg-[#241a12] text-[#f6efe4] rounded-full pl-[22px] pr-3.5 py-3 shadow-[0_14px_34px_rgba(36,26,18,0.32)] animate-slide-up">
+            <div className="flex-1 leading-tight">
+              <span className="block text-[12px] text-[#c1af99]">
+                {cartItemCount === 1 ? '1 item no carrinho' : `${cartItemCount} itens no carrinho`}
+              </span>
+              <strong className="text-[18px]" style={BITTER}>{money(cartSubtotal)}</strong>
+            </div>
+            <button
+              onClick={handleOpenCart}
+              className="bg-[#9c4a17] hover:bg-[#b5561c] text-white rounded-full px-[26px] py-3.5 text-[15px] font-bold transition"
+            >
+              Finalizar pedido
+            </button>
           </div>
-          <span className="bg-amber-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1">
-            Ver carrinho
-            <ShoppingBag className="w-3.5 h-3.5" />
-          </span>
-        </button>
+        </div>
       )}
 
       {showLegalModal && (

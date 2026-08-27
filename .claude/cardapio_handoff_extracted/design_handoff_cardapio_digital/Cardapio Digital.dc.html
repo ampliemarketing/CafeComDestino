@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;700;800&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f6efe4; font-family: Karla, system-ui, sans-serif; color: #241a12; -webkit-font-smoothing: antialiased; }
+  a { color: #9c4a17; text-decoration: underline; text-underline-offset: 2px; }
+  a:hover { color: #6d3110; }
+  input { font-family: inherit; }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #d8c7ad; border-radius: 99px; }
+  @keyframes pulseDot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="max-width:1240px;margin:0 auto;padding-bottom:110px">
+
+  <header style="background:linear-gradient(180deg,#241a12 0%,#100a06 100%);color:#f6efe4;padding:26px 22px 30px;border-radius:0 0 26px 26px">
+    <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between;max-width:1140px;margin:0 auto">
+      <div style="display:flex;gap:16px;align-items:center;min-width:280px">
+        <div style="width:74px;height:74px;border-radius:20px;flex:none;overflow:hidden;border:2px solid #9c4a17;background:#1b120b">
+          <svg viewBox="0 0 74 74" width="74" height="74" role="img" aria-label="logo"><defs><pattern id="lg" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#2a1d13" /><rect x="4" width="4" height="8" fill="#1b120b" /></pattern></defs><rect width="74" height="74" fill="url(#lg)" /><text x="37" y="41" text-anchor="middle" font-family="ui-monospace,monospace" font-size="8" fill="#a9865c">logo</text></svg>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <h1 style="margin:0;font-family:Bitter,serif;font-weight:800;font-size:30px;letter-spacing:-.5px;line-height:1">CAFÉ COM DESTINO</h1>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#0f5132;color:#c8f4d8;font-size:11px;font-weight:700;letter-spacing:.08em;padding:5px 10px;border-radius:99px">
+              <span style="width:7px;height:7px;border-radius:99px;background:#3ddc84;animation:pulseDot 1.8s ease-in-out infinite"></span>ABERTO
+            </span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px;color:#c9b8a2">
+            <span>Preparo médio <strong style="color:#f6efe4">15 min</strong></span>
+            <span>Entrega <strong style="color:#f6efe4">R$ 6,90</strong></span>
+            <span>Pedido mín. <strong style="color:#f6efe4">R$ 15,00</strong></span>
+          </div>
+          <div style="font-size:13px;color:#9d8b76">Av. Paulista, 1200 — Bela Vista</div>
+        </div>
+      </div>
+      <button type="button" style="display:inline-flex;align-items:center;gap:10px;background:#9c4a17;color:#fff;border:0;border-radius:99px;padding:14px 22px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(156,74,23,.35)" style-hover="background:#b5561c">
+        Meu carrinho ({{ cartCount }})
+      </button>
+    </div>
+  </header>
+
+  <section style="padding:26px 22px 6px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <h2 style="margin:0;font-family:Bitter,serif;font-size:20px;font-weight:700">Destaques da casa</h2>
+      <span style="font-size:12.5px;color:#8a7a67">arraste para ver mais →</span>
+    </div>
+    <div style="display:flex;gap:16px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x mandatory">
+      <sc-for list="{{ featured }}" as="f" hint-placeholder-count="3">
+        <article style="scroll-snap-align:start;flex:0 0 320px;border-radius:22px;overflow:hidden;background:#241a12;color:#f6efe4;position:relative;box-shadow:0 10px 24px rgba(36,26,18,.14)">
+          <div style="height:150px;background:#31241a">
+            <svg viewBox="0 0 320 150" width="100%" height="150" preserveAspectRatio="none" role="img"><defs><pattern id="fp" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="5" height="10" fill="#3a2b1e" /><rect x="5" width="5" height="10" fill="#31241a" /></pattern></defs><rect width="320" height="150" fill="url(#fp)" /><text x="160" y="79" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#a9865c">foto do prato</text></svg>
+          </div>
+          <div style="position:absolute;top:12px;left:12px;background:#9c4a17;font-size:11px;font-weight:700;letter-spacing:.06em;padding:5px 10px;border-radius:99px">{{ f.tag }}</div>
+          <div style="padding:16px 18px 18px;display:flex;flex-direction:column;gap:8px">
+            <h3 style="margin:0;font-family:Bitter,serif;font-size:19px;font-weight:700">{{ f.name }}</h3>
+            <p style="margin:0;font-size:13.5px;line-height:1.45;color:#c1af99">{{ f.desc }}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+              <span style="font-family:Bitter,serif;font-size:20px;font-weight:700;color:#f0b071">{{ f.priceLabel }}</span>
+              <button type="button" onClick="{{ f.add }}" style="background:#f6efe4;color:#241a12;border:0;border-radius:99px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer" style-hover="background:#fff">Adicionar</button>
+            </div>
+          </div>
+        </article>
+      </sc-for>
+    </div>
+  </section>
+
+  <div style="position:sticky;top:0;z-index:20;background:#f6efe4;padding:14px 22px 12px;border-bottom:1px solid #e4d7c2">
+    <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e0d2ba;border-radius:99px;padding:13px 18px;box-shadow:0 2px 8px rgba(36,26,18,.05)">
+      <span style="color:#a4907a;font-size:15px">⌕</span>
+      <input type="text" value="{{ query }}" onChange="{{ onSearch }}" placeholder="Buscar pratos, bebidas ou sobremesas..." style="border:0;outline:none;flex:1;font-size:15px;color:#241a12;background:transparent" />
+    </div>
+    <div style="display:flex;gap:10px;overflow-x:auto;padding:14px 0 4px">
+      <sc-for list="{{ chips }}" as="c" hint-placeholder-count="5">
+        <button type="button" onClick="{{ c.select }}" style="flex:none;border:1px solid #e0d2ba;border-radius:99px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;background:{{ c.bg }};color:{{ c.fg }};border-color:{{ c.bd }}">{{ c.label }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <main style="padding:24px 22px 0">
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+      <section style="margin-bottom:38px;animation:riseIn .35s ease both">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+          <h2 style="margin:0;font-family:Bitter,serif;font-size:23px;font-weight:800;letter-spacing:-.3px">{{ g.label }}</h2>
+          <span style="font-size:12px;font-weight:700;color:#9c4a17;background:#f0e2cd;padding:4px 10px;border-radius:99px">{{ g.count }}</span>
+          <div style="flex:1;height:1px;background:#e4d7c2"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+            <article style="display:flex;gap:14px;background:#fff;border:1px solid #ece0cd;border-radius:20px;padding:16px;box-shadow:0 2px 10px rgba(36,26,18,.05)" style-hover="box-shadow:0 10px 26px rgba(36,26,18,.13);border-color:#dcc9ac">
+              <div style="flex:1;display:flex;flex-direction:column;gap:7px;min-width:0">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <h3 style="margin:0;font-family:Bitter,serif;font-size:17px;font-weight:700">{{ it.name }}</h3>
+                  <sc-if value="{{ it.tag }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#0f5132;background:#dcf3e4;padding:3px 8px;border-radius:99px">{{ it.tag }}</span>
+                  </sc-if>
+                </div>
+                <p style="margin:0;font-size:13.5px;line-height:1.45;color:#7d6c58">{{ it.desc }}</p>
+                <div style="margin-top:auto;padding-top:8px;display:flex;align-items:center;gap:10px">
+                  <span style="font-family:Bitter,serif;font-size:19px;font-weight:700;color:#241a12">{{ it.priceLabel }}</span>
+                  <sc-if value="{{ it.serves }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size:12px;color:#a4907a">{{ it.serves }}</span>
+                  </sc-if>
+                </div>
+              </div>
+              <div style="position:relative;flex:none">
+                <div style="width:104px;height:104px;border-radius:16px;overflow:hidden;background:#f0e6d6">
+                  <svg viewBox="0 0 104 104" width="104" height="104" role="img"><defs><pattern id="ip" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><rect width="4" height="8" fill="#e8dbc6" /><rect x="4" width="4" height="8" fill="#f0e6d6" /></pattern></defs><rect width="104" height="104" fill="url(#ip)" /><text x="52" y="56" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#a4907a">foto</text></svg>
+                </div>
+                <button type="button" onClick="{{ it.add }}" aria-label="Adicionar" style="position:absolute;right:-6px;bottom:-6px;width:38px;height:38px;border-radius:99px;border:3px solid #fff;background:#9c4a17;color:#fff;font-size:19px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#b5561c">+</button>
+              </div>
+            </article>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center;padding:60px 20px;color:#8a7a67">
+        <div style="font-family:Bitter,serif;font-size:20px;color:#241a12;margin-bottom:8px">Nada encontrado</div>
+        <div style="font-size:14px">Tente outro termo ou toque em “Tudo”.</div>
+      </div>
+    </sc-if>
+  </main>
+
+  <footer style="text-align:center;padding:34px 22px;color:#8a7a67;font-size:13px;line-height:1.9;border-top:1px solid #e4d7c2;margin-top:10px">
+    <a href="#termos">Termos de Uso e Política de Privacidade</a>
+    <div>© 2026 CAFÉ COM DESTINO. Todos os direitos reservados.</div>
+  </footer>
+</div>
+
+<sc-if value="{{ hasCart }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:0;right:0;bottom:0;z-index:30;padding:14px 18px;background:linear-gradient(180deg,rgba(246,239,228,0) 0%,#f6efe4 45%)">
+    <div style="max-width:640px;margin:0 auto;display:flex;align-items:center;gap:14px;background:#241a12;color:#f6efe4;border-radius:99px;padding:12px 14px 12px 22px;box-shadow:0 14px 34px rgba(36,26,18,.32)">
+      <div style="flex:1;display:flex;flex-direction:column;line-height:1.3">
+        <span style="font-size:12px;color:#c1af99">{{ cartLabel }}</span>
+        <strong style="font-family:Bitter,serif;font-size:18px">{{ cartTotal }}</strong>
+      </div>
+      <button type="button" style="background:#9c4a17;color:#fff;border:0;border-radius:99px;padding:14px 26px;font-size:15px;font-weight:700;cursor:pointer" style-hover="background:#b5561c">Finalizar pedido</button>
+    </div>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = { query: "", cat: "Tudo", cart: [] };
+
+  items = [
+    { id: 1, name: "Strogonoff", desc: "300g de arroz, 150g de frango ao molho cremoso e batata palha", price: 29.9, cat: "Prato feito", tag: "MAIS PEDIDO", serves: "serve 1" },
+    { id: 2, name: "Arroz e Bife", desc: "Bife grelhado, arroz soltinho, feijão e vinagrete da casa", price: 24.99, cat: "Prato feito", serves: "serve 1" },
+    { id: 3, name: "Mini Pastéis", desc: "Seis unidades fritas na hora: carne, queijo ou frango", price: 19.99, cat: "Prato feito", serves: "6 un." },
+    { id: 4, name: "Café coado 300ml", desc: "Grão torrado no dia, servido quente", price: 7.5, cat: "Bebidas" },
+    { id: 5, name: "Suco natural de laranja", desc: "500ml, sem açúcar adicionado", price: 11.9, cat: "Bebidas", tag: "NATURAL" },
+    { id: 6, name: "Refrigerante lata", desc: "350ml, sabores variados", price: 6.5, cat: "Bebidas" },
+    { id: 7, name: "Energético 473ml", desc: "Lata gelada", price: 14.9, cat: "Energetico" },
+    { id: 8, name: "Energético com suco", desc: "Lata 473ml batida com suco de laranja", price: 18.9, cat: "Energetico", tag: "NOVO" },
+    { id: 9, name: "Cerveja long neck", desc: "330ml, servida gelada", price: 10.9, cat: "Cerveja" },
+    { id: 10, name: "Cerveja 600ml", desc: "Garrafa para dividir, com balde de gelo", price: 19.9, cat: "Cerveja", serves: "serve 2" }
+  ];
+
+  cats = ["Tudo", "Prato feito", "Bebidas", "Energetico", "Cerveja"];
+
+  money(v) { return "R$ " + v.toFixed(2).replace(".", ","); }
+
+  add = (item) => this.setState(s => ({ cart: s.cart.concat([item]) }));
+
+  renderVals() {
+    const q = this.state.query.trim().toLowerCase();
+    const match = (i) =>
+      (this.state.cat === "Tudo" || i.cat === this.state.cat) &&
+      (!q || i.name.toLowerCase().includes(q) || (i.desc || "").toLowerCase().includes(q));
+
+    const shape = (i) => ({ ...i, priceLabel: this.money(i.price), add: () => this.add(i) });
+
+    const groups = this.cats.slice(1).map(c => {
+      const list = this.items.filter(i => i.cat === c && match(i)).map(shape);
+      return { label: c, count: list.length + (list.length === 1 ? " item" : " itens"), items: list };
+    }).filter(g => g.items.length);
+
+    const featured = [this.items[0], this.items[7], this.items[4]].map(i => ({
+      ...shape(i), tag: i.tag || "DESTAQUE"
+    }));
+
+    const chips = this.cats.map(c => {
+      const on = this.state.cat === c;
+      return {
+        label: c, bg: on ? "#9c4a17" : "#fff", fg: on ? "#fff" : "#5d4c39", bd: on ? "#9c4a17" : "#e0d2ba",
+        select: () => this.setState({ cat: c })
+      };
+    });
+
+    const n = this.state.cart.length;
+    const total = this.state.cart.reduce((a, i) => a + i.price, 0);
+
+    return {
+      groups, featured, chips, empty: groups.length === 0,
+      query: this.state.query,
+      onSearch: (e) => this.setState({ query: e.target.value }),
+      cartCount: n, hasCart: n > 0,
+      cartLabel: n + (n === 1 ? " item no carrinho" : " itens no carrinho"),
+      cartTotal: this.money(total)
+    };
+  }
+}
+</script>
+</body>
+</html>

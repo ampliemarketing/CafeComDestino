@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductAddition, Category, SaleUnit } from '../../types';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber, maskNCM, isValidNCM, isValidImageUrl } from '../../lib/validation';
 
 export const ProductManagement: React.FC = () => {
   const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
@@ -100,8 +101,28 @@ export const ProductManagement: React.FC = () => {
   };
 
   const handleSave = () => {
-    if (!editingProduct?.name || !editingProduct?.price) {
-      addToast('error', 'Campos obrigatórios', 'Preencha o nome e preço do produto.');
+    if (!editingProduct?.name?.trim()) {
+      addToast('error', 'Campos obrigatórios', 'Preencha o nome do produto.');
+      return;
+    }
+    if (typeof editingProduct.price !== 'number' || editingProduct.price <= 0) {
+      addToast('error', 'Preço inválido', 'Informe um preço de venda maior que zero.');
+      return;
+    }
+    if ((editingProduct.costPrice ?? 0) < 0) {
+      addToast('error', 'Custo inválido', 'O custo não pode ser negativo.');
+      return;
+    }
+    if (editingProduct.promoPrice != null && editingProduct.promoPrice >= editingProduct.price) {
+      addToast('error', 'Promoção inválida', 'O preço promocional precisa ser menor que o preço de venda.');
+      return;
+    }
+    if (editingProduct.imageUrl && !isValidImageUrl(editingProduct.imageUrl)) {
+      addToast('error', 'URL de imagem inválida', 'Use um link http(s) ou deixe em branco.');
+      return;
+    }
+    if (editingProduct.fiscal?.ncm && !isValidNCM(editingProduct.fiscal.ncm)) {
+      addToast('error', 'NCM inválido', 'O NCM deve ter 8 dígitos (0000.00.00).');
       return;
     }
     if (!editingProduct?.categoryId) {
@@ -158,9 +179,10 @@ export const ProductManagement: React.FC = () => {
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
             <input
               type="text"
+              maxLength={60}
               placeholder="Buscar por nome ou código..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
               className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700"
             />
           </div>
@@ -303,8 +325,9 @@ export const ProductManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Nome do Produto *</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.name}
                   value={editingProduct.name || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, name: sanitizeText(e.target.value, MAXLEN.name) })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -362,8 +385,9 @@ export const ProductManagement: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={editingProduct.price || 0}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })}
+                  min="0"
+                  value={editingProduct.price ?? 0}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, price: toBoundedNumber(e.target.value, 0, 1_000_000) })}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -373,8 +397,9 @@ export const ProductManagement: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={editingProduct.costPrice || 0}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, costPrice: Number(e.target.value) })}
+                  min="0"
+                  value={editingProduct.costPrice ?? 0}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, costPrice: toBoundedNumber(e.target.value, 0, 1_000_000) })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -384,8 +409,9 @@ export const ProductManagement: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={editingProduct.promoPrice || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, promoPrice: e.target.value ? Number(e.target.value) : undefined })}
+                  min="0"
+                  value={editingProduct.promoPrice ?? ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, promoPrice: e.target.value ? toBoundedNumber(e.target.value, 0, 1_000_000) : undefined })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -393,8 +419,9 @@ export const ProductManagement: React.FC = () => {
               <div className="sm:col-span-2">
                 <label className="font-semibold text-stone-700 block mb-1">Descrição Comercial</label>
                 <textarea
+                  maxLength={MAXLEN.description}
                   value={editingProduct.description || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, description: sanitizeText(e.target.value, MAXLEN.description) })}
                   className="w-full border rounded-xl p-2.5"
                   rows={2}
                 />
@@ -403,9 +430,11 @@ export const ProductManagement: React.FC = () => {
               <div>
                 <label className="font-semibold text-stone-700 block mb-1">URL da Imagem</label>
                 <input
-                  type="text"
+                  type="url"
+                  maxLength={MAXLEN.url}
+                  placeholder="https://..."
                   value={editingProduct.imageUrl || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value.slice(0, MAXLEN.url) })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -414,10 +443,13 @@ export const ProductManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">NCM Fiscal</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={MAXLEN.ncm}
+                  placeholder="0000.00.00"
                   value={editingProduct.fiscal?.ncm || '2106.90.90'}
-                  onChange={(e) => setEditingProduct({ 
-                    ...editingProduct, 
-                    fiscal: { ...editingProduct.fiscal!, ncm: e.target.value } 
+                  onChange={(e) => setEditingProduct({
+                    ...editingProduct,
+                    fiscal: { ...editingProduct.fiscal!, ncm: maskNCM(e.target.value) }
                   })}
                   className="w-full border rounded-xl p-2.5 font-mono"
                 />
@@ -468,9 +500,10 @@ export const ProductManagement: React.FC = () => {
               <input
                 type="text"
                 autoFocus
+                maxLength={MAXLEN.name}
                 placeholder="Ex: Bebidas & Sucos"
                 value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
+                onChange={(e) => setNewCategoryName(sanitizeText(e.target.value, MAXLEN.name))}
                 className="w-full border rounded-xl p-2.5"
               />
             </div>
@@ -529,9 +562,10 @@ export const ProductManagement: React.FC = () => {
                 <input
                   type="text"
                   autoFocus
+                  maxLength={40}
                   placeholder="Ex: Quilograma"
                   value={newUnitName}
-                  onChange={(e) => setNewUnitName(e.target.value)}
+                  onChange={(e) => setNewUnitName(sanitizeText(e.target.value, 40))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -539,9 +573,10 @@ export const ProductManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Abreviação *</label>
                 <input
                   type="text"
+                  maxLength={6}
                   placeholder="Ex: KG"
                   value={newUnitAbbreviation}
-                  onChange={(e) => setNewUnitAbbreviation(e.target.value.toUpperCase())}
+                  onChange={(e) => setNewUnitAbbreviation(sanitizeText(e.target.value, 6).toUpperCase())}
                   className="w-full border rounded-xl p-2.5 font-mono"
                 />
               </div>

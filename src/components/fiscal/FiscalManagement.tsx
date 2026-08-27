@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, maskCNPJ, isValidCNPJ } from '../../lib/validation';
 
 export const FiscalManagement: React.FC = () => {
   const { orders, companyProfile, setCompanyProfile, addToast, currentUser } = useApp();
@@ -116,9 +117,10 @@ export const FiscalManagement: React.FC = () => {
                 <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
+                  maxLength={60}
                   placeholder="Buscar por chave Sefaz, cliente ou nº do pedido..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
                   className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs"
                 />
               </div>
@@ -203,8 +205,9 @@ export const FiscalManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Razão Social Emitente</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.tradeName}
                   value={razaoSocialInput}
-                  onChange={(e) => setRazaoSocialInput(e.target.value)}
+                  onChange={(e) => setRazaoSocialInput(sanitizeText(e.target.value, MAXLEN.tradeName))}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -213,8 +216,10 @@ export const FiscalManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">CNPJ</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={18}
                   value={cnpjInput}
-                  onChange={(e) => setCnpjInput(e.target.value)}
+                  onChange={(e) => setCnpjInput(maskCNPJ(e.target.value))}
                   className="w-full border rounded-xl p-2.5 font-mono"
                 />
               </div>
@@ -223,8 +228,10 @@ export const FiscalManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Inscrição Estadual (IE)</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={20}
                   value={ieInput}
-                  onChange={(e) => setIeInput(e.target.value)}
+                  onChange={(e) => setIeInput(e.target.value.replace(/[^\dxX.\-/]/g, '').slice(0, 20))}
                   className="w-full border rounded-xl p-2.5 font-mono"
                 />
               </div>
@@ -242,11 +249,19 @@ export const FiscalManagement: React.FC = () => {
             {can('fiscal.editar_dados_empresa') && (
             <button
               onClick={() => {
+                if (!razaoSocialInput.trim()) {
+                  addToast('error', 'Razão social obrigatória', 'Informe a razão social do emitente.');
+                  return;
+                }
+                if (cnpjInput.trim() && !isValidCNPJ(cnpjInput)) {
+                  addToast('error', 'CNPJ inválido', 'Verifique os dígitos do CNPJ.');
+                  return;
+                }
                 setCompanyProfile({
                   ...companyProfile,
-                  name: razaoSocialInput,
-                  cnpj: cnpjInput,
-                  ie: ieInput,
+                  name: razaoSocialInput.trim(),
+                  cnpj: cnpjInput.trim(),
+                  ie: ieInput.trim(),
                 });
                 addToast('success', 'Dados fiscais salvos');
               }}

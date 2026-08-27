@@ -8,6 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { User, UserRole } from '../../types';
 import { PERMISSION_CATALOG, ROLE_DEFAULT_PERMISSIONS, ScreenPermissionGroup } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, maskPhone, maskCPF, isValidCPF, isValidPhone, isValidEmail } from '../../lib/validation';
 
 const ROLES: UserRole[] = ['admin', 'gerente', 'caixa', 'garcom', 'cozinha', 'estoque', 'financeiro'];
 
@@ -94,6 +95,28 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!name.trim()) {
+      addToast('error', 'Nome obrigatório', 'Informe o nome do funcionário.');
+      return;
+    }
+    if (!isEdit && !isValidEmail(email)) {
+      addToast('error', 'E-mail inválido', 'Informe um e-mail válido.');
+      return;
+    }
+    if (!isEdit && password.length < 6) {
+      addToast('error', 'Senha muito curta', 'A senha provisória precisa de ao menos 6 caracteres.');
+      return;
+    }
+    if (cpf.trim() && !isValidCPF(cpf)) {
+      addToast('error', 'CPF inválido', 'Verifique os dígitos do CPF.');
+      return;
+    }
+    if (phone.trim() && !isValidPhone(phone)) {
+      addToast('error', 'Telefone inválido', 'Use DDD + número (10 ou 11 dígitos).');
+      return;
+    }
+
     setSaving(true);
 
     if (isEdit) {
@@ -169,8 +192,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <input
                   type="text"
                   required
+                  maxLength={MAXLEN.name}
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => setName(sanitizeText(e.target.value, MAXLEN.name))}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs"
                 />
               </div>
@@ -179,9 +203,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <input
                   type="email"
                   required
+                  maxLength={MAXLEN.email}
                   disabled={isEdit}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value.slice(0, MAXLEN.email))}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs disabled:bg-stone-100 disabled:text-stone-500"
                 />
               </div>
@@ -192,8 +217,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                     type="text"
                     required
                     minLength={6}
+                    maxLength={72}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value.slice(0, 72))}
                     placeholder="mín. 6 caracteres"
                     className="w-full border rounded-lg px-2 py-1.5 text-xs"
                   />
@@ -203,8 +229,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <label className="text-[10px] font-bold text-stone-500 uppercase">CPF</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={14}
                   value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
+                  onChange={(e) => setCpf(maskCPF(e.target.value))}
                   placeholder="000.000.000-00"
                   className="w-full border rounded-lg px-2 py-1.5 text-xs"
                 />
@@ -212,9 +240,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
               <div>
                 <label className="text-[10px] font-bold text-stone-500 uppercase">Telefone</label>
                 <input
-                  type="text"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={MAXLEN.phone}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(maskPhone(e.target.value))}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs"
                 />
               </div>

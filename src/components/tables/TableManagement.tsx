@@ -27,6 +27,7 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { PartialPaymentModal } from './PartialPaymentModal';
 import { CourtesyModal } from './CourtesyModal';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const TableManagement: React.FC = () => {
   const {
@@ -177,9 +178,10 @@ export const TableManagement: React.FC = () => {
           <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
           <input
             type="text"
+            maxLength={60}
             placeholder="Buscar mesa por número, setor ou cliente..."
             value={tableSearchQuery}
-            onChange={(e) => setTableSearchQuery(e.target.value)}
+            onChange={(e) => setTableSearchQuery(e.target.value.slice(0, 60))}
             className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-2 focus:ring-amber-700"
           />
         </div>
@@ -581,7 +583,7 @@ export const TableManagement: React.FC = () => {
                   type="number"
                   min="1"
                   value={newTableNumber}
-                  onChange={(e) => setNewTableNumber(Number(e.target.value))}
+                  onChange={(e) => setNewTableNumber(toBoundedNumber(e.target.value, 1, 9999, 1))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -603,7 +605,7 @@ export const TableManagement: React.FC = () => {
                   type="number"
                   min="1"
                   value={newTableCapacity}
-                  onChange={(e) => setNewTableCapacity(Number(e.target.value))}
+                  onChange={(e) => setNewTableCapacity(toBoundedNumber(e.target.value, 1, 100, 1))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -693,9 +695,10 @@ export const TableManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente / Identificação</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.personName}
                   placeholder="Ex: Carlos Andrade"
                   value={personName}
-                  onChange={(e) => setPersonName(e.target.value)}
+                  onChange={(e) => setPersonName(sanitizeText(e.target.value, MAXLEN.personName))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -705,7 +708,7 @@ export const TableManagement: React.FC = () => {
                   type="number"
                   min="1"
                   value={guestCount}
-                  onChange={(e) => setGuestCount(Number(e.target.value))}
+                  onChange={(e) => setGuestCount(toBoundedNumber(e.target.value, 1, 100, 1))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -780,9 +783,10 @@ export const TableManagement: React.FC = () => {
                     <input
                       type="number"
                       min="0"
+                      max={remainingBeforeDiscount}
                       step="0.01"
                       value={finalDiscount}
-                      onChange={(e) => setFinalDiscount(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => setFinalDiscount(toBoundedNumber(e.target.value, 0, remainingBeforeDiscount))}
                       className="w-full border rounded-xl p-2 font-bold"
                     />
                   </div>

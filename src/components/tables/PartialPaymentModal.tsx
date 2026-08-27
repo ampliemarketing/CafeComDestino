@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { DiningTable, TableItem, PaymentMethod, PartialPayment } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
+import { MAXLEN, sanitizeText } from '../../lib/validation';
 
 interface PartialPaymentModalProps {
   isOpen: boolean;
@@ -306,9 +307,10 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                   <User className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
+                    maxLength={MAXLEN.personName}
                     placeholder="Ex: Pedro (vai embora mais cedo)"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    onChange={(e) => setCustomerName(sanitizeText(e.target.value, MAXLEN.personName))}
                     className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs"
                   />
                 </div>
@@ -318,9 +320,10 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                 <label className="font-semibold text-stone-700 block mb-1">Observações do Lançamento</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.shortNote}
                   placeholder="Ex: Pagou bebidas e 1 prato"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => setNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border rounded-xl p-2 text-xs"
                 />
               </div>
@@ -393,9 +396,10 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                         <input
                           type="number"
                           step="0.01"
+                          min="0"
                           value={row.amount}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value === '' ? '' : String(Math.max(0, Number(e.target.value) || 0));
                             setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
                           }}
                           className="w-full border rounded-xl pl-8 pr-2 py-2 font-bold bg-white text-xs"

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { FinancialEntry } from '../../types';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const FinancialManagement: React.FC = () => {
   const { orders, addToast, currentUser } = useApp();
@@ -240,9 +241,10 @@ export const FinancialManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Descrição</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.name}
                   placeholder="Ex: Fornecedor de Carnes Prime"
                   value={newEntryDesc}
-                  onChange={(e) => setNewEntryDesc(e.target.value)}
+                  onChange={(e) => setNewEntryDesc(sanitizeText(e.target.value, MAXLEN.name))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -251,8 +253,10 @@ export const FinancialManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Valor (R$)</label>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={newEntryAmount}
-                  onChange={(e) => setNewEntryAmount(Number(e.target.value))}
+                  onChange={(e) => setNewEntryAmount(toBoundedNumber(e.target.value, 0, 100_000_000))}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -260,10 +264,14 @@ export const FinancialManagement: React.FC = () => {
 
             <button
               onClick={() => {
+                if (newEntryAmount <= 0) {
+                  addToast('error', 'Valor inválido', 'Informe um valor maior que zero.');
+                  return;
+                }
                 const newEntry: FinancialEntry = {
                   id: 'fin-' + Date.now(),
                   type: newEntryType,
-                  description: newEntryDesc || (newEntryType === 'receita' ? 'Receita avulsa' : 'Despesa avulsa'),
+                  description: newEntryDesc.trim() || (newEntryType === 'receita' ? 'Receita avulsa' : 'Despesa avulsa'),
                   category: newEntryCategory,
                   amount: newEntryAmount,
                   dueDate: new Date().toLocaleDateString('pt-BR'),

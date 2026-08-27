@@ -5,6 +5,7 @@ import { CashMovement, Order } from '../../types';
 import { fetchShiftOrders, computeShiftStats, diffTone, diffToneClasses } from './shiftStats';
 import { CashShiftPrintReport } from './CashShiftPrintReport';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 import {
   ArrowLeft,
   Wallet,
@@ -330,8 +331,10 @@ export const CashShiftDetail: React.FC = () => {
                       {isClosing ? (
                         <input
                           type="number"
+                          min="0"
+                          step="0.01"
                           value={row.value}
-                          onChange={(e) => row.setValue(Number(e.target.value))}
+                          onChange={(e) => row.setValue(toBoundedNumber(e.target.value, 0, 10_000_000))}
                           className="w-28 border rounded-lg px-2 py-1 text-right font-bold"
                         />
                       ) : displayedConferred != null ? (
@@ -394,8 +397,10 @@ export const CashShiftDetail: React.FC = () => {
             {isClosing ? (
               <input
                 type="number"
+                min="0"
+                step="0.01"
                 value={conferredCash}
-                onChange={(e) => setConferredCash(Number(e.target.value))}
+                onChange={(e) => setConferredCash(toBoundedNumber(e.target.value, 0, 10_000_000))}
                 className="w-full border rounded-lg px-2 py-1.5 mt-1 font-bold text-lg"
               />
             ) : (
@@ -526,8 +531,9 @@ export const CashShiftDetail: React.FC = () => {
           </h4>
           <textarea
             placeholder="Justificativa para divergências (ex: erro de troco, pagamento a menor não percebido)..."
+            maxLength={MAXLEN.notes}
             value={closeNotesInput}
-            onChange={(e) => setCloseNotesInput(e.target.value)}
+            onChange={(e) => setCloseNotesInput(sanitizeText(e.target.value, MAXLEN.notes))}
             className={`w-full border rounded-xl p-2.5 text-xs ${needsJustification && !closeNotesInput.trim() ? 'border-rose-400' : ''}`}
             rows={2}
           />
@@ -602,9 +608,10 @@ export const CashShiftDetail: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Nome</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.shortNote}
                   placeholder="Ex: Troco extra, Compra de gás..."
                   value={movName}
-                  onChange={(e) => setMovName(e.target.value)}
+                  onChange={(e) => setMovName(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -612,9 +619,11 @@ export const CashShiftDetail: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Valor (R$)</label>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   placeholder="0,00"
                   value={movAmount}
-                  onChange={(e) => setMovAmount(e.target.value)}
+                  onChange={(e) => setMovAmount(e.target.value === '' ? '' : String(toBoundedNumber(e.target.value, 0, 10_000_000)))}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -622,9 +631,10 @@ export const CashShiftDetail: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Observação</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.shortNote}
                   placeholder="Ex: Pagamento fornecedor hortifruti, troco extra..."
                   value={movReason}
-                  onChange={(e) => setMovReason(e.target.value)}
+                  onChange={(e) => setMovReason(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -665,8 +675,9 @@ export const CashShiftDetail: React.FC = () => {
               type="password"
               inputMode="numeric"
               autoFocus
+              maxLength={MAXLEN.pin}
               value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin))}
               onKeyDown={(e) => e.key === 'Enter' && confirmClose()}
               placeholder="PIN"
               className="w-full border rounded-xl p-3 text-center text-lg tracking-[0.3em] font-bold"

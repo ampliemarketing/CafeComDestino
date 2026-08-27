@@ -22,6 +22,7 @@ import { Product, ProductAddition, PaymentMethod, Order } from '../../types';
 import { OnlineOrderTrackingModal } from './OnlineOrderTrackingModal';
 import { hasPermission } from '../../lib/permissions';
 import { LegalModal } from '../legal/LegalModal';
+import { MAXLEN, sanitizeText, hasText, isValidPhone, maskPhone } from '../../lib/validation';
 
 const STEPS: Array<{ key: 'cart' | 'customer' | 'payment'; label: string }> = [
   { key: 'cart', label: 'Carrinho' },
@@ -167,12 +168,20 @@ export const OnlineMenuCatalog: React.FC = () => {
       addToast('error', 'Pedido abaixo do mínimo', `Pedido mínimo de R$ ${companyProfile.minOrderValue.toFixed(2)}. Faltam R$ ${(companyProfile.minOrderValue - cartSubtotal).toFixed(2)}.`);
       return;
     }
-    if (!customerName || !customerPhone) {
+    if (!hasText(customerName) || !hasText(customerPhone)) {
       addToast('error', 'Preencha seus dados', 'Nome e WhatsApp/Telefone são obrigatórios.');
       return;
     }
+    if (customerName.trim().length < 2) {
+      addToast('error', 'Nome inválido', 'Informe o nome completo do cliente.');
+      return;
+    }
+    if (!isValidPhone(customerPhone)) {
+      addToast('error', 'Telefone inválido', 'Use DDD + número (10 ou 11 dígitos).');
+      return;
+    }
 
-    if (serviceType === 'entrega' && (!street || !number || !neighborhood)) {
+    if (serviceType === 'entrega' && (!hasText(street) || !hasText(number) || !hasText(neighborhood))) {
       addToast('error', 'Endereço incompleto', 'Informe rua, número e bairro para entrega.');
       return;
     }
@@ -189,9 +198,17 @@ export const OnlineMenuCatalog: React.FC = () => {
 
     const placed = await createOnlineOrder({
       customer: {
-        name: customerName,
-        phone: customerPhone,
-        address: serviceType === 'entrega' ? { street, number, neighborhood, complement, reference } : undefined,
+        name: customerName.trim().slice(0, MAXLEN.personName),
+        phone: customerPhone.trim().slice(0, MAXLEN.phone),
+        address: serviceType === 'entrega'
+          ? {
+              street: street.trim().slice(0, MAXLEN.address),
+              number: number.trim().slice(0, 20),
+              neighborhood: neighborhood.trim().slice(0, MAXLEN.personName),
+              complement: complement.trim().slice(0, MAXLEN.shortNote),
+              reference: reference.trim().slice(0, MAXLEN.shortNote),
+            }
+          : undefined,
       },
       items: orderItems,
       serviceType,
@@ -299,9 +316,10 @@ export const OnlineMenuCatalog: React.FC = () => {
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
+                maxLength={60}
                 placeholder="Buscar pratos, bebidas ou sobremesas..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
                 className="w-full bg-white border border-stone-300 rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700 focus:outline-none shadow-sm"
               />
             </div>
@@ -496,16 +514,19 @@ export const OnlineMenuCatalog: React.FC = () => {
                   <div className="space-y-2">
                     <input
                       type="text"
+                      maxLength={MAXLEN.personName}
                       placeholder="Nome completo *"
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
+                      onChange={(e) => setCustomerName(sanitizeText(e.target.value, MAXLEN.personName))}
                       className="w-full border border-stone-300 rounded-xl p-2.5"
                     />
                     <input
-                      type="text"
+                      type="tel"
+                      inputMode="tel"
+                      maxLength={MAXLEN.phone}
                       placeholder="WhatsApp / Telefone com DDD *"
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      onChange={(e) => setCustomerPhone(maskPhone(e.target.value))}
                       className="w-full border border-stone-300 rounded-xl p-2.5"
                     />
                   </div>
@@ -515,39 +536,44 @@ export const OnlineMenuCatalog: React.FC = () => {
                       <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Endereço de Entrega</h4>
                       <input
                         type="text"
+                        maxLength={MAXLEN.address}
                         placeholder="Rua / Avenida *"
                         value={street}
-                        onChange={(e) => setStreet(e.target.value)}
+                        onChange={(e) => setStreet(sanitizeText(e.target.value, MAXLEN.address))}
                         className="w-full border border-stone-300 rounded-xl p-2.5"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           type="text"
+                          maxLength={20}
                           placeholder="Número *"
                           value={number}
-                          onChange={(e) => setNumber(e.target.value)}
+                          onChange={(e) => setNumber(sanitizeText(e.target.value, 20))}
                           className="w-full border border-stone-300 rounded-xl p-2.5"
                         />
                         <input
                           type="text"
+                          maxLength={MAXLEN.personName}
                           placeholder="Bairro *"
                           value={neighborhood}
-                          onChange={(e) => setNeighborhood(e.target.value)}
+                          onChange={(e) => setNeighborhood(sanitizeText(e.target.value, MAXLEN.personName))}
                           className="w-full border border-stone-300 rounded-xl p-2.5"
                         />
                       </div>
                       <input
                         type="text"
+                        maxLength={MAXLEN.shortNote}
                         placeholder="Complemento (Apto, Bloco)"
                         value={complement}
-                        onChange={(e) => setComplement(e.target.value)}
+                        onChange={(e) => setComplement(sanitizeText(e.target.value, MAXLEN.shortNote))}
                         className="w-full border border-stone-300 rounded-xl p-2.5"
                       />
                       <input
                         type="text"
+                        maxLength={MAXLEN.shortNote}
                         placeholder="Ponto de referência"
                         value={reference}
-                        onChange={(e) => setReference(e.target.value)}
+                        onChange={(e) => setReference(sanitizeText(e.target.value, MAXLEN.shortNote))}
                         className="w-full border border-stone-300 rounded-xl p-2.5"
                       />
                     </div>
@@ -799,7 +825,8 @@ export const OnlineMenuCatalog: React.FC = () => {
                 <textarea
                   placeholder="Ex: sem cebola, ponto da carne, pouco sal..."
                   value={productNotes}
-                  onChange={(e) => setProductNotes(e.target.value)}
+                  maxLength={MAXLEN.shortNote}
+                  onChange={(e) => setProductNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border border-stone-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-amber-700 focus:outline-none"
                   rows={2}
                 />

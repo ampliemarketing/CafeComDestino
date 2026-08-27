@@ -23,6 +23,7 @@ import { Product, PaymentMethod, OrderItem } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const PdvView: React.FC = () => {
   const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser } = useApp();
@@ -278,9 +279,10 @@ export const PdvView: React.FC = () => {
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
               <input
                 type="text"
+                maxLength={60}
                 placeholder="Buscar por nome ou código..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
                 className="w-full bg-white border border-stone-300 rounded-xl pl-10 pr-4 py-2.5 text-xs focus:ring-2 focus:ring-amber-700"
               />
             </div>
@@ -288,9 +290,11 @@ export const PdvView: React.FC = () => {
               <Barcode className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
               <input
                 type="text"
+                inputMode="numeric"
+                maxLength={20}
                 placeholder="Cód. Barras"
                 value={barcodeQuery}
-                onChange={(e) => setBarcodeQuery(e.target.value)}
+                onChange={(e) => setBarcodeQuery(e.target.value.replace(/\s/g, '').slice(0, 20))}
                 className="w-full bg-white border border-stone-300 rounded-xl pl-9 pr-3 py-2.5 text-xs font-mono"
               />
             </div>
@@ -364,9 +368,10 @@ export const PdvView: React.FC = () => {
             <div className="grid grid-cols-2 gap-2 my-3">
               <input
                 type="text"
+                maxLength={MAXLEN.personName}
                 placeholder="Nome do cliente"
                 value={customerNameInput}
-                onChange={(e) => setCustomerNameInput(e.target.value)}
+                onChange={(e) => setCustomerNameInput(sanitizeText(e.target.value, MAXLEN.personName))}
                 className="border rounded-xl p-2 text-xs"
               />
               <select
@@ -425,9 +430,10 @@ export const PdvView: React.FC = () => {
                 <input
                   type="number"
                   min="0"
+                  max={subtotal}
                   disabled={!can('pdv.desconto')}
                   value={discountInput}
-                  onChange={(e) => setDiscountInput(Number(e.target.value))}
+                  onChange={(e) => setDiscountInput(toBoundedNumber(e.target.value, 0, subtotal))}
                   className="w-20 border rounded-lg p-1 text-right text-xs font-semibold disabled:bg-stone-100 disabled:text-stone-400"
                 />
               </div>
@@ -532,9 +538,10 @@ export const PdvView: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
+                          min="0"
                           value={row.amount}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.target.value === '' ? '' : String(Math.max(0, Number(e.target.value) || 0));
                             setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, amount: val } : r)));
                           }}
                           className="w-full border rounded-xl pl-8 pr-2 py-2 font-bold bg-white text-xs"
@@ -568,8 +575,9 @@ export const PdvView: React.FC = () => {
                 <label className="font-semibold text-stone-700 block">Valor Entregue pelo Cliente (R$)</label>
                 <input
                   type="number"
+                  min="0"
                   value={cashTendered}
-                  onChange={(e) => setCashTendered(Number(e.target.value))}
+                  onChange={(e) => setCashTendered(toBoundedNumber(e.target.value, 0, 10_000_000))}
                   className="w-full border rounded-xl p-2.5 font-bold text-sm"
                 />
                 <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-200 flex justify-between font-bold text-emerald-800">

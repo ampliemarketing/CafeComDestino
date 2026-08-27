@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Ingredient, Product, LossReason, CourtesyReason } from '../../types';
 import { hasPermission } from '../../lib/permissions';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 const INGREDIENT_UNITS: Ingredient['unit'][] = ['KG', 'G', 'L', 'ML', 'UN', 'CX'];
 
@@ -214,9 +215,17 @@ export const InventoryManagement: React.FC = () => {
   };
 
   const handleConfirmLoss = () => {
+    if (lossQty <= 0) {
+      addToast('error', 'Quantidade inválida', 'Informe uma quantidade maior que zero.');
+      return;
+    }
     if (lossItemType === 'ingredient') {
       const ing = ingredients.find((i) => i.id === selectedItemId);
       if (!ing) return;
+      if (lossQty > ing.stockQuantity) {
+        addToast('error', 'Quantidade acima do estoque', `Estoque atual de ${ing.name}: ${ing.stockQuantity} ${ing.unit}.`);
+        return;
+      }
       const computedCost = ing.avgCostUnit * lossQty;
       recordLoss({
         itemType: 'ingredient',
@@ -233,6 +242,10 @@ export const InventoryManagement: React.FC = () => {
     } else {
       const prod = products.find((p) => p.id === selectedItemId);
       if (!prod) return;
+      if (prod.trackStock && lossQty > prod.stockQuantity) {
+        addToast('error', 'Quantidade acima do estoque', `Estoque atual de ${prod.name}: ${prod.stockQuantity} ${prod.unit}.`);
+        return;
+      }
       const computedCost = prod.costPrice * lossQty;
       recordLoss({
         itemType: 'product',
@@ -253,6 +266,10 @@ export const InventoryManagement: React.FC = () => {
   const handleConfirmCourtesyFromInventory = () => {
     const prod = products.find((p) => p.id === courtesyProductId);
     if (!prod) return;
+    if (courtesyQty <= 0) {
+      addToast('error', 'Quantidade inválida', 'Informe uma quantidade maior que zero.');
+      return;
+    }
 
     recordCourtesy({
       productId: prod.id,
@@ -355,8 +372,9 @@ export const InventoryManagement: React.FC = () => {
               <input
                 type="text"
                 placeholder="Buscar insumo ou produto por nome..."
+                maxLength={60}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value.slice(0, 60))}
                 className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-amber-700"
               />
             </div>
@@ -793,8 +811,9 @@ export const InventoryManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Nome do Insumo *</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.name}
                   value={editingIngredient.name || ''}
-                  onChange={(e) => setEditingIngredient({ ...editingIngredient, name: e.target.value })}
+                  onChange={(e) => setEditingIngredient({ ...editingIngredient, name: sanitizeText(e.target.value, MAXLEN.name) })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -838,7 +857,7 @@ export const InventoryManagement: React.FC = () => {
                   step="0.01"
                   min="0"
                   value={editingIngredient.avgCostUnit ?? 0}
-                  onChange={(e) => setEditingIngredient({ ...editingIngredient, avgCostUnit: Number(e.target.value) })}
+                  onChange={(e) => setEditingIngredient({ ...editingIngredient, avgCostUnit: toBoundedNumber(e.target.value, 0, 1_000_000) })}
                   className="w-full border rounded-xl p-2.5 font-bold"
                 />
               </div>
@@ -849,7 +868,7 @@ export const InventoryManagement: React.FC = () => {
                   type="number"
                   min="0"
                   value={editingIngredient.minStock ?? 0}
-                  onChange={(e) => setEditingIngredient({ ...editingIngredient, minStock: Number(e.target.value) })}
+                  onChange={(e) => setEditingIngredient({ ...editingIngredient, minStock: toBoundedNumber(e.target.value, 0, 1_000_000) })}
                   className="w-full border rounded-xl p-2.5"
                 />
               </div>
@@ -858,6 +877,8 @@ export const InventoryManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Validade (opcional)</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().slice(0, 10)}
+                  max={new Date(Date.now() + 10 * 365 * 864e5).toISOString().slice(0, 10)}
                   value={editingIngredient.expiryDate || ''}
                   onChange={(e) => setEditingIngredient({ ...editingIngredient, expiryDate: e.target.value || undefined })}
                   className="w-full border rounded-xl p-2.5"
@@ -904,8 +925,9 @@ export const InventoryManagement: React.FC = () => {
                     type="text"
                     autoFocus
                     placeholder="Digite o nome..."
+                    maxLength={60}
                     value={stockEntrySearch}
-                    onChange={(e) => setStockEntrySearch(e.target.value)}
+                    onChange={(e) => setStockEntrySearch(e.target.value.slice(0, 60))}
                     className="w-full border rounded-xl pl-9 pr-3 py-2 text-xs"
                   />
                 </div>
@@ -960,7 +982,7 @@ export const InventoryManagement: React.FC = () => {
                       type="number"
                       min="1"
                       value={stockEntryQty}
-                      onChange={(e) => setStockEntryQty(Math.max(1, Number(e.target.value)))}
+                      onChange={(e) => setStockEntryQty(toBoundedNumber(e.target.value, 1, 1_000_000, 1))}
                       className="w-full border rounded-xl p-2.5 font-bold text-sm"
                     />
                   </div>
@@ -973,7 +995,7 @@ export const InventoryManagement: React.FC = () => {
                         step="0.01"
                         min="0"
                         value={stockEntryUnitCost}
-                        onChange={(e) => setStockEntryUnitCost(Number(e.target.value))}
+                        onChange={(e) => setStockEntryUnitCost(toBoundedNumber(e.target.value, 0, 1_000_000))}
                         className="w-full border rounded-xl p-2.5 font-semibold text-xs"
                       />
                     </div>
@@ -1065,7 +1087,7 @@ export const InventoryManagement: React.FC = () => {
                     type="number"
                     min="1"
                     value={lossQty}
-                    onChange={(e) => setLossQty(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => setLossQty(toBoundedNumber(e.target.value, 1, 1_000_000, 1))}
                     className="w-full border rounded-xl p-2.5 font-bold text-xs"
                   />
                 </div>
@@ -1096,8 +1118,9 @@ export const InventoryManagement: React.FC = () => {
                   <label className="font-semibold text-stone-700 block mb-1">Responsável / Funcionário</label>
                   <input
                     type="text"
+                    maxLength={MAXLEN.personName}
                     value={employeeName}
-                    onChange={(e) => setEmployeeName(e.target.value)}
+                    onChange={(e) => setEmployeeName(sanitizeText(e.target.value, MAXLEN.personName))}
                     className="w-full border rounded-xl p-2 text-xs"
                   />
                 </div>
@@ -1121,9 +1144,10 @@ export const InventoryManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Observações / Detalhes</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.shortNote}
                   placeholder="Ex: Embalagem rasgada na entrega"
                   value={lossNotes}
-                  onChange={(e) => setLossNotes(e.target.value)}
+                  onChange={(e) => setLossNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
                   className="w-full border rounded-xl p-2 text-xs"
                 />
               </div>
@@ -1177,7 +1201,7 @@ export const InventoryManagement: React.FC = () => {
                     type="number"
                     min="1"
                     value={courtesyQty}
-                    onChange={(e) => setCourtesyQty(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => setCourtesyQty(toBoundedNumber(e.target.value, 1, 100_000, 1))}
                     className="w-full border rounded-xl p-2.5 font-bold text-xs"
                   />
                 </div>
@@ -1205,9 +1229,10 @@ export const InventoryManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Cliente Beneficiado</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.personName}
                   placeholder="Ex: Cliente da mesa 5"
                   value={courtesyCustomer}
-                  onChange={(e) => setCourtesyCustomer(e.target.value)}
+                  onChange={(e) => setCourtesyCustomer(sanitizeText(e.target.value, MAXLEN.personName))}
                   className="w-full border rounded-xl p-2 text-xs"
                 />
               </div>
@@ -1216,8 +1241,9 @@ export const InventoryManagement: React.FC = () => {
                 <label className="font-semibold text-stone-700 block mb-1">Autorizado Por</label>
                 <input
                   type="text"
+                  maxLength={MAXLEN.personName}
                   value={courtesyAuthorizer}
-                  onChange={(e) => setCourtesyAuthorizer(e.target.value)}
+                  onChange={(e) => setCourtesyAuthorizer(sanitizeText(e.target.value, MAXLEN.personName))}
                   className="w-full border rounded-xl p-2 text-xs font-semibold"
                 />
               </div>

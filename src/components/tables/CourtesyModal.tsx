@@ -10,6 +10,7 @@ import {
   FileText
 } from 'lucide-react';
 import { Product, CourtesyReason } from '../../types';
+import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 interface CourtesyModalProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
 
   // Authorization state
   const [authorizerId, setAuthorizerId] = useState<string>(
-    users.find((u) => u.role === 'admin' || u.role === 'gerente')?.id || users[0].id
+    users.find((u) => u.role === 'admin' || u.role === 'gerente')?.id || users[0]?.id || ''
   );
   const [authPin, setAuthPin] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
@@ -55,8 +56,19 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
       return;
     }
 
-    if (authorizer.code && authPin !== authorizer.code) {
-      setAuthError(`Código PIN incorreto para ${authorizer.name}. (Dica demo: PIN ${authorizer.code})`);
+    // O autorizador PRECISA ter um PIN cadastrado — sem isso a autorização
+    // de gerência não teria efeito nenhum.
+    if (!authorizer.code) {
+      setAuthError(`${authorizer.name} não tem PIN de autorização cadastrado. Cadastre em Configurações → Usuários.`);
+      return;
+    }
+    if (authPin !== authorizer.code) {
+      setAuthError(`Código PIN incorreto para ${authorizer.name}.`);
+      return;
+    }
+
+    if (quantity <= 0) {
+      setAuthError('Informe uma quantidade maior que zero.');
       return;
     }
 
@@ -66,9 +78,9 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
       reason,
       source: tableId ? 'mesa' : 'comanda',
       targetReference: tableNumber ? `Mesa #${tableNumber}` : 'Balcão / Geral',
-      customerName: customerName || undefined,
+      customerName: customerName.trim() || undefined,
       authorizedBy: `${authorizer.name} (${authorizer.role.toUpperCase()})`,
-      notes: notes || undefined,
+      notes: notes.trim() || undefined,
       tableId,
       comandaId,
     });
@@ -123,7 +135,7 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
                 type="number"
                 min="1"
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                onChange={(e) => setQuantity(toBoundedNumber(e.target.value, 1, 100_000, 1))}
                 className="w-full border rounded-xl p-2.5 font-bold text-xs"
               />
             </div>
@@ -166,9 +178,10 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente (Opcional)</label>
             <input
               type="text"
+              maxLength={MAXLEN.personName}
               placeholder="Ex: Aniversariante João"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(e) => setCustomerName(sanitizeText(e.target.value, MAXLEN.personName))}
               className="w-full border rounded-xl p-2 text-xs"
             />
           </div>
@@ -177,9 +190,10 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             <label className="font-semibold text-stone-700 block mb-1">Observações</label>
             <input
               type="text"
+              maxLength={MAXLEN.shortNote}
               placeholder="Ex: Oferecido café por conta da casa"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => setNotes(sanitizeText(e.target.value, MAXLEN.shortNote))}
               className="w-full border rounded-xl p-2 text-xs"
             />
           </div>
@@ -213,10 +227,12 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
                 <label className="text-[10px] text-stone-500 font-semibold block mb-0.5">PIN do Autorizador</label>
                 <input
                   type="password"
-                  placeholder="Ex: 1010 ou 2020"
+                  inputMode="numeric"
+                  maxLength={MAXLEN.pin}
+                  placeholder="PIN do autorizador"
                   value={authPin}
                   onChange={(e) => {
-                    setAuthPin(e.target.value);
+                    setAuthPin(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin));
                     setAuthError('');
                   }}
                   className="w-full border rounded-xl p-2 bg-white font-mono text-xs"
