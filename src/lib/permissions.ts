@@ -68,6 +68,8 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'mesas.pagamento_parcial', label: 'Lançar pagamento parcial/adiantamento' },
           { key: 'mesas.estornar_pagamento_parcial', label: 'Estornar pagamento parcial' },
           { key: 'mesas.desconto', label: 'Aplicar desconto no fechamento' },
+          { key: 'mesas.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo' },
+          { key: 'mesas.remover_taxa_servico', label: 'Remover a taxa de serviço da comanda' },
           { key: 'mesas.fechar_comanda', label: 'Fechar comanda e receber pagamento' },
           { key: 'mesas.imprimir', label: 'Imprimir pré-conta' },
         ],
@@ -88,6 +90,7 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         actions: [
           { key: 'pdv.lancar_item_kg', label: 'Lançar item por quilo' },
           { key: 'pdv.desconto', label: 'Aplicar desconto na venda' },
+          { key: 'pdv.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo' },
           { key: 'pdv.finalizar_venda', label: 'Finalizar venda / emitir NFC-e' },
           { key: 'pdv.imprimir', label: 'Imprimir comprovante' },
         ],
@@ -100,8 +103,16 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'caixas.abrir', label: 'Abrir caixa' },
           { key: 'caixas.movimentacao', label: 'Registrar sangria/reforço' },
           { key: 'caixas.fechar', label: 'Fechar caixa' },
+          { key: 'caixas.estornar_venda', label: 'Estornar venda paga (PDV/comanda)' },
+          { key: 'caixas.reabrir', label: 'Reabrir caixa fechado (para estorno)' },
           { key: 'caixas.imprimir', label: 'Imprimir relatório de fechamento' },
         ],
+      },
+      {
+        screenId: 'livro-caixa',
+        screenLabel: 'Livro-Caixa',
+        access: 'livro_caixa.acessar',
+        actions: [{ key: 'livro_caixa.exportar', label: 'Exportar livro-caixa (CSV)' }],
       },
       {
         screenId: 'sales',
@@ -223,6 +234,12 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'usuarios.definir_pin', label: 'Definir PIN de fechamento de caixa' },
         ],
       },
+      {
+        screenId: 'audit',
+        screenLabel: 'Auditoria',
+        access: 'auditoria.acessar',
+        actions: [],
+      },
     ],
   },
 ];
@@ -250,15 +267,19 @@ const screenPermissions = (screenIds: string[]): string[] =>
 export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, string[]> = {
   admin: ALL_PERMISSIONS,
   gerente: screenPermissions([
-    'dashboard', 'online-menu', 'waiter', 'tables', 'kitchen', 'pdv', 'caixas', 'sales',
+    'dashboard', 'online-menu', 'waiter', 'tables', 'kitchen', 'pdv', 'caixas', 'livro-caixa', 'sales',
     'products', 'inventory', 'groups', 'suppliers',
-    'deliveries', 'fiscal', 'finance', 'printers', 'reports',
+    'deliveries', 'fiscal', 'finance', 'printers', 'reports', 'audit',
   ]),
-  caixa: screenPermissions(['online-menu', 'tables', 'pdv', 'caixas', 'sales', 'deliveries', 'fiscal']),
-  garcom: screenPermissions(['online-menu', 'waiter', 'tables']),
+  caixa: screenPermissions(['online-menu', 'tables', 'pdv', 'caixas', 'livro-caixa', 'sales', 'deliveries', 'fiscal'])
+    .filter((k) => k !== 'caixas.estornar_venda' && k !== 'caixas.reabrir'
+      && k !== 'pdv.desconto_acima_limite' && k !== 'mesas.desconto_acima_limite'
+      && k !== 'mesas.remover_taxa_servico'),
+  garcom: screenPermissions(['online-menu', 'waiter', 'tables'])
+    .filter((k) => k !== 'mesas.desconto_acima_limite' && k !== 'mesas.remover_taxa_servico'),
   cozinha: screenPermissions(['kitchen']),
   estoque: screenPermissions(['products', 'inventory', 'groups', 'suppliers']),
-  financeiro: screenPermissions(['dashboard', 'caixas', 'sales', 'reports', 'fiscal', 'finance']),
+  financeiro: screenPermissions(['dashboard', 'caixas', 'livro-caixa', 'sales', 'reports', 'fiscal', 'finance']),
 };
 
 export function hasPermission(user: { role: UserRole; permissions?: string[] } | null | undefined, key: string): boolean {

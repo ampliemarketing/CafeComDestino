@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { rowToCamel, toRow } from '../lib/caseMapping';
+import { hasPermission } from '../lib/permissions';
 import { LoginScreen } from '../components/auth/LoginScreen';
 import {
   User,
@@ -20,6 +21,7 @@ import {
   PaymentStatus,
   CashShift,
   CashMovement,
+  FinancialEntry,
   Supplier,
   LossRecord,
   LossReason,
@@ -63,11 +65,32 @@ const mapDiningTable = (row: any): DiningTable => {
 };
 const mapCashShiftRow = (row: any): CashShift => rowToCamel<CashShift>(row);
 const mapCashMovementRow = (row: any): CashMovement => rowToCamel<CashMovement>(row);
+const mapFinancialEntryRow = (row: any): FinancialEntry => rowToCamel<FinancialEntry>(row);
+const mapAuditRow = (row: any): AuditLog => ({
+  id: row.id,
+  userName: row.actor_name || 'Sistema',
+  userRole: row.actor_role || '',
+  action: row.action,
+  module: row.module || '',
+  timestamp: row.created_at ? new Date(row.created_at).toLocaleString('pt-BR') : '',
+  details: row.details && typeof row.details === 'object' && 'text' in row.details ? row.details.text : row.details,
+  actorId: row.actor_id || undefined,
+  entityType: row.entity_type || undefined,
+  entityId: row.entity_id || undefined,
+  amountBefore: row.amount_before ?? undefined,
+  amountAfter: row.amount_after ?? undefined,
+  createdAt: row.created_at || undefined,
+});
 const mapProfileRow = (row: any): User => rowToCamel<User>(row);
 
 const mapOrderRow = (row: any): Order => {
   const base = rowToCamel<Order>(row);
-  return { ...base, createdAt: formatTime(row.created_at), updatedAt: formatTime(row.updated_at) };
+  return {
+    ...base,
+    createdAt: formatTime(row.created_at),
+    createdAtISO: row.created_at || undefined,
+    updatedAt: formatTime(row.updated_at),
+  };
 };
 
 function computeTableStatus(comandas: Comanda[]): TableStatus {
@@ -102,7 +125,8 @@ function useSupabaseCollection<T>(
   session: Session | null,
   mapRow: (row: any) => T,
   keyField: keyof T,
-  orderColumn?: string
+  orderColumn?: string,
+  limit?: number
 ): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
   const [items, setItems] = useState<T[]>([]);
 
@@ -113,9 +137,11 @@ function useSupabaseCollection<T>(
     }
     let cancelled = false;
 
-    const query = orderColumn
-      ? supabase.from(table).select('*').order(orderColumn, { ascending: false })
-      : supabase.from(table).select('*');
+    let query = supabase.from(table).select('*');
+    if (orderColumn) query = query.order(orderColumn, { ascending: false });
+    // Coleções que crescem sem parar (pedidos, turnos de caixa) são limitadas às
+    // linhas mais recentes — carregar o histórico inteiro no login trava o app.
+    if (limit) query = query.limit(limit);
 
     query.then(({ data, error }) => {
       if (cancelled || error || !data) return;
@@ -144,7 +170,7 @@ function useSupabaseCollection<T>(
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [table, session?.user?.id]);
+  }, [table, session?.user?.id, orderColumn, limit]);
 
   return [items, setItems];
 }
@@ -175,6 +201,7 @@ interface AppContextType {
   cashShift: CashShift;
   cashShiftsHistory: CashShift[];
   cashMovements: CashMovement[];
+  financialEntries: FinancialEntry[];
   suppliers: Supplier[];
   saveSupplier: (supplier: Supplier) => Promise<void>;
   deleteSupplier: (supplierId: string) => Promise<void>;
@@ -207,7 +234,7 @@ interface AppContextType {
   addComandaItem: (tableId: string, comandaId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
   cancelComandaItem: (tableId: string, comandaId: string, itemId: string, reason: string) => Promise<void>;
   transferComanda: (fromTableId: string, comandaId: string, toTableId: string) => Promise<void>;
-  closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order | null>;
+  closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[], discountReason?: string, managerPin?: string) => Promise<Order | null>;
   addPartialPayment: (
     tableId: string,
     comandaId: string,
@@ -221,13 +248,18 @@ interface AppContextType {
       splitPayments?: { method: PaymentMethod; amount: number }[];
     }
   ) => Promise<PartialPayment | null>;
-  cancelPartialPayment: (tableId: string, comandaId: string, paymentId: string) => Promise<void>;
+  cancelPartialPayment: (tableId: string, comandaId: string, paymentId: string, reason: string) => Promise<void>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus, driverName?: string) => Promise<void>;
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<void>;
 
   createOnlineOrder: (orderData: Partial<Order>) => Promise<Order>;
-  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[]) => Promise<Order | null>;
+  createPdvSale: (items: OrderItem[], paymentMethod: PaymentMethod, serviceType: Order['serviceType'], customerName?: string, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[], discountReason?: string, managerPin?: string) => Promise<Order | null>;
+
+  reversePaidOrder: (orderId: string, reason: string, managerPin: string) => Promise<boolean>;
+  validateManagerPin: (pin: string) => Promise<boolean>;
+  validateOwnPin: (pin: string) => Promise<boolean>;
+  recordCashExpense: (entry: { description: string; category?: string; amount: number }) => Promise<boolean>;
 
   openCashShift: (initialFloat: number) => Promise<string | null>;
   closeCashShift: (payload: {
@@ -316,7 +348,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthLoading(true);
     supabase
       .from('profiles')
-      .select('*')
+      // `code` (PIN) foi revogado do cliente na migration 0028 — nunca selecionar.
+      .select('id, name, email, role, phone, active, cpf, permissions')
       .eq('id', session.user.id)
       .single()
       .then(({ data }) => {
@@ -385,14 +418,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
   const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id');
   const [tables] = useSupabaseCollection<DiningTable>('dining_tables', session, mapDiningTable, 'id');
-  const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at');
+  // Últimos 1000 pedidos: cobre com folga dashboard, vendas e caixa do dia a dia.
+  // Relatórios que precisem de janelas maiores devem fazer query própria com filtro de data.
+  const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at', 1000);
 
   const [users, setUsers] = useState<User[]>([]);
   const refreshUsers = () => {
     if (!session) { setUsers([]); return; }
-    supabase.from('profiles').select('*').then(({ data }) => {
-      if (data) setUsers(data.map(mapProfileRow));
-    });
+    supabase.from('profiles')
+      .select('id, name, email, role, phone, active, cpf, permissions')
+      .then(({ data }) => {
+        if (data) setUsers(data.map(mapProfileRow));
+      });
   };
   useEffect(refreshUsers, [session?.user?.id]);
 
@@ -424,7 +461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   };
 
-  const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at');
+  const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at', 200);
 
   const cashShift = cashShiftsHistory.find((s) => s.status === 'aberto') ?? cashShiftsHistory[0] ?? EMPTY_CASH_SHIFT;
 
@@ -454,6 +491,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { cancelled = true; supabase.removeChannel(channel); };
   }, [session?.user?.id, cashShift.id]);
 
+  // O livro-caixa (cash_ledger) NÃO é carregado aqui — a tela Livro-Caixa faz
+  // a própria query sob demanda (botão Buscar), pra não puxar tudo ao abrir.
+
+  // ---- Lançamentos financeiros (financial_entries) ----
+  const [financialEntries] = useSupabaseCollection<FinancialEntry>('financial_entries', session, mapFinancialEntryRow, 'id', 'created_at', 500);
+
+  // ---- Auditoria persistida (audit_log) — só carrega para quem tem acesso ----
+  useEffect(() => {
+    if (!session || !hasPermission(currentUser, 'auditoria.acessar')) return;
+    let cancelled = false;
+    supabase.from('audit_log').select('*').order('seq', { ascending: false }).limit(300)
+      .then(({ data }) => { if (!cancelled && data) setAuditLogs(data.map(mapAuditRow)); });
+
+    const channel = supabase
+      .channel(`public:audit_log:${session.user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_log' }, (payload) => {
+        const row = mapAuditRow(payload.new);
+        setAuditLogs((prev) => (prev.some((l) => l.id === row.id) ? prev : [row, ...prev]));
+      })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [session?.user?.id, currentUser?.id]);
+
   // ---- Toasts & audit ----
   const addToast = (type: Toast['type'], title: string, message?: string) => {
     const newToast: Toast = {
@@ -480,7 +540,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: new Date().toLocaleString('pt-BR'),
       details,
     };
+    // Feedback instantâneo na UI + persistência real e imutável (audit_log).
+    // As RPCs financeiras já gravam sua própria linha no servidor; este log
+    // cobre as ações que não passam por RPC. Fire-and-forget.
     setAuditLogs((prev) => [newLog, ...prev]);
+    void supabase.rpc('write_audit_log', {
+      p_action: action,
+      p_module: moduleName,
+      p_details: details ? { text: details } : {},
+    });
   };
 
   const deductStockForItems = async (items: { productId: string; quantity: number }[]) => {
@@ -638,9 +706,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelComandaItem = async (tableId: string, comandaId: string, itemId: string, reason: string) => {
+    if (!currentUser) return;
+    if (!hasPermission(currentUser, 'mesas.cancelar_item')) {
+      addToast('error', 'Sem permissão', 'Você não pode cancelar item de comanda.');
+      return;
+    }
+    if (!reason || !reason.trim()) { addToast('error', 'Cancelamento', 'Informe o motivo do cancelamento.'); return; }
     const table = tables.find((t) => t.id === tableId);
     const comanda = table?.comandas.find((c) => c.id === comandaId);
     if (!table || !comanda) return;
+    const target = comanda.items.find((i) => i.id === itemId);
+    if (!target || target.status === 'cancelado') return;
 
     const updatedItems = comanda.items.map((i) => (i.id === itemId ? { ...i, status: 'cancelado' as const } : i));
     const newSubtotal = updatedItems
@@ -658,8 +734,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (error) { addToast('error', 'Erro ao cancelar item', error.message); return; }
 
-    addToast('warning', 'Item cancelado na mesa', `Motivo: ${reason}`);
-    logAudit('Cancelamento de Item de Comanda', 'Mesas', `Mesa ID ${tableId}, Item ID ${itemId}, Motivo: ${reason}`);
+    // Repõe o estoque baixado no lançamento do item.
+    if (!target.isCourtesy) {
+      await supabase.rpc('reverse_stock_for_items', {
+        p_items: [{ productId: target.productId, quantity: target.quantity }],
+      });
+    }
+
+    addToast('warning', 'Item cancelado na mesa', `Motivo: ${reason.trim()}`);
+    logAudit('Cancelamento de Item de Comanda', 'Mesas', `Mesa ${table.number} - ${target.quantity}x ${target.productName} - Motivo: ${reason.trim()}`);
   };
 
   // Move só uma comanda (com seus itens) para outra mesa — as demais
@@ -690,7 +773,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Transferência de Comanda', 'Atendimento', `${comanda.personName} - Da Mesa ${sourceTable.number} para Mesa ${targetTable.number}`);
   };
 
-  const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0, splitPayments?: { method: PaymentMethod; amount: number }[]): Promise<Order | null> => {
+  const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0, splitPayments?: { method: PaymentMethod; amount: number }[], discountReason?: string, managerPin?: string): Promise<Order | null> => {
     if (!currentUser) return null;
     if (cashShift.status !== 'aberto') {
       addToast('error', 'Caixa Fechado', 'Não é possível fechar uma comanda sem um caixa aberto. Abra o caixa antes de vender.');
@@ -713,10 +796,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       channel: 'garcom',
       tableNumber: table.number,
       customer: { name: comanda.personName, phone: '(11) 00000-0000' },
-      items: comanda.items.map((it) => ({
-        id: it.id, productId: it.productId, productName: it.productName, quantity: it.quantity,
-        unitPrice: it.unitPrice, additions: it.additions, notes: it.notes,
-      })),
+      // Itens cancelados não entram no pedido: o subtotal/total já os exclui, e
+      // mantê-los aqui inflava a quantidade vendida nos relatórios (dashboard).
+      items: comanda.items
+        .filter((it) => it.status !== 'cancelado')
+        .map((it) => ({
+          id: it.id, productId: it.productId, productName: it.productName, quantity: it.quantity,
+          unitPrice: it.unitPrice, additions: it.additions, notes: it.notes,
+        })),
       serviceType: 'consumo_local',
       subtotal: finalSubtotal,
       deliveryFee: 0,
@@ -740,6 +827,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       p_cash_amount: cashShift.status === 'aberto' ? finalTotal : null,
       p_payment_method: paymentMethod,
       p_split_payments: splitPayments && splitPayments.length > 0 ? splitPayments : null,
+      p_discount_reason: discountReason || null,
+      p_manager_pin: managerPin || null,
     });
 
     if (error) { addToast('error', 'Erro ao fechar comanda', error.message); return null; }
@@ -755,143 +844,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addPartialPayment: AppContextType['addPartialPayment'] = async (tableId, comandaId, paymentData) => {
     if (!currentUser) return null;
-    if (cashShift.status !== 'aberto') {
-      addToast('error', 'Caixa Fechado', 'Não é possível registrar um pagamento sem um caixa aberto. Abra o caixa antes de vender.');
-      return null;
-    }
-    const table = tables.find((t) => t.id === tableId);
-    const comanda = table?.comandas.find((c) => c.id === comandaId);
-    if (!table || !comanda) return null;
-
-    const currentAdvances = comanda.advancePayments || [];
-    const activeAdvancesTotal = currentAdvances.filter((p) => p.status === 'ativo').reduce((sum, p) => sum + p.amount, 0);
-    const totalConsumed = comanda.items.filter((i) => i.status !== 'cancelado').reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-    const currentRemaining = Math.max(0, totalConsumed - activeAdvancesTotal);
-
-    if (paymentData.amount <= 0 || paymentData.amount > currentRemaining + 0.05) {
-      addToast('error', 'Valor de adiantamento inválido', `Saldo restante atual da comanda: R$ ${currentRemaining.toFixed(2)}`);
-      return null;
-    }
-
-    const newPaymentId = 'adv-' + Date.now();
-    const paidAtTimestamp = new Date().toLocaleString('pt-BR');
-
-    let paidItemsDetails: { productName: string; quantity: number; unitPrice: number }[] = [];
-    if (paymentData.type === 'by_item' && paymentData.itemIdsPaid && paymentData.itemIdsPaid.length > 0) {
-      const targetItems = comanda.items.filter((i) => paymentData.itemIdsPaid?.includes(i.id));
-      paidItemsDetails = targetItems.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }));
-    }
-
-    const remainingAfter = Math.max(0, currentRemaining - paymentData.amount);
-
-    const newPartialPayment: PartialPayment = {
-      id: newPaymentId,
-      tableId,
-      tableNumber: table.number,
-      comandaId,
-      amount: paymentData.amount,
-      paymentMethod: paymentData.paymentMethod,
-      splitPayments: paymentData.splitPayments,
-      type: paymentData.type,
-      itemIdsPaid: paymentData.itemIdsPaid,
-      paidItemsDetails,
-      customerName: paymentData.customerName || comanda.personName,
-      paidAt: paidAtTimestamp,
-      userName: currentUser.name,
-      notes: paymentData.notes,
-      status: 'ativo',
-      remainingBalanceAfter: remainingAfter,
-    };
-
-    const updatedItems = comanda.items.map((item) => {
-      if (paymentData.type === 'by_item' && paymentData.itemIdsPaid?.includes(item.id)) {
-        return { ...item, isPaid: true, paidAt: paidAtTimestamp, partialPaymentId: newPaymentId };
-      }
-      return item;
+    // Atômico no servidor: relê a comanda, valida saldo, atualiza o jsonb e
+    // lança o adiantamento no livro-caixa por forma de pagamento (RPC 0027).
+    const { data, error } = await supabase.rpc('credit_partial_payment', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_payment: paymentData,
     });
-
-    const updatedAdvances = [...currentAdvances, newPartialPayment];
-    const updatedComandas = table.comandas.map((c) =>
-      c.id === comandaId
-        ? { ...c, items: updatedItems, advancePayments: updatedAdvances, status: remainingAfter === 0 ? ('aguardando_fechamento' as const) : c.status }
-        : c
-    );
-
-    const { error } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
-      .eq('id', tableId);
-
     if (error) { addToast('error', 'Erro ao registrar adiantamento', error.message); return null; }
 
-    if (cashShift.status === 'aberto') {
-      let cashAdd = 0, cardAdd = 0, pixAdd = 0;
-      if (paymentData.splitPayments && paymentData.splitPayments.length > 0) {
-        paymentData.splitPayments.forEach((sp) => {
-          if (sp.method === 'dinheiro') cashAdd += sp.amount;
-          else if (sp.method === 'cartao_credito' || sp.method === 'cartao_debito') cardAdd += sp.amount;
-          else if (sp.method === 'pix') pixAdd += sp.amount;
-        });
-      } else {
-        const pm = paymentData.paymentMethod;
-        if (pm === 'dinheiro') cashAdd = paymentData.amount;
-        else if (pm === 'cartao_credito' || pm === 'cartao_debito') cardAdd = paymentData.amount;
-        else if (pm === 'pix') pixAdd = paymentData.amount;
-      }
-
-      await supabase
-        .from('cash_shifts')
-        .update({
-          sales_cash: cashShift.salesCash + cashAdd,
-          sales_card: cashShift.salesCard + cardAdd,
-          sales_pix: cashShift.salesPix + pixAdd,
-        })
-        .eq('id', cashShift.id);
-    }
-
+    const created = data as PartialPayment | null;
+    const table = tables.find((t) => t.id === tableId);
     addToast(
       'success',
       `Adiantamento Parcial Registrado!`,
-      `${comanda.personName} (Mesa #${table.number}): R$ ${paymentData.amount.toFixed(2)}. Saldo restante: R$ ${remainingAfter.toFixed(2)}`
+      `R$ ${paymentData.amount.toFixed(2)}${created ? ` • Saldo restante: R$ ${Number(created.remainingBalanceAfter ?? 0).toFixed(2)}` : ''}`
     );
     logAudit(
       'Adiantamento Parcial de Comanda',
       'Atendimento / Caixa',
-      `Mesa #${table.number} - ${comanda.personName} - R$ ${paymentData.amount.toFixed(2)} (${paymentData.type === 'by_item' ? 'Por Produtos' : 'Por Valor'})`
+      `Mesa #${table?.number ?? '?'} - R$ ${paymentData.amount.toFixed(2)} (${paymentData.type === 'by_item' ? 'Por Produtos' : 'Por Valor'})`
     );
-
-    return newPartialPayment;
+    return created;
   };
 
-  const cancelPartialPayment = async (tableId: string, comandaId: string, paymentId: string) => {
+  const cancelPartialPayment = async (tableId: string, comandaId: string, paymentId: string, reason: string) => {
     if (!currentUser) return;
-    const table = tables.find((t) => t.id === tableId);
-    const comanda = table?.comandas.find((c) => c.id === comandaId);
-    if (!table || !comanda) return;
-
-    const paymentToCancel = comanda.advancePayments?.find((p) => p.id === paymentId);
-    if (!paymentToCancel || paymentToCancel.status === 'estornado') return;
-
-    const updatedItems = comanda.items.map((item) =>
-      item.partialPaymentId === paymentId ? { ...item, isPaid: false, paidAt: undefined, partialPaymentId: undefined } : item
-    );
-    const updatedAdvances = (comanda.advancePayments || []).map((p) =>
-      p.id === paymentId ? { ...p, status: 'estornado' as const, canceledAt: new Date().toLocaleString('pt-BR'), canceledBy: currentUser.name } : p
-    );
-
-    const updatedComandas = table.comandas.map((c) =>
-      c.id === comandaId ? { ...c, items: updatedItems, advancePayments: updatedAdvances } : c
-    );
-
-    const { error } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
-      .eq('id', tableId);
-
+    if (!reason || !reason.trim()) { addToast('error', 'Estorno cancelado', 'Informe o motivo do estorno.'); return; }
+    // Reverte também o caixa: espelha cada linha do adiantamento no livro-caixa (RPC 0027).
+    const { error } = await supabase.rpc('reverse_partial_payment', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_payment_id: paymentId,
+      p_reason: reason.trim(),
+    });
     if (error) { addToast('error', 'Erro ao estornar adiantamento', error.message); return; }
 
-    addToast('warning', 'Adiantamento estornado', `Adiantamento de R$ ${paymentToCancel.amount.toFixed(2)} foi estornado com sucesso.`);
-    logAudit('Estorno de Adiantamento', 'Caixa / Atendimento', `Mesa ${table.number} - ${comanda.personName} - Estornado R$ ${paymentToCancel.amount.toFixed(2)}`);
+    addToast('warning', 'Adiantamento estornado', 'O valor foi revertido do caixa.');
+    logAudit('Estorno de Adiantamento', 'Caixa / Atendimento', `Adiantamento ${paymentId} - Motivo: ${reason.trim()}`);
   };
 
   // ---- Kitchen & Delivery Order Flow ----
@@ -974,7 +964,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     serviceType: Order['serviceType'],
     customerName = 'Cliente Balcão',
     discount = 0,
-    splitPayments?: { method: PaymentMethod; amount: number }[]
+    splitPayments?: { method: PaymentMethod; amount: number }[],
+    discountReason?: string,
+    managerPin?: string
   ): Promise<Order | null> => {
     if (cashShift.status !== 'aberto') {
       addToast('error', 'Caixa Fechado', 'Não é possível lançar uma venda sem um caixa aberto. Abra o caixa antes de vender.');
@@ -1010,6 +1002,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       p_payment_method: paymentMethod,
       p_stock_items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       p_split_payments: splitPayments && splitPayments.length > 0 ? splitPayments : null,
+      p_discount_reason: discountReason || null,
+      p_manager_pin: managerPin || null,
     });
 
     if (error) {
@@ -1026,80 +1020,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ---- Cash Register Controls ----
   const openCashShift = async (initialFloat: number): Promise<string | null> => {
     if (!currentUser) return null;
-    const newShift: CashShift = {
-      id: 'shift-' + Date.now(),
-      openedBy: `${currentUser.name} (${currentUser.role})`,
-      openedAt: new Date().toLocaleString('pt-BR'),
-      initialFloat,
-      status: 'aberto',
-      salesCash: 0,
-      salesCard: 0,
-      salesCredit: 0,
-      salesDebit: 0,
-      salesPix: 0,
-      salesMealVoucher: 0,
-      salesOther: 0,
-      additions: 0,
-      withdrawals: 0,
-      expectedTotal: initialFloat,
-      notes: 'Abertura de caixa realizada.',
-    };
-
-    const { error } = await supabase.from('cash_shifts').insert(toRow(newShift));
+    // Toda a escrita em cash_shifts é via RPC security definer (migration 0027/0028):
+    // valida permissão, recusa segundo caixa aberto e lança a linha de abertura no livro-caixa.
+    const { data, error } = await supabase.rpc('open_cash_shift', {
+      p_initial_float: initialFloat,
+      p_notes: null,
+    });
     if (error) { addToast('error', 'Erro ao abrir caixa', error.message); return null; }
 
     addToast('success', 'Caixa Aberto', `Fundo inicial de R$ ${initialFloat.toFixed(2)}`);
     logAudit('Abertura de Caixa', 'Controle de Caixa', `Fundo inicial R$ ${initialFloat.toFixed(2)}`);
-    return newShift.id;
+    return (data as string) ?? null;
   };
 
   const closeCashShift: AppContextType['closeCashShift'] = async (payload) => {
-    if (!currentUser || !cashShift.id) return;
-    const expected = cashShift.initialFloat + cashShift.salesCash + cashShift.additions - cashShift.withdrawals;
-    const diff = payload.conferredCash - expected;
-
-    const { error } = await supabase
-      .from('cash_shifts')
-      .update({
-        closed_by: `${currentUser.name} (${currentUser.role})`,
-        closed_at: new Date().toLocaleString('pt-BR'),
-        status: 'fechado',
-        expected_total: expected,
-        actual_total: payload.conferredCash,
-        difference: diff,
-        conferred_credit: payload.conferredCredit,
-        conferred_debit: payload.conferredDebit,
-        conferred_pix: payload.conferredPix,
-        conferred_meal_voucher: payload.conferredMealVoucher,
-        conferred_other: payload.conferredOther,
-        notes: payload.notes || 'Fechamento concluído.',
-      })
-      .eq('id', cashShift.id);
+    if (!currentUser) return;
+    // O servidor recalcula o esperado a partir do livro-caixa, recusa fechamento
+    // com mesa em aberto e exige justificativa acima do limite configurado.
+    const { error } = await supabase.rpc('close_cash_shift', {
+      p_conferred: {
+        cash: payload.conferredCash,
+        credit: payload.conferredCredit,
+        debit: payload.conferredDebit,
+        pix: payload.conferredPix,
+        meal_voucher: payload.conferredMealVoucher,
+        other: payload.conferredOther,
+      },
+      p_notes: payload.notes || null,
+    });
 
     if (error) { addToast('error', 'Erro ao fechar caixa', error.message); return; }
 
-    addToast('warning', 'Caixa Fechado', `Diferença apurada: R$ ${diff.toFixed(2)}`);
-    logAudit('Fechamento de Caixa', 'Controle de Caixa', `Total contado R$ ${payload.conferredCash.toFixed(2)} (Dif: R$ ${diff.toFixed(2)})`);
+    addToast('warning', 'Caixa Fechado', 'Conferência registrada. Confira a diferença no detalhe do turno.');
+    logAudit('Fechamento de Caixa', 'Controle de Caixa', `Total contado R$ ${payload.conferredCash.toFixed(2)}`);
   };
 
   const addCashMovement = async (type: 'reforco' | 'sangria', amount: number, name: string, reason: string) => {
-    if (!currentUser || !cashShift.id) return;
-    const newMovement: CashMovement = {
-      id: 'mov-' + Date.now(),
-      shiftId: cashShift.id,
-      type,
-      amount,
-      name,
-      reason,
-      userName: currentUser.name,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    const { error } = await supabase.rpc('add_cash_movement', { p_movement: newMovement });
+    if (!currentUser) return;
+    // A RPC resolve o turno aberto no servidor, valida permissão/valor e lança no livro-caixa.
+    const { error } = await supabase.rpc('add_cash_movement', {
+      p_movement: { type, amount, name, reason },
+    });
     if (error) { addToast('error', 'Erro ao registrar movimentação', error.message); return; }
 
     addToast('info', `Movimentação de Caixa: ${type === 'reforco' ? 'ENTRADA' : 'SAÍDA'}`, `${name} - R$ ${amount.toFixed(2)}`);
     logAudit(`Movimento Caixa (${type === 'reforco' ? 'entrada' : 'saída'})`, 'Caixa', `${name} - R$ ${amount.toFixed(2)}`);
+  };
+
+  const reversePaidOrder = async (orderId: string, reason: string, managerPin: string): Promise<boolean> => {
+    const { error } = await supabase.rpc('reverse_paid_order', {
+      p_order_id: orderId,
+      p_reason: reason,
+      p_manager_pin: managerPin,
+    });
+    if (error) { addToast('error', 'Erro ao estornar venda', error.message); return false; }
+    addToast('warning', 'Venda estornada', 'Pedido cancelado, caixa e estoque revertidos.');
+    logAudit('Estorno de Venda', 'Frente de Caixa', `Pedido ${orderId} - Motivo: ${reason}`);
+    return true;
+  };
+
+  const validateManagerPin = async (pin: string): Promise<boolean> => {
+    const { data, error } = await supabase.rpc('validate_manager_pin', { p_pin: pin });
+    if (error) { addToast('error', 'Erro ao validar PIN', error.message); return false; }
+    return data === true;
+  };
+
+  const validateOwnPin = async (pin: string): Promise<boolean> => {
+    const { data, error } = await supabase.rpc('validate_user_pin', { p_pin: pin });
+    if (error) { addToast('error', 'Erro ao validar PIN', error.message); return false; }
+    return data === true;
+  };
+
+  const recordCashExpense = async (entry: { description: string; category?: string; amount: number }): Promise<boolean> => {
+    const { error } = await supabase.rpc('record_cash_expense', { p_entry: entry });
+    if (error) { addToast('error', 'Erro ao lançar despesa', error.message); return false; }
+    addToast('success', 'Despesa registrada', `${entry.description} - R$ ${entry.amount.toFixed(2)}`);
+    logAudit('Despesa em Dinheiro', 'Financeiro', `${entry.description} - R$ ${entry.amount.toFixed(2)}`);
+    return true;
   };
 
   // ---- Category CRUD ----
@@ -1388,6 +1385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cashShift,
         cashShiftsHistory,
         cashMovements,
+        financialEntries,
         selectedCashShiftId,
         setSelectedCashShiftId,
         suppliers,
@@ -1421,6 +1419,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePaymentStatus,
         createOnlineOrder,
         createPdvSale,
+        reversePaidOrder,
+        validateManagerPin,
+        validateOwnPin,
+        recordCashExpense,
         openCashShift,
         closeCashShift,
         addCashMovement,

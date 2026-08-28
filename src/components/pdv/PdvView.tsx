@@ -26,8 +26,12 @@ import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const PdvView: React.FC = () => {
-  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser } = useApp();
+  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
+
+  // Desconto acima do teto do cargo exige motivo + PIN de gerente (validado no servidor).
+  const [discountReasonInput, setDiscountReasonInput] = useState('');
+  const [discountPinInput, setDiscountPinInput] = useState('');
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -133,6 +137,12 @@ export const PdvView: React.FC = () => {
   const total = Math.max(0, subtotal - discountInput);
   const changeDue = Math.max(0, cashTendered - total);
 
+  const discountPct = subtotal > 0 ? (discountInput / subtotal) * 100 : 0;
+  // Teto por cargo, configurável em Configurações → Perfil da Empresa. Admin
+  // normalmente vem com 100 (sem teto), mas respeita o valor configurado.
+  const discountLimit = companyProfile.discountLimits?.[currentUser.role] ?? (currentUser.role === 'admin' ? 100 : 0);
+  const discountOverLimit = discountInput > 0 && discountPct > discountLimit + 0.001;
+
   const handleFinalizeSale = async () => {
     if (cartItems.length === 0) {
       addToast('error', 'Carrinho Vazio', 'Adicione produtos antes de finalizar.');
@@ -158,13 +168,27 @@ export const PdvView: React.FC = () => {
       splitPayments = parsedSplits;
     }
 
+    if (discountOverLimit) {
+      if (!discountReasonInput.trim()) {
+        addToast('error', 'Desconto acima do limite', `Seu teto é ${discountLimit}%. Informe o motivo do desconto.`);
+        return;
+      }
+      const pinOk = await validateManagerPin(discountPinInput);
+      if (!pinOk) {
+        addToast('error', 'Desconto acima do limite', 'PIN de gerente inválido.');
+        return;
+      }
+    }
+
     const sale = await createPdvSale(
       cartItems,
       isSplitPayment ? 'multiplo' : paymentMethod,
       serviceType,
       customerNameInput || 'Cliente Balcão',
       discountInput,
-      splitPayments
+      splitPayments,
+      discountOverLimit ? discountReasonInput.trim() : undefined,
+      discountOverLimit ? discountPinInput : undefined
     );
 
     if (!sale) return;
@@ -176,6 +200,8 @@ export const PdvView: React.FC = () => {
     // Reset PDV state
     setCartItems([]);
     setDiscountInput(0);
+    setDiscountReasonInput('');
+    setDiscountPinInput('');
     setCustomerNameInput('Cliente Balcão');
     setCashTendered(0);
     setIsSplitPayment(false);
@@ -437,6 +463,27 @@ export const PdvView: React.FC = () => {
                   className="w-20 border rounded-lg p-1 text-right text-xs font-semibold disabled:bg-stone-100 disabled:text-stone-400"
                 />
               </div>
+              {discountOverLimit && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 space-y-1.5">
+                  <p className="text-[11px] font-bold text-amber-800">
+                    Desconto de {discountPct.toFixed(1)}% acima do seu teto ({discountLimit}%). Precisa de autorização de gerente.
+                  </p>
+                  <input
+                    value={discountReasonInput}
+                    onChange={(e) => setDiscountReasonInput(sanitizeText(e.target.value, MAXLEN.notes))}
+                    placeholder="Motivo do desconto"
+                    className="w-full border rounded-lg p-1.5 text-xs"
+                  />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    value={discountPinInput}
+                    onChange={(e) => setDiscountPinInput(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin))}
+                    placeholder="PIN do gerente"
+                    className="w-full border rounded-lg p-1.5 text-xs tracking-[0.3em] text-center font-bold"
+                  />
+                </div>
+              )}
               <div className="flex justify-between font-bold text-lg text-stone-900 border-t pt-2">
                 <span>TOTAL:</span>
                 <span>R$ {total.toFixed(2)}</span>

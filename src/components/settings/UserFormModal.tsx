@@ -112,6 +112,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
       addToast('error', 'CPF inválido', 'Verifique os dígitos do CPF.');
       return;
     }
+    if (isEdit && code.trim() && (code.trim().length < 4 || code.trim().length > 6)) {
+      addToast('error', 'PIN inválido', 'O PIN deve ter de 4 a 6 dígitos.');
+      return;
+    }
     if (phone.trim() && !isValidPhone(phone)) {
       addToast('error', 'Telefone inválido', 'Use DDD + número (10 ou 11 dígitos).');
       return;
@@ -284,11 +288,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
-                    placeholder="Sem PIN"
+                    placeholder="Digite para definir/alterar"
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                     className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono tracking-widest"
                   />
+                  <p className="text-[10px] text-stone-400 mt-1">4 a 6 dígitos. Por segurança o PIN atual não é exibido — deixe em branco para mantê-lo. Só administradores podem alterar PIN.</p>
                 </div>
               )}
             </div>

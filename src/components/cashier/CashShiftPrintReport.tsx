@@ -53,12 +53,22 @@ export const CashShiftPrintReport: React.FC<CashShiftPrintReportProps> = ({ shif
         ))}
       </div>
 
+      {(shift.salesServiceFee || shift.salesCouvert) ? (
+        <div className="py-2 border-b border-dashed border-black">
+          <p className="font-bold uppercase mb-1">Taxas</p>
+          <div className="flex justify-between"><span>Taxa de serviço:</span><span>R$ {(shift.salesServiceFee ?? 0).toFixed(2)}</span></div>
+          <div className="flex justify-between"><span>Couvert:</span><span>R$ {(shift.salesCouvert ?? 0).toFixed(2)}</span></div>
+        </div>
+      ) : null}
+
       <div className="py-2 border-b border-dashed border-black">
         <p className="font-bold uppercase mb-1">Movimentação em Espécie</p>
         <div className="flex justify-between"><span>Fundo Inicial:</span><span>R$ {shift.initialFloat.toFixed(2)}</span></div>
         <div className="flex justify-between"><span>(+) Vendas Dinheiro:</span><span>R$ {shift.salesCash.toFixed(2)}</span></div>
         <div className="flex justify-between"><span>(+) Suprimentos:</span><span>R$ {shift.additions.toFixed(2)}</span></div>
         <div className="flex justify-between"><span>(-) Sangrias:</span><span>R$ {shift.withdrawals.toFixed(2)}</span></div>
+        <div className="flex justify-between"><span>(-) Troco entregue:</span><span>R$ {(shift.cashChangeGiven ?? 0).toFixed(2)}</span></div>
+        <div className="flex justify-between"><span>(-) Despesas em dinheiro:</span><span>R$ {(shift.cashExpenses ?? 0).toFixed(2)}</span></div>
         <div className="flex justify-between font-bold border-t border-black mt-1 pt-1"><span>(=) Esperado:</span><span>R$ {shift.expectedTotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span>Contado:</span><span>{shift.actualTotal != null ? `R$ ${shift.actualTotal.toFixed(2)}` : '—'}</span></div>
         <div className="flex justify-between font-bold"><span>Diferença:</span><span>{shift.difference != null ? `R$ ${shift.difference.toFixed(2)}` : '—'}</span></div>

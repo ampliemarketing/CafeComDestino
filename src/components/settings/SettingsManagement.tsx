@@ -61,6 +61,16 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<number>(companyProfile.deliveryFee ?? 0);
   const [minOrderValueInput, setMinOrderValueInput] = useState<number>(companyProfile.minOrderValue ?? 0);
 
+  // Taxa de serviço / couvert / conferência de caixa / teto de desconto
+  const [serviceFeeEnabledInput, setServiceFeeEnabledInput] = useState<boolean>(companyProfile.serviceFeeEnabled ?? false);
+  const [serviceFeePercentInput, setServiceFeePercentInput] = useState<number>(companyProfile.serviceFeePercent ?? 0);
+  const [couvertEnabledInput, setCouvertEnabledInput] = useState<boolean>(companyProfile.couvertEnabled ?? false);
+  const [couvertValueInput, setCouvertValueInput] = useState<number>(companyProfile.couvertValue ?? 0);
+  const [blindThresholdInput, setBlindThresholdInput] = useState<number>(companyProfile.blindConferenceThreshold ?? 10);
+  const [discCaixaInput, setDiscCaixaInput] = useState<number>(companyProfile.discountLimits?.caixa ?? 5);
+  const [discGerenteInput, setDiscGerenteInput] = useState<number>(companyProfile.discountLimits?.gerente ?? 20);
+  const [discFinanceiroInput, setDiscFinanceiroInput] = useState<number>(companyProfile.discountLimits?.financeiro ?? 10);
+
   // File upload handlers
   const readImageInto = (
     file: File,
@@ -463,6 +473,66 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </fieldset>
             </div>
 
+            {/* Taxa de serviço, couvert e regras de caixa */}
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 border-b border-stone-200 pb-2">
+                <div className="p-1.5 bg-amber-800 text-white rounded-lg"><Building2 className="w-4 h-4" /></div>
+                <h4 className="font-bold text-stone-900 text-sm">Taxa de Serviço, Couvert e Regras de Caixa</h4>
+              </div>
+
+              <fieldset disabled={!canEditCompanyProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-3 disabled:opacity-60 text-xs">
+                <label className="flex items-center gap-2 font-semibold text-stone-700">
+                  <input type="checkbox" checked={serviceFeeEnabledInput} onChange={(e) => setServiceFeeEnabledInput(e.target.checked)} />
+                  Cobrar taxa de serviço nas comandas
+                </label>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Taxa de serviço (%)</label>
+                  <input type="number" step="0.5" min="0" max="100" value={serviceFeePercentInput}
+                    onChange={(e) => setServiceFeePercentInput(toBoundedNumber(e.target.value, 0, 100))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+
+                <label className="flex items-center gap-2 font-semibold text-stone-700">
+                  <input type="checkbox" checked={couvertEnabledInput} onChange={(e) => setCouvertEnabledInput(e.target.checked)} />
+                  Cobrar couvert por pessoa
+                </label>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Valor do couvert (R$)</label>
+                  <input type="number" step="0.01" min="0" value={couvertValueInput}
+                    onChange={(e) => setCouvertValueInput(toBoundedNumber(e.target.value, 0, 100_000))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Diferença de fechamento que exige justificativa (R$)</label>
+                  <input type="number" step="1" min="0" value={blindThresholdInput}
+                    onChange={(e) => setBlindThresholdInput(toBoundedNumber(e.target.value, 0, 100_000))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+                <div />
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Teto de desconto — Caixa (%)</label>
+                  <input type="number" step="1" min="0" max="100" value={discCaixaInput}
+                    onChange={(e) => setDiscCaixaInput(toBoundedNumber(e.target.value, 0, 100))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Teto de desconto — Gerente (%)</label>
+                  <input type="number" step="1" min="0" max="100" value={discGerenteInput}
+                    onChange={(e) => setDiscGerenteInput(toBoundedNumber(e.target.value, 0, 100))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Teto de desconto — Financeiro (%)</label>
+                  <input type="number" step="1" min="0" max="100" value={discFinanceiroInput}
+                    onChange={(e) => setDiscFinanceiroInput(toBoundedNumber(e.target.value, 0, 100))}
+                    className="w-full border rounded-xl p-2.5 font-bold" />
+                </div>
+              </fieldset>
+              <p className="text-[10px] text-stone-500">Descontos acima do teto do cargo exigem motivo e PIN de gerente. Admin não tem teto.</p>
+            </div>
+
             {(canEditCompanyProfile || canEditCompanyMedia || canEditBuffetPrices) && (
             <button
               onClick={() => {
@@ -481,6 +551,18 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                   },
                   deliveryFee: deliveryFeeInput,
                   minOrderValue: minOrderValueInput,
+                  serviceFeeEnabled: serviceFeeEnabledInput,
+                  serviceFeePercent: serviceFeePercentInput,
+                  couvertEnabled: couvertEnabledInput,
+                  couvertValue: couvertValueInput,
+                  blindConferenceThreshold: blindThresholdInput,
+                  discountLimits: {
+                    ...(companyProfile.discountLimits || {}),
+                    caixa: discCaixaInput,
+                    gerente: discGerenteInput,
+                    financeiro: discFinanceiroInput,
+                    admin: 100,
+                  },
                 };
                 setCompanyProfile(updatedProfile);
 

@@ -27,7 +27,8 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
   tableNumber,
   comandaId
 }) => {
-  const { products, users, recordCourtesy, currentUser } = useApp();
+  const { products, users, recordCourtesy, currentUser, validateManagerPin } = useApp();
+  const [authChecking, setAuthChecking] = useState(false);
 
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
   const [quantity, setQuantity] = useState<number>(1);
@@ -46,29 +47,27 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
-  const handleConfirmCourtesy = () => {
+  const handleConfirmCourtesy = async () => {
     if (!selectedProduct) return;
 
-    // Check authorizer PIN code
     const authorizer = users.find((u) => u.id === authorizerId);
     if (!authorizer) {
       setAuthError('Selecione um usuário autorizador.');
       return;
     }
-
-    // O autorizador PRECISA ter um PIN cadastrado — sem isso a autorização
-    // de gerência não teria efeito nenhum.
-    if (!authorizer.code) {
-      setAuthError(`${authorizer.name} não tem PIN de autorização cadastrado. Cadastre em Configurações → Usuários.`);
-      return;
-    }
-    if (authPin !== authorizer.code) {
-      setAuthError(`Código PIN incorreto para ${authorizer.name}.`);
-      return;
-    }
-
     if (quantity <= 0) {
       setAuthError('Informe uma quantidade maior que zero.');
+      return;
+    }
+
+    // PIN validado no servidor: confere contra qualquer gerente/admin ativo
+    // (o campo `code` não é mais lido pelo cliente — migration 0028).
+    setAuthChecking(true);
+    setAuthError('');
+    const ok = await validateManagerPin(authPin);
+    setAuthChecking(false);
+    if (!ok) {
+      setAuthError('PIN de gerente/admin inválido.');
       return;
     }
 
@@ -259,10 +258,11 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
           </button>
           <button
             onClick={handleConfirmCourtesy}
-            className="px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs shadow flex items-center gap-1.5"
+            disabled={authChecking || authPin.length < 4}
+            className="px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs shadow flex items-center gap-1.5 disabled:opacity-50"
           >
             <Gift className="w-4 h-4" />
-            <span>Confirmar Cortesia</span>
+            <span>{authChecking ? 'Validando…' : 'Confirmar Cortesia'}</span>
           </button>
         </div>
       </div>

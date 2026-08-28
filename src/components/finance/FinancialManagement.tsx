@@ -12,15 +12,14 @@ import {
   FileText,
   PieChart as PieChartIcon
 } from 'lucide-react';
-import { FinancialEntry } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const FinancialManagement: React.FC = () => {
-  const { orders, addToast, currentUser } = useApp();
+  const { orders, addToast, currentUser, financialEntries } = useApp();
   const canLancar = hasPermission(currentUser, 'financeiro_dre.lancar');
 
-  const [financialEntries, setFinancialEntries] = useState<FinancialEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dre' | 'contas'>('dre');
 
   // New entry modal
@@ -263,21 +262,23 @@ export const FinancialManagement: React.FC = () => {
             </div>
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (newEntryAmount <= 0) {
                   addToast('error', 'Valor inválido', 'Informe um valor maior que zero.');
                   return;
                 }
-                const newEntry: FinancialEntry = {
+                const { error } = await supabase.from('financial_entries').insert({
                   id: 'fin-' + Date.now(),
                   type: newEntryType,
                   description: newEntryDesc.trim() || (newEntryType === 'receita' ? 'Receita avulsa' : 'Despesa avulsa'),
                   category: newEntryCategory,
                   amount: newEntryAmount,
-                  dueDate: new Date().toLocaleDateString('pt-BR'),
+                  due_date: new Date().toISOString().slice(0, 10),
                   status: 'pendente',
-                };
-                setFinancialEntries((prev) => [newEntry, ...prev]);
+                  created_by: currentUser.id,
+                  created_by_name: currentUser.name,
+                });
+                if (error) { addToast('error', 'Erro ao lançar', error.message); return; }
                 addToast('success', 'Lançamento registrado com sucesso!');
                 setIsModalOpen(false);
                 setNewEntryDesc('');

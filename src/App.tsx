@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -8,25 +8,40 @@ import { SupportButton } from './components/common/SupportButton';
 import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags, History } from 'lucide-react';
 import { hasPermission, SCREEN_ACCESS_PERMISSION } from './lib/permissions';
 
-import { DashboardView } from './components/dashboard/DashboardView';
-import { OnlineMenuCatalog } from './components/online-menu/OnlineMenuCatalog';
-import { PublicOnlineMenu } from './components/online-menu/PublicOnlineMenu';
-import { PdvView } from './components/pdv/PdvView';
-import { WaiterApp } from './components/waiter/WaiterApp';
-import { KitchenKDS } from './components/kitchen/KitchenKDS';
-import { CashShiftsHistory } from './components/cashier/CashShiftsHistory';
-import { CashShiftDetail } from './components/cashier/CashShiftDetail';
-import { TableManagement } from './components/tables/TableManagement';
-import { SalesManagement } from './components/sales/SalesManagement';
-import { ProductManagement } from './components/products/ProductManagement';
-import { InventoryManagement } from './components/inventory/InventoryManagement';
-import { GroupManagement } from './components/groups/GroupManagement';
-import { SupplierManagement } from './components/suppliers/SupplierManagement';
-import { FinancialManagement } from './components/finance/FinancialManagement';
-import { FiscalManagement } from './components/fiscal/FiscalManagement';
-import { DeliveryManagement } from './components/delivery/DeliveryManagement';
-import { ReportsView } from './components/reports/ReportsView';
-import { SettingsManagement } from './components/settings/SettingsManagement';
+// Cada tela é um chunk separado, carregado só quando abre — evita um bundle
+// único gigante (recharts, telas pesadas etc.) no primeiro carregamento.
+const lazyNamed = <M extends Record<string, any>, K extends keyof M>(
+  loader: () => Promise<M>,
+  name: K
+) => lazy(() => loader().then((m) => ({ default: m[name] })));
+
+const DashboardView = lazyNamed(() => import('./components/dashboard/DashboardView'), 'DashboardView');
+const OnlineMenuCatalog = lazyNamed(() => import('./components/online-menu/OnlineMenuCatalog'), 'OnlineMenuCatalog');
+const PublicOnlineMenu = lazyNamed(() => import('./components/online-menu/PublicOnlineMenu'), 'PublicOnlineMenu');
+const PdvView = lazyNamed(() => import('./components/pdv/PdvView'), 'PdvView');
+const WaiterApp = lazyNamed(() => import('./components/waiter/WaiterApp'), 'WaiterApp');
+const KitchenKDS = lazyNamed(() => import('./components/kitchen/KitchenKDS'), 'KitchenKDS');
+const CashShiftsHistory = lazyNamed(() => import('./components/cashier/CashShiftsHistory'), 'CashShiftsHistory');
+const CashShiftDetail = lazyNamed(() => import('./components/cashier/CashShiftDetail'), 'CashShiftDetail');
+const CashLedgerView = lazyNamed(() => import('./components/cashier/CashLedgerView'), 'CashLedgerView');
+const AuditLogView = lazyNamed(() => import('./components/audit/AuditLogView'), 'AuditLogView');
+const TableManagement = lazyNamed(() => import('./components/tables/TableManagement'), 'TableManagement');
+const SalesManagement = lazyNamed(() => import('./components/sales/SalesManagement'), 'SalesManagement');
+const ProductManagement = lazyNamed(() => import('./components/products/ProductManagement'), 'ProductManagement');
+const InventoryManagement = lazyNamed(() => import('./components/inventory/InventoryManagement'), 'InventoryManagement');
+const GroupManagement = lazyNamed(() => import('./components/groups/GroupManagement'), 'GroupManagement');
+const SupplierManagement = lazyNamed(() => import('./components/suppliers/SupplierManagement'), 'SupplierManagement');
+const FinancialManagement = lazyNamed(() => import('./components/finance/FinancialManagement'), 'FinancialManagement');
+const FiscalManagement = lazyNamed(() => import('./components/fiscal/FiscalManagement'), 'FiscalManagement');
+const DeliveryManagement = lazyNamed(() => import('./components/delivery/DeliveryManagement'), 'DeliveryManagement');
+const ReportsView = lazyNamed(() => import('./components/reports/ReportsView'), 'ReportsView');
+const SettingsManagement = lazyNamed(() => import('./components/settings/SettingsManagement'), 'SettingsManagement');
+
+const ViewFallback: React.FC = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-7 h-7 border-4 border-amber-800 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 const AppContent: React.FC = () => {
   const { activeView, setActiveView, currentUser } = useApp();
@@ -75,6 +90,10 @@ const AppContent: React.FC = () => {
         return <CashShiftsHistory />;
       case 'caixa-detalhe':
         return <CashShiftDetail />;
+      case 'livro-caixa':
+        return <CashLedgerView />;
+      case 'audit':
+        return <AuditLogView />;
       case 'tables':
         return <TableManagement />;
       case 'sales':
@@ -120,6 +139,7 @@ const AppContent: React.FC = () => {
         { id: 'kitchen', label: 'Painel Cozinha (KDS)', icon: ChefHat },
         { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor },
         { id: 'caixas', label: 'Caixas', icon: History },
+        { id: 'livro-caixa', label: 'Livro-Caixa', icon: FileText },
         { id: 'sales', label: 'Gestão de Vendas', icon: Receipt },
       ]
     },
@@ -154,7 +174,9 @@ const AppContent: React.FC = () => {
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
         
         <main className="flex-1 overflow-y-auto pb-20 md:pb-8">
-          {renderView()}
+          <Suspense fallback={<ViewFallback />}>
+            {renderView()}
+          </Suspense>
         </main>
       </div>
 
@@ -229,7 +251,17 @@ export default function App() {
   // do AppProvider de propósito, pra não depender de sessão de funcionário
   // nem tocar na tabela profiles usada pelo login interno.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/pedir')) {
-    return <PublicOnlineMenu />;
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-amber-800 border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <PublicOnlineMenu />
+      </Suspense>
+    );
   }
 
   return (

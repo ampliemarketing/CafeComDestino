@@ -22,7 +22,9 @@ import {
   Sparkles,
   Tags,
   History,
-  Wallet
+  Wallet,
+  BookOpen,
+  ShieldCheck
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -49,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
         { id: 'kitchen', label: 'Painel da Cozinha (KDS)', icon: ChefHat },
         { id: 'pdv', label: 'PDV / Frente de Caixa', icon: Monitor },
         { id: 'caixas', label: 'Caixas', icon: History },
+        { id: 'livro-caixa', label: 'Livro-Caixa', icon: BookOpen },
         { id: 'sales', label: 'Gestão de Vendas', icon: Receipt },
       ]
     },
@@ -71,6 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
         { id: 'reports', label: 'Relatórios Gerenciais', icon: BarChart3 },
         { id: 'company', label: 'Perfil da Empresa', icon: Building2 },
         { id: 'users', label: 'Usuários & Permissões', icon: Users },
+        { id: 'audit', label: 'Auditoria', icon: ShieldCheck },
       ]
     }
   ];

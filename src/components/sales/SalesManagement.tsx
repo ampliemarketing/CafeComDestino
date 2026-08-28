@@ -17,8 +17,13 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { hasPermission } from '../../lib/permissions';
 
 export const SalesManagement: React.FC = () => {
-  const { orders, issueNfce, updateOrderStatus, addToast, currentUser } = useApp();
+  const { orders, issueNfce, updateOrderStatus, addToast, currentUser, reversePaidOrder } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
+
+  const [reverseOrder, setReverseOrder] = useState<Order | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
+  const [reversePin, setReversePin] = useState('');
+  const [reverseBusy, setReverseBusy] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<string>('todos');
@@ -221,6 +226,60 @@ export const SalesManagement: React.FC = () => {
               >
                 <Printer className="w-4 h-4" />
                 <span>Reimprimir</span>
+              </button>
+              {can('caixas.estornar_venda') && selectedOrder.paymentStatus === 'pagamento_aprovado' && selectedOrder.orderStatus !== 'cancelado' && (
+                <button
+                  onClick={() => { setReverseOrder(selectedOrder); setReverseReason(''); setReversePin(''); }}
+                  className="flex-1 bg-rose-700 hover:bg-rose-800 text-white py-2.5 rounded-xl font-bold text-xs shadow flex items-center justify-center gap-1.5"
+                >
+                  <Ban className="w-4 h-4" />
+                  <span>Estornar venda</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Estorno de venda paga */}
+      {reverseOrder && (
+        <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-stone-200">
+            <div className="flex items-center gap-2 text-rose-700">
+              <Ban className="w-5 h-5" />
+              <h3 className="font-bold text-base">Estornar Venda #{reverseOrder.orderNumber}</h3>
+            </div>
+            <p className="text-xs text-stone-500">
+              O pedido será cancelado, o valor revertido no caixa e o estoque reposto. Se o caixa da venda já estiver
+              fechado, ele será reaberto e refechado (requer permissão de reabrir caixa).
+            </p>
+            <input
+              value={reverseReason}
+              onChange={(e) => setReverseReason(e.target.value.slice(0, 300))}
+              placeholder="Motivo do estorno"
+              className="w-full border rounded-xl p-2.5 text-xs"
+            />
+            <input
+              type="password"
+              inputMode="numeric"
+              value={reversePin}
+              onChange={(e) => setReversePin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              placeholder="PIN do gerente"
+              className="w-full border rounded-xl p-2.5 text-center tracking-[0.3em] font-bold text-sm"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setReverseOrder(null)} className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs">Cancelar</button>
+              <button
+                disabled={reverseBusy || !reverseReason.trim() || reversePin.length < 4}
+                onClick={async () => {
+                  setReverseBusy(true);
+                  const ok = await reversePaidOrder(reverseOrder.id, reverseReason.trim(), reversePin);
+                  setReverseBusy(false);
+                  if (ok) { setReverseOrder(null); setSelectedOrder(null); }
+                }}
+                className="flex-1 py-2.5 bg-rose-700 text-white font-bold rounded-xl text-xs shadow disabled:opacity-50"
+              >
+                {reverseBusy ? 'Estornando…' : 'Confirmar estorno'}
               </button>
             </div>
           </div>

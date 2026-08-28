@@ -43,11 +43,10 @@ const mapMovementRow = (row: any): CashMovement => ({
   timestamp: row.timestamp,
 });
 
-// Diferença acima deste valor (em qualquer forma de pagamento) exige justificativa nas observações.
-const JUSTIFICATION_THRESHOLD = 10;
-
 export const CashShiftDetail: React.FC = () => {
-  const { cashShiftsHistory, selectedCashShiftId, setActiveView, products, categories, currentUser, closeCashShift, addCashMovement } = useApp();
+  const { cashShiftsHistory, selectedCashShiftId, setActiveView, products, categories, currentUser, companyProfile, closeCashShift, addCashMovement, validateOwnPin } = useApp();
+  // Diferença acima deste valor (em qualquer forma de pagamento) exige justificativa nas observações.
+  const JUSTIFICATION_THRESHOLD = companyProfile.blindConferenceThreshold ?? 10;
   const can = (key: string) => hasPermission(currentUser, key);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +71,13 @@ export const CashShiftDetail: React.FC = () => {
   const [pinStepOpen, setPinStepOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!pinStepOpen) return;
+    setHasPin(null);
+    supabase.rpc('current_user_has_pin').then(({ data }) => setHasPin(data === true));
+  }, [pinStepOpen]);
 
   const index = cashShiftsHistory.findIndex((s) => s.id === selectedCashShiftId);
   const shift = index >= 0 ? cashShiftsHistory[index] : null;
@@ -113,16 +119,20 @@ export const CashShiftDetail: React.FC = () => {
   const isOpen = shift.status === 'aberto';
   const stats = computeShiftStats(shiftOrders, products, categories);
 
-  const liveExpectedTotal = shift.initialFloat + shift.salesCash + shift.additions - shift.withdrawals;
+  // salesCash é bruto: desconta troco entregue e despesas pagas em dinheiro.
+  const liveExpectedTotal = shift.initialFloat + shift.salesCash + shift.additions
+    - shift.withdrawals - (shift.cashChangeGiven ?? 0) - (shift.cashExpenses ?? 0);
   const expectedTotal = isOpen ? liveExpectedTotal : shift.expectedTotal;
 
+  // Conferência CEGA: os campos começam zerados — o operador conta e digita,
+  // a diferença só aparece depois. (Não pré-preencher com o valor do sistema.)
   const startClosing = () => {
-    setConferredCash(liveExpectedTotal);
-    setConferredCredit(shift.salesCredit);
-    setConferredDebit(shift.salesDebit);
-    setConferredPix(shift.salesPix);
-    setConferredMealVoucher(shift.salesMealVoucher);
-    setConferredOther(shift.salesOther);
+    setConferredCash(0);
+    setConferredCredit(0);
+    setConferredDebit(0);
+    setConferredPix(0);
+    setConferredMealVoucher(0);
+    setConferredOther(0);
     setCloseNotesInput('');
     setPinInput('');
     setPinError('');
@@ -143,7 +153,9 @@ export const CashShiftDetail: React.FC = () => {
   const allClosingDiffs = [cashDiff, ...paymentDefs.slice(1).map((r) => r.value - r.system)];
   const maxAbsDiff = Math.max(...allClosingDiffs.map(Math.abs));
   const needsJustification = maxAbsDiff > JUSTIFICATION_THRESHOLD;
-  const canConfirmClose = !needsJustification || closeNotesInput.trim().length > 0;
+  // O servidor (close_cash_shift) também recusa o fechamento se |diferença| > limite
+  // e as observações estiverem vazias.
+  const canConfirmClose = conferredCash > 0 && (!needsJustification || closeNotesInput.trim().length > 0);
 
   const requestPinConfirmation = () => {
     setPinError('');
@@ -151,16 +163,19 @@ export const CashShiftDetail: React.FC = () => {
     setPinStepOpen(true);
   };
 
-  const confirmClose = () => {
-    if (!currentUser.code) {
-      setPinError('Você não tem um PIN configurado. Peça a um administrador para cadastrar um em Usuários & Permissões.');
+  const [pinChecking, setPinChecking] = useState(false);
+  const confirmClose = async () => {
+    setPinError('');
+    setPinChecking(true);
+    const ok = await validateOwnPin(pinInput);
+    setPinChecking(false);
+    if (!ok) {
+      setPinError(hasPin === false
+        ? 'Você não tem um PIN cadastrado.'
+        : 'PIN incorreto (ou muitas tentativas — aguarde 2 min).');
       return;
     }
-    if (pinInput !== currentUser.code) {
-      setPinError('PIN incorreto.');
-      return;
-    }
-    closeCashShift({
+    await closeCashShift({
       conferredCash,
       conferredCredit,
       conferredDebit,
@@ -318,9 +333,13 @@ export const CashShiftDetail: React.FC = () => {
             </thead>
             <tbody className="divide-y">
               {paymentDefs.map((row) => {
+                const isCashRow = row.label === 'Dinheiro';
+                // Durante o fechamento o Dinheiro é conferido só no bloco de
+                // contagem de gaveta abaixo — evita dois campos para o mesmo valor.
+                const cashDeferred = isClosing && isCashRow;
                 const displayedConferred = isClosing ? row.value : row.closedValue;
-                const diff = displayedConferred != null ? displayedConferred - row.system : undefined;
-                const tone = isClosing ? diffTone(diff) : diffTone(displayedConferred != null ? diff : undefined);
+                const diff = cashDeferred ? undefined : (displayedConferred != null ? displayedConferred - row.system : undefined);
+                const tone = diffTone(diff);
                 return (
                   <tr key={row.label}>
                     <td className="p-2.5 font-semibold text-stone-800 flex items-center gap-1.5">
@@ -328,12 +347,15 @@ export const CashShiftDetail: React.FC = () => {
                     </td>
                     <td className="p-2.5 text-right text-stone-600">R$ {row.system.toFixed(2)}</td>
                     <td className="p-2.5 text-right">
-                      {isClosing ? (
+                      {cashDeferred ? (
+                        <span className="text-[11px] text-stone-400">contado na gaveta ↓</span>
+                      ) : isClosing ? (
                         <input
                           type="number"
                           min="0"
                           step="0.01"
-                          value={row.value}
+                          value={row.value || ''}
+                          placeholder="0,00"
                           onChange={(e) => row.setValue(toBoundedNumber(e.target.value, 0, 10_000_000))}
                           className="w-28 border rounded-lg px-2 py-1 text-right font-bold"
                         />
@@ -399,7 +421,8 @@ export const CashShiftDetail: React.FC = () => {
                 type="number"
                 min="0"
                 step="0.01"
-                value={conferredCash}
+                value={conferredCash || ''}
+                placeholder="0,00"
                 onChange={(e) => setConferredCash(toBoundedNumber(e.target.value, 0, 10_000_000))}
                 className="w-full border rounded-lg px-2 py-1.5 mt-1 font-bold text-lg"
               />
@@ -409,12 +432,19 @@ export const CashShiftDetail: React.FC = () => {
               </p>
             )}
           </div>
-          <div className={`rounded-xl p-3 border ${diffToneClasses[diffTone(isClosing ? cashDiff : diferenca)].box}`}>
-            <span className={`text-[10px] font-semibold uppercase ${diffToneClasses[diffTone(isClosing ? cashDiff : diferenca)].label}`}>Diferença de Caixa</span>
-            <p className={`text-lg font-bold mt-1 ${diffToneClasses[diffTone(isClosing ? cashDiff : diferenca)].value}`}>
-              {isClosing ? `R$ ${cashDiff.toFixed(2)}` : diferenca == null ? '—' : `R$ ${diferenca.toFixed(2)}`}
-            </p>
-          </div>
+          {(() => {
+            const pending = isClosing && conferredCash === 0;
+            const shownDiff = isClosing ? conferredCash - expectedTotal : diferenca;
+            const t = pending ? 'neutral' : diffTone(shownDiff);
+            return (
+              <div className={`rounded-xl p-3 border ${diffToneClasses[t].box}`}>
+                <span className={`text-[10px] font-semibold uppercase ${diffToneClasses[t].label}`}>Diferença de Caixa</span>
+                <p className={`text-lg font-bold mt-1 ${diffToneClasses[t].value}`}>
+                  {pending ? 'aguardando contagem' : isClosing ? `R$ ${(conferredCash - expectedTotal).toFixed(2)}` : diferenca == null ? '—' : `R$ ${diferenca.toFixed(2)}`}
+                </p>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -527,7 +557,7 @@ export const CashShiftDetail: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-2">
           <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5" /> Observações do Fechamento
-            {needsJustification && <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">Obrigatório — diferença acima de R$ {JUSTIFICATION_THRESHOLD.toFixed(2)}</span>}
+            {needsJustification && <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full normal-case">Obrigatório — diferença acima de R$ {JUSTIFICATION_THRESHOLD.toFixed(2)}</span>}
           </h4>
           <textarea
             placeholder="Justificativa para divergências (ex: erro de troco, pagamento a menor não percebido)..."
@@ -671,6 +701,11 @@ export const CashShiftDetail: React.FC = () => {
             <p className="text-xs text-stone-500">
               Digite seu PIN para confirmar o fechamento do caixa como <span className="font-semibold text-stone-800">{currentUser.name}</span>.
             </p>
+            {hasPin === false && (
+              <p className="text-xs text-rose-600 font-semibold bg-rose-50 border border-rose-200 rounded-lg p-2">
+                Você não tem um PIN cadastrado. Peça a um administrador para definir um em Usuários & Permissões (só admin pode).
+              </p>
+            )}
             <input
               type="password"
               inputMode="numeric"
@@ -679,7 +714,7 @@ export const CashShiftDetail: React.FC = () => {
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin))}
               onKeyDown={(e) => e.key === 'Enter' && confirmClose()}
-              placeholder="PIN"
+              placeholder="PIN (4 a 6 dígitos)"
               className="w-full border rounded-xl p-3 text-center text-lg tracking-[0.3em] font-bold"
             />
             {pinError && <p className="text-xs text-rose-600 font-semibold">{pinError}</p>}
@@ -692,9 +727,10 @@ export const CashShiftDetail: React.FC = () => {
               </button>
               <button
                 onClick={confirmClose}
-                className="flex-1 py-2.5 bg-rose-700 text-white font-bold rounded-xl text-xs shadow"
+                disabled={pinChecking || pinInput.length < 4 || hasPin === false}
+                className="flex-1 py-2.5 bg-rose-700 text-white font-bold rounded-xl text-xs shadow disabled:opacity-50"
               >
-                Confirmar
+                {pinChecking ? 'Validando…' : 'Confirmar'}
               </button>
             </div>
           </div>

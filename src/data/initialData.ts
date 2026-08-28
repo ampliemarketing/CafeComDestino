@@ -60,6 +60,12 @@ export const initialCompanyProfile: CompanyProfileData = {
     nfceSeries: 1,
     nfceNextNumber: 1042,
   },
+  serviceFeePercent: 0,
+  serviceFeeEnabled: false,
+  couvertValue: 0,
+  couvertEnabled: false,
+  blindConferenceThreshold: 10,
+  discountLimits: { caixa: 5, gerente: 20, financeiro: 10, admin: 100 },
 };
 
 export const initialLossRecords: LossRecord[] = [];

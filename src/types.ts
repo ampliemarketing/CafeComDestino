@@ -15,7 +15,8 @@ export interface User {
   avatar?: string;
   active: boolean;
   phone?: string;
-  code?: string; // Short PIN/Code for fast waiter/cashier login
+  code?: string; // PIN — write-only: o cliente não lê mais este campo (revogado em 0028);
+                 // validação é via RPC validate_user_pin / validate_manager_pin.
   cpf?: string;
   permissions: string[]; // Chaves do catálogo em src/lib/permissions.ts
 }
@@ -68,6 +69,13 @@ export interface CompanyProfileData {
     nfceSeries: number;
     nfceNextNumber: number;
   };
+  // Taxa de serviço / couvert / conferência de caixa (migration 0026)
+  serviceFeePercent: number;
+  serviceFeeEnabled: boolean;
+  couvertValue: number;
+  couvertEnabled: boolean;
+  blindConferenceThreshold: number; // diferença de fechamento acima disso exige justificativa
+  discountLimits: Partial<Record<UserRole, number>>; // teto de desconto (%) por cargo
 }
 
 export interface Category {
@@ -194,6 +202,10 @@ export interface Comanda {
   subtotal: number;
   status: 'aberta' | 'aguardando_fechamento';
   advancePayments?: PartialPayment[];
+  serviceFeeApplied?: boolean; // ausente = aplica quando a taxa está habilitada na empresa
+  serviceFeeRemovedBy?: string;
+  serviceFeeRemovedReason?: string;
+  couvertQty?: number; // nº de couverts; ausente = usa guestCount
 }
 
 export interface DiningTable {
@@ -246,7 +258,8 @@ export interface Order {
   splitPayments?: { method: PaymentMethod; amount: number }[];
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
-  createdAt: string;
+  createdAt: string; // Somente hora "HH:MM", para exibição em listas/telas operacionais
+  createdAtISO?: string; // Timestamp completo (ISO) — usado para filtros por data/período
   updatedAt: string;
   preparedAt?: string;
   deliveredAt?: string;
@@ -257,6 +270,10 @@ export interface Order {
   fiscalIssued: boolean;
   nfceKey?: string;
   shiftId?: string;
+  serviceFee?: number; // taxa de serviço (não entra no subtotal de produtos)
+  couvert?: number;
+  discountReason?: string;
+  discountAuthorizedBy?: string;
 }
 
 export interface FinancialEntry {
@@ -268,6 +285,10 @@ export interface FinancialEntry {
   dueDate: string;
   status: 'pago' | 'pendente' | 'atrasado';
   paymentMethod?: string;
+  shiftId?: string;
+  ledgerId?: string;
+  createdByName?: string;
+  createdAt?: string;
 }
 
 export interface CashShift {
@@ -296,6 +317,33 @@ export interface CashShift {
   conferredMealVoucher?: number;
   conferredOther?: number;
   notes?: string;
+  salesServiceFee?: number; // taxa de serviço acumulada (migration 0026)
+  salesCouvert?: number;
+  cashChangeGiven?: number; // troco entregue
+  cashExpenses?: number; // despesas pagas em dinheiro do caixa
+}
+
+export type CashLedgerEntryType =
+  | 'abertura' | 'venda' | 'adiantamento' | 'estorno_venda' | 'estorno_adiantamento'
+  | 'sangria' | 'suprimento' | 'troco' | 'despesa' | 'taxa_servico' | 'couvert' | 'ajuste';
+
+export interface CashLedgerEntry {
+  id: string;
+  seq?: number;
+  shiftId: string;
+  entryType: CashLedgerEntryType;
+  direction: 'entrada' | 'saida';
+  paymentMethod?: 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'pix' | 'vale_refeicao' | 'boleto' | 'outro';
+  amount: number;
+  orderId?: string;
+  comandaId?: string;
+  tableId?: string;
+  relatedLedgerId?: string;
+  reason?: string;
+  createdBy?: string;
+  createdByName: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CashMovement {
@@ -416,9 +464,16 @@ export interface DeliveryDriver {
 export interface AuditLog {
   id: string;
   userName: string;
-  userRole: UserRole;
+  userRole: UserRole | string;
   action: string;
   module: string;
   timestamp: string;
-  details?: string;
+  details?: string | Record<string, unknown>;
+  // Campos da forma persistida (tabela audit_log, migration 0025)
+  actorId?: string;
+  entityType?: string;
+  entityId?: string;
+  amountBefore?: number;
+  amountAfter?: number;
+  createdAt?: string;
 }

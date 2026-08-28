@@ -553,8 +553,9 @@ export const TableManagement: React.FC = () => {
                       {adv.status === 'ativo' && can('mesas.estornar_pagamento_parcial') && (
                         <button
                           onClick={() => {
-                            if (confirm(`Estornar o adiantamento de R$ ${adv.amount.toFixed(2)} (${adv.customerName})?`)) {
-                              cancelPartialPayment(currentActiveTable.id, currentComanda.id, adv.id);
+                            const reason = prompt(`Estornar o adiantamento de R$ ${adv.amount.toFixed(2)} (${adv.customerName}). Informe o motivo:`);
+                            if (reason && reason.trim()) {
+                              cancelPartialPayment(currentActiveTable.id, currentComanda.id, adv.id, reason.trim());
                             }
                           }}
                           className="text-rose-600 hover:underline text-[11px] font-bold"
