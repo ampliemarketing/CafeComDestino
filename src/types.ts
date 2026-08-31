@@ -321,11 +321,13 @@ export interface CashShift {
   salesCouvert?: number;
   cashChangeGiven?: number; // troco entregue
   cashExpenses?: number; // despesas pagas em dinheiro do caixa
+  goodsOut?: number; // valor de menu da mercadoria vendida no turno (migration 0033)
 }
 
 export type CashLedgerEntryType =
   | 'abertura' | 'venda' | 'adiantamento' | 'estorno_venda' | 'estorno_adiantamento'
-  | 'sangria' | 'suprimento' | 'troco' | 'despesa' | 'taxa_servico' | 'couvert' | 'ajuste';
+  | 'sangria' | 'suprimento' | 'troco' | 'despesa' | 'taxa_servico' | 'couvert' | 'ajuste'
+  | 'saida_mercadoria';
 
 export interface CashLedgerEntry {
   id: string;

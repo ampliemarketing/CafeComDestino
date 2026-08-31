@@ -77,7 +77,7 @@ export const CashShiftsHistory: React.FC = () => {
                 <th className="p-3">Responsável</th>
                 <th className="p-3 text-right">Total de Entradas (+)</th>
                 <th className="p-3 text-right">Total de Saídas (-)</th>
-                <th className="p-3 text-right">Saldo de Fechamento</th>
+                <th className="p-3 text-right">Saldo Final</th>
                 <th className="p-3 text-center">Status</th>
               </tr>
             </thead>
@@ -87,8 +87,10 @@ export const CashShiftsHistory: React.FC = () => {
                 const cardLegacy = shift.salesCredit === 0 && shift.salesDebit === 0 && shift.salesCard > 0;
                 const entradas = shift.salesCash + shift.salesCredit + shift.salesDebit + shift.salesPix
                   + shift.salesMealVoucher + shift.salesOther + (cardLegacy ? shift.salesCard : 0) + shift.additions;
-                const saidas = shift.withdrawals;
-                const saldo = shift.status === 'fechado' ? (shift.actualTotal ?? shift.expectedTotal) : shift.expectedTotal;
+                // Igual ao detalhe do turno: mercadoria vendida (preço de menu) + sangrias.
+                const saidas = (shift.goodsOut ?? 0) + shift.withdrawals;
+                // Diferença entre entradas e saídas — sem o fundo de troco. ~0 = turno batendo.
+                const saldo = entradas - saidas;
 
                 return (
                   <tr
@@ -103,7 +105,7 @@ export const CashShiftsHistory: React.FC = () => {
                     <td className="p-3 font-semibold text-stone-800">{shift.openedBy}</td>
                     <td className="p-3 text-right font-bold text-emerald-700">R$ {entradas.toFixed(2)}</td>
                     <td className="p-3 text-right font-bold text-rose-700">R$ {saidas.toFixed(2)}</td>
-                    <td className={`p-3 text-right font-bold ${saldo < 0 ? 'text-rose-700' : 'text-stone-900'}`}>
+                    <td className={`p-3 text-right font-bold ${Math.abs(saldo) > 0.005 ? 'text-rose-700' : 'text-emerald-700'}`}>
                       R$ {saldo.toFixed(2)}
                     </td>
                     <td className="p-3 text-center">

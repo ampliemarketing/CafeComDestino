@@ -18,7 +18,15 @@ const TYPE_LABEL: Record<CashLedgerEntryType, string> = {
   taxa_servico: 'Taxa de serviço',
   couvert: 'Couvert',
   ajuste: 'Ajuste',
+  saida_mercadoria: 'Saída de mercadoria',
 };
+
+// Tipos que entram no "Saldo" (indicador de conferência: zero = tudo batendo).
+// Fundo, taxa/couvert, sangria, troco, despesa e ajuste NÃO entram aqui — são
+// posição de caixa, não conferência de mercadoria x pagamento.
+const CONFERENCIA_TYPES = new Set<CashLedgerEntryType>([
+  'venda', 'adiantamento', 'estorno_venda', 'estorno_adiantamento', 'saida_mercadoria',
+]);
 
 const METHOD_LABEL: Record<string, string> = {
   dinheiro: 'Dinheiro',
@@ -112,10 +120,10 @@ export const CashLedgerView: React.FC = () => {
         String(l.metadata?.orderNumber || '').includes(q)
       );
     }
-    let running = 0;
+    let running = 0; // saldo de conferência (mercadoria x pagamento)
     return list.map((l) => {
       const signed = l.direction === 'entrada' ? l.amount : -l.amount;
-      running += signed;
+      if (CONFERENCIA_TYPES.has(l.entryType)) running += signed;
       return { ...l, signed, running };
     });
   }, [rows, search]);
@@ -123,7 +131,8 @@ export const CashLedgerView: React.FC = () => {
   const totals = useMemo(() => {
     const entradas = filteredRows.filter((r) => r.direction === 'entrada').reduce((s, r) => s + r.amount, 0);
     const saidas = filteredRows.filter((r) => r.direction === 'saida').reduce((s, r) => s + r.amount, 0);
-    return { entradas, saidas, saldo: entradas - saidas };
+    const conferencia = filteredRows.reduce((s, r) => s + (CONFERENCIA_TYPES.has(r.entryType) ? r.signed : 0), 0);
+    return { entradas, saidas, saldo: entradas - saidas, conferencia };
   }, [filteredRows]);
 
   const exportCsv = () => {
@@ -235,8 +244,9 @@ export const CashLedgerView: React.FC = () => {
               <p className="text-xl font-bold text-stone-900 mt-1">{fmt(totals.saidas)}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase text-stone-500">Saldo do filtro</span>
-              <p className={`text-xl font-bold mt-1 ${totals.saldo < 0 ? 'text-rose-700' : 'text-stone-900'}`}>{fmt(totals.saldo)}</p>
+              <span className="text-[10px] font-bold uppercase text-stone-500">Conferência (mercadoria × pagamento)</span>
+              <p className={`text-xl font-bold mt-1 ${Math.abs(totals.conferencia) > 0.005 ? 'text-rose-700' : 'text-emerald-700'}`}>{fmt(totals.conferencia)}</p>
+              <p className="text-[10px] text-stone-400 mt-0.5">Zero = tudo batendo. Negativo = descontos / cortesias / estornos.</p>
             </div>
           </div>
 
@@ -252,7 +262,7 @@ export const CashLedgerView: React.FC = () => {
                     <th className="p-2.5">Descrição</th>
                     <th className="p-2.5 text-right">Entrada</th>
                     <th className="p-2.5 text-right">Saída</th>
-                    <th className="p-2.5 text-right">Saldo</th>
+                    <th className="p-2.5 text-right">Saldo conf.</th>
                     <th className="p-2.5">Operador</th>
                   </tr>
                 </thead>
@@ -282,6 +292,10 @@ export const CashLedgerView: React.FC = () => {
               </table>
             </div>
           </div>
+          <p className="text-[10px] text-stone-400">
+            "Saldo conf." acompanha só mercadoria × pagamento (venda, adiantamento, estorno, saída de mercadoria).
+            Fundo de troco, taxa de serviço, couvert, sangria, troco e despesa não entram nessa coluna — são posição de caixa.
+          </p>
         </>
       )}
     </div>

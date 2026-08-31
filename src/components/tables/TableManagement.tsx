@@ -28,6 +28,7 @@ import { PartialPaymentModal } from './PartialPaymentModal';
 import { CourtesyModal } from './CourtesyModal';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
+import { comandaServiceFee, comandaCouvert } from '../../lib/serviceFee';
 
 export const TableManagement: React.FC = () => {
   const {
@@ -40,6 +41,7 @@ export const TableManagement: React.FC = () => {
     transferComanda,
     closeComandaAndPay,
     cancelPartialPayment,
+    companyProfile,
     addToast,
     currentUser
   } = useApp();
@@ -417,13 +419,25 @@ export const TableManagement: React.FC = () => {
           {(() => {
             const activeAdvances = (currentComanda.advancePayments || []).filter((p) => p.status === 'ativo');
             const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
-            const remainingBalance = Math.max(0, currentComanda.subtotal - totalAdvances);
+            const serviceFee = comandaServiceFee(currentComanda, companyProfile);
+            const couvert = comandaCouvert(currentComanda, companyProfile);
+            const subtotalComTaxa = currentComanda.subtotal + serviceFee + couvert;
+            const remainingBalance = Math.max(0, subtotalComTaxa - totalAdvances);
 
             return (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-stone-50 p-4 rounded-2xl border border-stone-200">
                 <div className="bg-white p-3 rounded-xl border border-stone-200">
-                  <span className="text-[10px] text-stone-500 font-bold uppercase block">Consumo Total da Comanda</span>
+                  <span className="text-[10px] text-stone-500 font-bold uppercase block">Consumo (itens)</span>
                   <strong className="text-stone-900 font-bold text-lg">R$ {currentComanda.subtotal.toFixed(2)}</strong>
+                  {serviceFee > 0 && (
+                    <div className="text-[11px] text-stone-500 mt-1">+ Taxa de serviço ({companyProfile.serviceFeePercent}%): <strong className="text-stone-700">R$ {serviceFee.toFixed(2)}</strong></div>
+                  )}
+                  {couvert > 0 && (
+                    <div className="text-[11px] text-stone-500">+ Couvert: <strong className="text-stone-700">R$ {couvert.toFixed(2)}</strong></div>
+                  )}
+                  {(serviceFee > 0 || couvert > 0) && (
+                    <div className="text-[11px] font-bold text-stone-800 border-t border-stone-200 mt-1 pt-1">Subtotal c/ taxa: R$ {subtotalComTaxa.toFixed(2)}</div>
+                  )}
                 </div>
 
                 <div className="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/40">
@@ -751,16 +765,37 @@ export const TableManagement: React.FC = () => {
             {(() => {
               const activeAdvances = (currentComanda.advancePayments || []).filter((p) => p.status === 'ativo');
               const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
-              const remainingBeforeDiscount = Math.max(0, currentComanda.subtotal - totalAdvances);
+              const serviceFee = comandaServiceFee(currentComanda, companyProfile);
+              const couvert = comandaCouvert(currentComanda, companyProfile);
+              const subtotalComTaxa = currentComanda.subtotal + serviceFee + couvert;
+              const remainingBeforeDiscount = Math.max(0, subtotalComTaxa - totalAdvances);
               const finalAmountToCollect = Math.max(0, remainingBeforeDiscount - finalDiscount);
 
               return (
                 <div className="space-y-4 text-xs">
                   <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-1.5">
                     <div className="flex justify-between text-stone-600">
-                      <span>Consumo Bruto:</span>
+                      <span>Consumo (itens):</span>
                       <strong className="text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</strong>
                     </div>
+                    {serviceFee > 0 && (
+                      <div className="flex justify-between text-stone-600">
+                        <span>Taxa de serviço ({companyProfile.serviceFeePercent}%):</span>
+                        <span>+ R$ {serviceFee.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {couvert > 0 && (
+                      <div className="flex justify-between text-stone-600">
+                        <span>Couvert:</span>
+                        <span>+ R$ {couvert.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(serviceFee > 0 || couvert > 0) && (
+                      <div className="flex justify-between text-stone-800 font-bold border-t border-stone-200 pt-1">
+                        <span>Subtotal c/ taxa:</span>
+                        <span>R$ {subtotalComTaxa.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-amber-900 font-semibold">
                       <span>Adiantamentos Já Pagos ({activeAdvances.length}):</span>
                       <span>- R$ {totalAdvances.toFixed(2)}</span>
@@ -933,7 +968,10 @@ export const TableManagement: React.FC = () => {
             waiterName: currentComanda.waiterName || currentUser.name,
             items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
             subtotal: currentComanda.subtotal,
-            total: currentComanda.subtotal,
+            serviceFee: comandaServiceFee(currentComanda, companyProfile) || undefined,
+            servicePct: companyProfile.serviceFeePercent,
+            couvert: comandaCouvert(currentComanda, companyProfile) || undefined,
+            total: currentComanda.subtotal + comandaServiceFee(currentComanda, companyProfile) + comandaCouvert(currentComanda, companyProfile),
             type: 'pre_conta',
           }}
         />

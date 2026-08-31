@@ -27,6 +27,7 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { KgWeightEntryModal } from '../common/KgWeightEntryModal';
 import { PartialPaymentModal } from '../tables/PartialPaymentModal';
 import { hasPermission } from '../../lib/permissions';
+import { comandaServiceFee, comandaCouvert } from '../../lib/serviceFee';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const WaiterApp: React.FC = () => {
@@ -118,8 +119,11 @@ export const WaiterApp: React.FC = () => {
   const currentComandaAdvancesTotal = (currentComanda?.advancePayments || [])
     .filter((p) => p.status === 'ativo')
     .reduce((sum, p) => sum + p.amount, 0);
+  const currentComandaServiceFee = currentComanda ? comandaServiceFee(currentComanda, companyProfile) : 0;
+  const currentComandaCouvert = currentComanda ? comandaCouvert(currentComanda, companyProfile) : 0;
+  const currentComandaSubtotalComTaxa = (currentComanda?.subtotal || 0) + currentComandaServiceFee + currentComandaCouvert;
   const currentComandaRemainingTotal = currentComanda
-    ? Math.max(0, currentComanda.subtotal - currentComandaAdvancesTotal)
+    ? Math.max(0, currentComandaSubtotalComTaxa - currentComandaAdvancesTotal)
     : 0;
 
   const selectedProductCategoryName = selectedProduct
@@ -612,9 +616,21 @@ export const WaiterApp: React.FC = () => {
 
             <div className="border-t pt-3 space-y-1.5">
               <div className="flex justify-between items-center text-sm">
-                <span className="font-semibold text-stone-600">Subtotal Parcial:</span>
+                <span className="font-semibold text-stone-600">Subtotal (itens):</span>
                 <span className="font-bold text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</span>
               </div>
+              {currentComandaServiceFee > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-semibold text-stone-600">Taxa de serviço ({companyProfile.serviceFeePercent}%):</span>
+                  <span className="font-bold text-stone-700">+ R$ {currentComandaServiceFee.toFixed(2)}</span>
+                </div>
+              )}
+              {currentComandaCouvert > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-semibold text-stone-600">Couvert:</span>
+                  <span className="font-bold text-stone-700">+ R$ {currentComandaCouvert.toFixed(2)}</span>
+                </div>
+              )}
               {currentComandaAdvancesTotal > 0 && (
                 <div className="flex justify-between items-center text-sm">
                   <span className="font-semibold text-emerald-700">Adiantamento:</span>
@@ -830,9 +846,21 @@ export const WaiterApp: React.FC = () => {
 
             <div className="bg-stone-50 p-3 rounded-xl border border-stone-200 space-y-1.5 text-xs">
               <div className="flex justify-between text-stone-600">
-                <span>Subtotal Parcial:</span>
+                <span>Subtotal (itens):</span>
                 <strong className="text-stone-900">R$ {currentComanda.subtotal.toFixed(2)}</strong>
               </div>
+              {currentComandaServiceFee > 0 && (
+                <div className="flex justify-between text-stone-600">
+                  <span>Taxa de serviço ({companyProfile.serviceFeePercent}%):</span>
+                  <span>+ R$ {currentComandaServiceFee.toFixed(2)}</span>
+                </div>
+              )}
+              {currentComandaCouvert > 0 && (
+                <div className="flex justify-between text-stone-600">
+                  <span>Couvert:</span>
+                  <span>+ R$ {currentComandaCouvert.toFixed(2)}</span>
+                </div>
+              )}
               {currentComandaAdvancesTotal > 0 && (
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Adiantamento:</span>
@@ -1047,7 +1075,10 @@ export const WaiterApp: React.FC = () => {
             waiterName: currentComanda.waiterName || currentUser.name,
             items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
             subtotal: currentComanda.subtotal,
-            total: currentComanda.subtotal,
+            serviceFee: currentComandaServiceFee || undefined,
+            servicePct: companyProfile.serviceFeePercent,
+            couvert: currentComandaCouvert || undefined,
+            total: currentComanda.subtotal + currentComandaServiceFee + currentComandaCouvert,
             type: 'pre_conta',
           }}
         />

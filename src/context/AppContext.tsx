@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { rowToCamel, toRow } from '../lib/caseMapping';
 import { hasPermission } from '../lib/permissions';
+import { comandaServiceFee, comandaCouvert } from '../lib/serviceFee';
 import { LoginScreen } from '../components/auth/LoginScreen';
 import {
   User,
@@ -264,11 +265,12 @@ interface AppContextType {
   openCashShift: (initialFloat: number) => Promise<string | null>;
   closeCashShift: (payload: {
     conferredCash: number;
-    conferredCredit: number;
-    conferredDebit: number;
-    conferredPix: number;
-    conferredMealVoucher: number;
-    conferredOther: number;
+    // formas eletrônicas: null = não conferido (conferência opcional)
+    conferredCredit: number | null;
+    conferredDebit: number | null;
+    conferredPix: number | null;
+    conferredMealVoucher: number | null;
+    conferredOther: number | null;
     notes?: string;
   }) => Promise<void>;
   addCashMovement: (type: 'reforco' | 'sangria', amount: number, name: string, reason: string) => Promise<void>;
@@ -784,11 +786,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!table || !comanda) return null;
 
     const finalSubtotal = comanda.subtotal;
+    // Taxa de serviço / couvert: mesma regra do servidor (close_comanda_and_pay).
+    const serviceFee = comandaServiceFee(comanda, companyProfile);
+    const couvert = comandaCouvert(comanda, companyProfile);
     const advancesTotal = (comanda.advancePayments || [])
       .filter((p) => p.status === 'ativo')
       .reduce((sum, p) => sum + p.amount, 0);
-    const remainingBalance = Math.max(0, finalSubtotal - advancesTotal);
-    const finalTotal = Math.max(0, remainingBalance - discount);
+    const finalTotal = Math.max(0, finalSubtotal + serviceFee + couvert - advancesTotal - discount);
 
     const newOrder: Order = {
       id: 'ord-' + Date.now(),
@@ -808,6 +812,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subtotal: finalSubtotal,
       deliveryFee: 0,
       discount,
+      serviceFee,
+      couvert,
       total: finalTotal,
       paymentMethod,
       splitPayments,

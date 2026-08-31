@@ -17,7 +17,6 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Scale,
-  ClipboardCheck,
   Loader2,
   StickyNote,
   Printer,
@@ -67,6 +66,9 @@ export const CashShiftDetail: React.FC = () => {
   const [conferredPix, setConferredPix] = useState(0);
   const [conferredMealVoucher, setConferredMealVoucher] = useState(0);
   const [conferredOther, setConferredOther] = useState(0);
+  // Quais formas eletrônicas o operador de fato conferiu (as outras vão como
+  // "não conferido" = opcional, e não forçam justificativa).
+  const [conferredTouched, setConferredTouched] = useState<Record<string, boolean>>({});
   const [closeNotesInput, setCloseNotesInput] = useState('');
   const [pinStepOpen, setPinStepOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -133,6 +135,7 @@ export const CashShiftDetail: React.FC = () => {
     setConferredPix(0);
     setConferredMealVoucher(0);
     setConferredOther(0);
+    setConferredTouched({});
     setCloseNotesInput('');
     setPinInput('');
     setPinError('');
@@ -140,21 +143,28 @@ export const CashShiftDetail: React.FC = () => {
     setIsClosing(true);
   };
 
+  const markTouched = (key: string, setter: (n: number) => void) => (n: number) => {
+    setter(n);
+    setConferredTouched((t) => ({ ...t, [key]: true }));
+  };
+
   const paymentDefs = [
-    { icon: Banknote, label: 'Dinheiro', system: shift.salesCash, closedValue: shift.actualTotal, value: conferredCash, setValue: setConferredCash },
-    { icon: CreditCard, label: 'Cartão de Crédito', system: shift.salesCredit, closedValue: shift.conferredCredit, value: conferredCredit, setValue: setConferredCredit },
-    { icon: CreditCard, label: 'Cartão de Débito', system: shift.salesDebit, closedValue: shift.conferredDebit, value: conferredDebit, setValue: setConferredDebit },
-    { icon: QrCode, label: 'Pix', system: shift.salesPix, closedValue: shift.conferredPix, value: conferredPix, setValue: setConferredPix },
-    { icon: Ticket, label: 'Vale-refeição', system: shift.salesMealVoucher, closedValue: shift.conferredMealVoucher, value: conferredMealVoucher, setValue: setConferredMealVoucher },
-    { icon: MoreHorizontal, label: 'Outros', system: shift.salesOther, closedValue: shift.conferredOther, value: conferredOther, setValue: setConferredOther },
+    // Dinheiro: o "sistema" é o esperado na GAVETA (fundo + vendas em dinheiro
+    // − sangrias − troco − despesas), não só as vendas em dinheiro. Obrigatório.
+    { key: 'cash', icon: Banknote, label: 'Dinheiro', system: expectedTotal, closedValue: shift.actualTotal, value: conferredCash, setValue: setConferredCash, optional: false },
+    { key: 'credit', icon: CreditCard, label: 'Cartão de Crédito', system: shift.salesCredit, closedValue: shift.conferredCredit, value: conferredCredit, setValue: setConferredCredit, optional: true },
+    { key: 'debit', icon: CreditCard, label: 'Cartão de Débito', system: shift.salesDebit, closedValue: shift.conferredDebit, value: conferredDebit, setValue: setConferredDebit, optional: true },
+    { key: 'pix', icon: QrCode, label: 'Pix', system: shift.salesPix, closedValue: shift.conferredPix, value: conferredPix, setValue: setConferredPix, optional: true },
+    { key: 'meal', icon: Ticket, label: 'Vale-refeição', system: shift.salesMealVoucher, closedValue: shift.conferredMealVoucher, value: conferredMealVoucher, setValue: setConferredMealVoucher, optional: true },
+    { key: 'other', icon: MoreHorizontal, label: 'Outros', system: shift.salesOther, closedValue: shift.conferredOther, value: conferredOther, setValue: setConferredOther, optional: true },
   ];
 
-  const cashDiff = conferredCash - liveExpectedTotal;
-  const allClosingDiffs = [cashDiff, ...paymentDefs.slice(1).map((r) => r.value - r.system)];
-  const maxAbsDiff = Math.max(...allClosingDiffs.map(Math.abs));
-  const needsJustification = maxAbsDiff > JUSTIFICATION_THRESHOLD;
-  // O servidor (close_cash_shift) também recusa o fechamento se |diferença| > limite
-  // e as observações estiverem vazias.
+  // Só a diferença do DINHEIRO força justificativa. As formas eletrônicas são
+  // conferência opcional (conciliação manual contra extrato) e não bloqueiam.
+  const cashDiff = conferredCash - expectedTotal;
+  const needsJustification = Math.abs(cashDiff) > JUSTIFICATION_THRESHOLD;
+  // O servidor (close_cash_shift) também recusa o fechamento se |diferença do
+  // dinheiro| > limite e as observações estiverem vazias.
   const canConfirmClose = conferredCash > 0 && (!needsJustification || closeNotesInput.trim().length > 0);
 
   const requestPinConfirmation = () => {
@@ -177,11 +187,11 @@ export const CashShiftDetail: React.FC = () => {
     }
     await closeCashShift({
       conferredCash,
-      conferredCredit,
-      conferredDebit,
-      conferredPix,
-      conferredMealVoucher,
-      conferredOther,
+      conferredCredit: conferredTouched.credit ? conferredCredit : null,
+      conferredDebit: conferredTouched.debit ? conferredDebit : null,
+      conferredPix: conferredTouched.pix ? conferredPix : null,
+      conferredMealVoucher: conferredTouched.meal ? conferredMealVoucher : null,
+      conferredOther: conferredTouched.other ? conferredOther : null,
       notes: closeNotesInput,
     });
     setPinStepOpen(false);
@@ -194,8 +204,9 @@ export const CashShiftDetail: React.FC = () => {
   const cardLegacy = shift.salesCredit === 0 && shift.salesDebit === 0 && shift.salesCard > 0;
   const totalEntradas = shift.salesCash + shift.salesCredit + shift.salesDebit + shift.salesPix
     + shift.salesMealVoucher + shift.salesOther + (cardLegacy ? shift.salesCard : 0);
-  const totalSaidas = shift.withdrawals;
-  const diferenca = shift.difference ?? (shift.actualTotal != null ? shift.actualTotal - shift.expectedTotal : undefined);
+  const goodsOut = shift.goodsOut ?? 0;
+  // Saídas = valor de mercadoria vendida (preço de menu) + sangrias.
+  const totalSaidas = goodsOut + shift.withdrawals;
 
   return (
     <div className={`p-4 md:p-6 max-w-5xl mx-auto space-y-6 min-h-screen print:hidden ${isClosing ? 'pb-28' : ''}`}>
@@ -333,36 +344,35 @@ export const CashShiftDetail: React.FC = () => {
             </thead>
             <tbody className="divide-y">
               {paymentDefs.map((row) => {
-                const isCashRow = row.label === 'Dinheiro';
-                // Durante o fechamento o Dinheiro é conferido só no bloco de
-                // contagem de gaveta abaixo — evita dois campos para o mesmo valor.
-                const cashDeferred = isClosing && isCashRow;
-                const displayedConferred = isClosing ? row.value : row.closedValue;
-                const diff = cashDeferred ? undefined : (displayedConferred != null ? displayedConferred - row.system : undefined);
+                // Durante o fechamento: forma eletrônica só "conta" se o operador digitou nela.
+                const isConferred = !isClosing ? row.closedValue != null : (!row.optional || conferredTouched[row.key]);
+                const displayedConferred = isClosing ? (isConferred ? row.value : null) : row.closedValue;
+                const diff = displayedConferred != null ? displayedConferred - row.system : undefined;
                 const tone = diffTone(diff);
                 return (
                   <tr key={row.label}>
                     <td className="p-2.5 font-semibold text-stone-800 flex items-center gap-1.5">
                       <row.icon className="w-3.5 h-3.5 text-stone-400" /> {row.label}
+                      {row.key === 'cash'
+                        ? <span className="text-[10px] font-normal text-stone-400">(esperado na gaveta)</span>
+                        : isClosing && <span className="text-[10px] font-normal text-stone-400">(opcional)</span>}
                     </td>
                     <td className="p-2.5 text-right text-stone-600">R$ {row.system.toFixed(2)}</td>
                     <td className="p-2.5 text-right">
-                      {cashDeferred ? (
-                        <span className="text-[11px] text-stone-400">contado na gaveta ↓</span>
-                      ) : isClosing ? (
+                      {isClosing ? (
                         <input
                           type="number"
                           min="0"
                           step="0.01"
-                          value={row.value || ''}
-                          placeholder="0,00"
-                          onChange={(e) => row.setValue(toBoundedNumber(e.target.value, 0, 10_000_000))}
+                          value={row.optional && !conferredTouched[row.key] ? '' : (row.value || '')}
+                          placeholder={row.optional ? 'opcional' : '0,00'}
+                          onChange={(e) => markTouched(row.key, row.setValue)(toBoundedNumber(e.target.value, 0, 10_000_000))}
                           className="w-28 border rounded-lg px-2 py-1 text-right font-bold"
                         />
                       ) : displayedConferred != null ? (
                         <span className="text-stone-600">R$ {displayedConferred.toFixed(2)}</span>
                       ) : (
-                        <span className="text-stone-400">—</span>
+                        <span className="text-stone-400">não conferido</span>
                       )}
                     </td>
                     <td className={`p-2.5 text-right font-bold ${diff !== undefined ? diffToneClasses[tone].value : 'text-stone-300'}`}>
@@ -374,6 +384,10 @@ export const CashShiftDetail: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <p className="text-[10px] text-stone-400">
+          Só o <strong>dinheiro</strong> é obrigatório (fundo de troco + vendas em dinheiro − sangrias − troco − despesas).
+          Conferir cartão/pix/vale é opcional — deixe em branco se for conciliar depois pelo extrato.
+        </p>
       </div>
 
       {/* Entradas vs Saidas */}
@@ -400,51 +414,9 @@ export const CashShiftDetail: React.FC = () => {
             </span>
           </div>
           <p className="text-2xl font-bold text-rose-800 mt-2">R$ {totalSaidas.toFixed(2)}</p>
-          <p className="text-[10px] text-stone-500 mt-1">Retiradas (sangrias) registradas no turno</p>
-        </div>
-      </div>
-
-      {/* Fechamento / conferencia (dinheiro) */}
-      <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
-        <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
-          <ClipboardCheck className="w-3.5 h-3.5" /> Conferência de Fechamento (Dinheiro)
-        </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-            <span className="text-[10px] font-semibold text-stone-500 uppercase">Saldo Esperado</span>
-            <p className="text-lg font-bold text-stone-900 mt-1">R$ {expectedTotal.toFixed(2)}</p>
-          </div>
-          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
-            <span className="text-[10px] font-semibold text-stone-500 uppercase">Saldo Contado</span>
-            {isClosing ? (
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={conferredCash || ''}
-                placeholder="0,00"
-                onChange={(e) => setConferredCash(toBoundedNumber(e.target.value, 0, 10_000_000))}
-                className="w-full border rounded-lg px-2 py-1.5 mt-1 font-bold text-lg"
-              />
-            ) : (
-              <p className="text-lg font-bold text-stone-900 mt-1">
-                {shift.actualTotal != null ? `R$ ${shift.actualTotal.toFixed(2)}` : '—'}
-              </p>
-            )}
-          </div>
-          {(() => {
-            const pending = isClosing && conferredCash === 0;
-            const shownDiff = isClosing ? conferredCash - expectedTotal : diferenca;
-            const t = pending ? 'neutral' : diffTone(shownDiff);
-            return (
-              <div className={`rounded-xl p-3 border ${diffToneClasses[t].box}`}>
-                <span className={`text-[10px] font-semibold uppercase ${diffToneClasses[t].label}`}>Diferença de Caixa</span>
-                <p className={`text-lg font-bold mt-1 ${diffToneClasses[t].value}`}>
-                  {pending ? 'aguardando contagem' : isClosing ? `R$ ${(conferredCash - expectedTotal).toFixed(2)}` : diferenca == null ? '—' : `R$ ${diferenca.toFixed(2)}`}
-                </p>
-              </div>
-            );
-          })()}
+          <p className="text-[10px] text-stone-500 mt-1">
+            Mercadoria vendida (menu) R$ {goodsOut.toFixed(2)} + sangrias R$ {shift.withdrawals.toFixed(2)}
+          </p>
         </div>
       </div>
 

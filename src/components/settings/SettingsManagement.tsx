@@ -86,6 +86,13 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
     const reader = new FileReader();
     reader.onloadend = () => {
       if (typeof reader.result === 'string') {
+        // A imagem é embutida como data URI. O banco limita a URL a 2048 chars
+        // (constraint company_profile_*_url_len), então arquivo grande não cabe.
+        if (reader.result.length > MAXLEN.url) {
+          addToast('error', 'Imagem grande demais',
+            'O arquivo não cabe no cadastro. Hospede a imagem em algum lugar e cole o link (URL) no campo, ou use um dos modelos.');
+          return;
+        }
         setter(reader.result);
         addToast('success', successTitle, successMsg);
       }
@@ -536,6 +543,11 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
             {(canEditCompanyProfile || canEditCompanyMedia || canEditBuffetPrices) && (
             <button
               onClick={() => {
+                if (logoUrlInput.length > MAXLEN.url || coverUrlInput.length > MAXLEN.url) {
+                  addToast('error', 'Logo/Capa muito longa',
+                    'O link da logo ou da capa passou de 2048 caracteres (provavelmente uma imagem embutida). Cole uma URL de imagem no campo e salve de novo.');
+                  return;
+                }
                 const updatedProfile = {
                   ...companyProfile,
                   name: nameInput,

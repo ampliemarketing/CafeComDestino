@@ -21,6 +21,9 @@ interface PrintReceiptModalProps {
     subtotal: number;
     discount?: number;
     deliveryFee?: number;
+    serviceFee?: number;
+    servicePct?: number;
+    couvert?: number;
     total: number;
     paymentMethod?: string;
     splitPayments?: Array<{ method: string; amount: number }>;
@@ -118,6 +121,18 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
                 <div className="flex justify-between">
                   <span>TAXA ENTREGA:</span>
                   <span>R$ {receiptData.deliveryFee.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {receiptData.serviceFee ? (
+                <div className="flex justify-between">
+                  <span>TAXA DE SERVIÇO{receiptData.servicePct ? ` (${receiptData.servicePct}%)` : ''}:</span>
+                  <span>R$ {receiptData.serviceFee.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {receiptData.couvert ? (
+                <div className="flex justify-between">
+                  <span>COUVERT:</span>
+                  <span>R$ {receiptData.couvert.toFixed(2)}</span>
                 </div>
               ) : null}
               {receiptData.discount ? (
