@@ -50,11 +50,14 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
-  const [cpf, setCpf] = useState(user?.cpf ?? '');
+  // CPF e PIN (`code`) são revogados do cliente (migrations 0043 / 0028): não
+  // voltam nas queries, então na edição os campos começam vazios e só são
+  // enviados se o admin digitar um valor novo (write-only, igual ao PIN).
+  const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [role, setRole] = useState<UserRole>(user?.role ?? 'garcom');
   const [active, setActive] = useState(user?.active ?? true);
-  const [code, setCode] = useState(user?.code ?? '');
+  const [code, setCode] = useState('');
   const [permissions, setPermissions] = useState<string[]>(user?.permissions ?? ROLE_DEFAULT_PERMISSIONS.garcom);
   const [saving, setSaving] = useState(false);
 
@@ -237,9 +240,12 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                   maxLength={14}
                   value={cpf}
                   onChange={(e) => setCpf(maskCPF(e.target.value))}
-                  placeholder="000.000.000-00"
+                  placeholder={isEdit ? 'Digite para definir/alterar' : '000.000.000-00'}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs"
                 />
+                {isEdit && (
+                  <p className="text-[10px] text-stone-400 mt-1">Por segurança o CPF salvo não é exibido — deixe em branco para mantê-lo.</p>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-bold text-stone-500 uppercase">Telefone</label>

@@ -440,8 +440,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthLoading(true);
     supabase
       .from('profiles')
-      // `code` (PIN) foi revogado do cliente na migration 0028 — nunca selecionar.
-      .select('id, name, email, role, phone, active, cpf, permissions')
+      // `code` (PIN, migration 0028) e `cpf` (migration 0043) foram revogados
+      // do cliente — nunca selecionar essas colunas.
+      .select('id, name, email, role, phone, active, permissions')
       .eq('id', session.user.id)
       .single()
       .then(({ data }) => {
@@ -514,7 +515,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshUsers = () => {
     if (!session) { setUsers([]); return; }
     supabase.from('profiles')
-      .select('id, name, email, role, phone, active, cpf, permissions')
+      // `code` (PIN) e `cpf` são revogados do cliente (migrations 0028 / 0043).
+      .select('id, name, email, role, phone, active, permissions')
       .then(({ data }) => {
         if (data) setUsers(data.map(mapProfileRow));
       });
