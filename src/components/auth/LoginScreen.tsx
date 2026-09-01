@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
-import { supabase, setKeepConnected } from '../../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 import { LegalModal } from '../legal/LegalModal';
 import { isValidEmail, MAXLEN } from '../../lib/validation';
 
@@ -12,7 +12,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ banner }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [keepConnected, setKeepConnectedState] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
@@ -50,7 +49,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ banner }) => {
         throw new Error(message);
       }
 
-      setKeepConnected(keepConnected);
       const { error: sessionError } = await supabase.auth.setSession({
         access_token: data.access_token,
         refresh_token: data.refresh_token,
@@ -161,16 +159,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ banner }) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <label className="flex items-center gap-2 text-xs text-stone-700 font-medium cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={keepConnected}
-                  onChange={(e) => setKeepConnectedState(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-amber-800"
-                />
-                Manter conectado
-              </label>
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={handleForgotPassword}

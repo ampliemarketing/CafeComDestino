@@ -501,10 +501,10 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
 
                 <label className="flex items-center gap-2 font-semibold text-stone-700">
                   <input type="checkbox" checked={couvertEnabledInput} onChange={(e) => setCouvertEnabledInput(e.target.checked)} />
-                  Cobrar couvert por pessoa
+                  Cobrar couvert nas comandas
                 </label>
                 <div>
-                  <label className="font-semibold text-stone-700 block mb-1">Valor do couvert (R$)</label>
+                  <label className="font-semibold text-stone-700 block mb-1">Valor do couvert por comanda (R$)</label>
                   <input type="number" step="0.01" min="0" value={couvertValueInput}
                     onChange={(e) => setCouvertValueInput(toBoundedNumber(e.target.value, 0, 100_000))}
                     className="w-full border rounded-xl p-2.5 font-bold" />
@@ -661,32 +661,31 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
         {/* Printers Tab */}
         {activeTab === 'printers' && (
           <div className="max-w-xl space-y-4 text-xs">
-            <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Configuração de Impressoras Térmicas</h3>
+            <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Impressão de Comprovantes e Comandas</h3>
 
-            <div className="space-y-3">
-              <div className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-stone-900">Impressora da Cozinha (KDS / Comandas)</p>
-                  <p className="text-[10px] text-stone-500">Impressora Térmica 80mm - IP: 192.168.1.200</p>
-                </div>
-                <span className="text-emerald-700 font-bold">Conectada ✅</span>
-              </div>
+            <div className="p-4 bg-stone-50 rounded-xl border border-dashed border-stone-300 text-center space-y-2">
+              <Printer className="w-8 h-8 text-stone-400 mx-auto" />
+              <p className="font-bold text-stone-800">Nenhuma impressora dedicada configurada</p>
+              <p className="text-[11px] text-stone-500 leading-relaxed">
+                As pré-contas, comprovantes de caixa e relatórios de fechamento são enviados
+                pela <span className="font-semibold">caixa de diálogo de impressão do navegador</span>,
+                que usa a impressora padrão do sistema operacional (incluindo impressoras
+                térmicas 58/80&nbsp;mm instaladas via driver do Windows).
+              </p>
+            </div>
 
-              <div className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-stone-900">Impressora do Bar / Bebidas</p>
-                  <p className="text-[10px] text-stone-500">Impressora Térmica 58mm - USB</p>
-                </div>
-                <span className="text-emerald-700 font-bold">Conectada ✅</span>
-              </div>
-
-              <div className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-stone-900">Impressora do Caixa (Pré-conta e NFC-e)</p>
-                  <p className="text-[10px] text-stone-500">Bematech MP-4200 TH 80mm</p>
-                </div>
-                <span className="text-emerald-700 font-bold">Conectada ✅</span>
-              </div>
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1.5">
+              <p className="font-bold text-amber-900">Como conectar uma impressora térmica</p>
+              <ol className="list-decimal list-inside text-[11px] text-amber-800 space-y-1 leading-relaxed">
+                <li>Instale a impressora no Windows pelo driver do fabricante (USB ou rede/IP).</li>
+                <li>Defina-a como impressora padrão ou selecione-a na janela de impressão do navegador.</li>
+                <li>Nas preferências do driver, ajuste o tamanho de papel (58&nbsp;mm ou 80&nbsp;mm) e margens mínimas.</li>
+              </ol>
+              <p className="text-[10px] text-amber-700 pt-1">
+                Impressão direta via ESC/POS (WebUSB / Web Serial) e roteamento por setor
+                (cozinha, bar, caixa) dependem de um agente de impressão local e ainda não
+                estão disponíveis neste ambiente.
+              </p>
             </div>
           </div>
         )}

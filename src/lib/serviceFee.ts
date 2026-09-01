@@ -13,12 +13,15 @@ export function comandaServiceFee(
   return Math.round(comanda.subtotal * pct) / 100;
 }
 
-// Couvert de uma comanda (valor por pessoa × nº de couverts / convidados).
+// Couvert de uma comanda: valor FIXO configurado (× couvertQty se definido,
+// default 1 — não multiplica por nº de pessoas). Não aplica se a comanda
+// marcou couvertApplied === false.
 export function comandaCouvert(
-  comanda: Pick<Comanda, 'couvertQty' | 'guestCount'>,
+  comanda: Pick<Comanda, 'couvertQty' | 'couvertApplied'>,
   profile: Pick<CompanyProfileData, 'couvertEnabled' | 'couvertValue'>
 ): number {
   if (!profile.couvertEnabled) return 0;
-  const qty = comanda.couvertQty ?? comanda.guestCount ?? 0;
+  if (comanda.couvertApplied === false) return 0;
+  const qty = comanda.couvertQty ?? 1;
   return Math.round((profile.couvertValue || 0) * qty * 100) / 100;
 }

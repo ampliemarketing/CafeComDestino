@@ -22,7 +22,6 @@ import {
   Sparkles,
   Tags,
   History,
-  Wallet,
   BookOpen,
   ShieldCheck
 } from 'lucide-react';
@@ -69,7 +68,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
       items: [
         { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
         { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },
-        { id: 'finance', label: 'Gestão Financeira & DRE', icon: Wallet },
         { id: 'printers', label: 'Impressoras Térmicas', icon: Printer },
         { id: 'reports', label: 'Relatórios Gerenciais', icon: BarChart3 },
         { id: 'company', label: 'Perfil da Empresa', icon: Building2 },

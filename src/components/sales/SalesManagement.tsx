@@ -214,9 +214,29 @@ export const SalesManagement: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex justify-between items-center font-bold text-sm text-amber-900 pt-2 border-t">
-              <span>Total da Venda:</span>
-              <span>R$ {selectedOrder.total.toFixed(2)}</span>
+            <div className="text-xs space-y-1 pt-2 border-t">
+              <div className="flex justify-between text-stone-600">
+                <span>Subtotal (itens):</span><span>R$ {selectedOrder.subtotal.toFixed(2)}</span>
+              </div>
+              {selectedOrder.serviceFee ? (
+                <div className="flex justify-between text-stone-600">
+                  <span>Taxa de serviço:</span><span>+ R$ {selectedOrder.serviceFee.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {selectedOrder.couvert ? (
+                <div className="flex justify-between text-stone-600">
+                  <span>Couvert:</span><span>+ R$ {selectedOrder.couvert.toFixed(2)}</span>
+                </div>
+              ) : null}
+              {selectedOrder.discount ? (
+                <div className="flex justify-between text-rose-700">
+                  <span>Desconto:</span><span>- R$ {selectedOrder.discount.toFixed(2)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between items-center font-bold text-sm text-amber-900 pt-1">
+                <span>Total da Venda:</span>
+                <span>R$ {selectedOrder.total.toFixed(2)}</span>
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -297,6 +317,11 @@ export const SalesManagement: React.FC = () => {
             customerName: selectedOrder.customer.name,
             items: selectedOrder.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice })),
             subtotal: selectedOrder.subtotal,
+            serviceFee: selectedOrder.serviceFee || undefined,
+            servicePct: selectedOrder.serviceFee && selectedOrder.subtotal
+              ? Math.round((selectedOrder.serviceFee / selectedOrder.subtotal) * 1000) / 10
+              : undefined,
+            couvert: selectedOrder.couvert || undefined,
             discount: selectedOrder.discount,
             total: selectedOrder.total,
             paymentMethod: selectedOrder.paymentMethod,

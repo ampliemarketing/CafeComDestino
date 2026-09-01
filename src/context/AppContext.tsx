@@ -39,16 +39,26 @@ import {
 
 import {
   initialCompanyProfile,
-  initialLossRecords,
-  initialCourtesyRecords,
-  initialPrinters,
-  initialDeliveryDrivers,
   initialAuditLogs
 } from '../data/initialData';
 
 
 const formatTime = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+// ID de pedido que não colide mesmo com vários terminais vendendo no mesmo
+// milissegundo — timestamp + sufixo aleatório (mesmo padrão já usado para
+// comandas `cmd-` e itens `item-`). O `orderNumber` sequencial, esse sim, é
+// atribuído pelo servidor nas RPCs (migration 0036).
+const newOrderId = () => 'ord-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+
+// O `order_number` real é atribuído pelo servidor (sequence + trigger, migration
+// 0036). O valor calculado no cliente é só um palpite otimista; após a venda
+// buscamos o definitivo para recibo e tela de confirmação baterem com o banco.
+async function fetchServerOrderNumber(orderId: string, fallback: number): Promise<number> {
+  const { data } = await supabase.from('orders').select('order_number').eq('id', orderId).single();
+  return (data as { order_number?: number } | null)?.order_number ?? fallback;
+}
 
 const mapCategory = (row: any): Category => rowToCamel<Category>(row);
 const mapIngredientCategory = (row: any): IngredientCategory => rowToCamel<IngredientCategory>(row);
@@ -67,6 +77,10 @@ const mapDiningTable = (row: any): DiningTable => {
 const mapCashShiftRow = (row: any): CashShift => rowToCamel<CashShift>(row);
 const mapCashMovementRow = (row: any): CashMovement => rowToCamel<CashMovement>(row);
 const mapFinancialEntryRow = (row: any): FinancialEntry => rowToCamel<FinancialEntry>(row);
+const mapLossRow = (row: any): LossRecord => rowToCamel<LossRecord>(row);
+const mapCourtesyRow = (row: any): CourtesyRecord => rowToCamel<CourtesyRecord>(row);
+const mapPrinterRow = (row: any): Printer => rowToCamel<Printer>(row);
+const mapDeliveryDriverRow = (row: any): DeliveryDriver => rowToCamel<DeliveryDriver>(row);
 const mapAuditRow = (row: any): AuditLog => ({
   id: row.id,
   userName: row.actor_name || 'Sistema',
@@ -127,7 +141,10 @@ function useSupabaseCollection<T>(
   mapRow: (row: any) => T,
   keyField: keyof T,
   orderColumn?: string,
-  limit?: number
+  limit?: number,
+  // Muda de valor quando a conexão volta — força re-buscar a coleção, já que o
+  // realtime não reenvia os eventos perdidos enquanto esteve offline.
+  refreshNonce = 0
 ): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
   const [items, setItems] = useState<T[]>([]);
 
@@ -138,17 +155,21 @@ function useSupabaseCollection<T>(
     }
     let cancelled = false;
 
-    let query = supabase.from(table).select('*');
-    if (orderColumn) query = query.order(orderColumn, { ascending: false });
-    // Coleções que crescem sem parar (pedidos, turnos de caixa) são limitadas às
-    // linhas mais recentes — carregar o histórico inteiro no login trava o app.
-    if (limit) query = query.limit(limit);
+    const fetchNow = () => {
+      let query = supabase.from(table).select('*');
+      if (orderColumn) query = query.order(orderColumn, { ascending: false });
+      // Coleções que crescem sem parar (pedidos, turnos de caixa) são limitadas
+      // às linhas mais recentes — carregar o histórico inteiro no login trava o app.
+      if (limit) query = query.limit(limit);
+      query.then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        setItems(data.map(mapRow));
+      });
+    };
 
-    query.then(({ data, error }) => {
-      if (cancelled || error || !data) return;
-      setItems(data.map(mapRow));
-    });
+    fetchNow();
 
+    let subscribedOnce = false;
     const channel = supabase
       .channel(`public:${table}:${session.user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
@@ -160,18 +181,32 @@ function useSupabaseCollection<T>(
           const row = mapRow(payload.new);
           const rowKey = (row as any)[keyField];
           const exists = prev.some((it) => (it as any)[keyField] === rowKey);
-          return exists
-            ? prev.map((it) => ((it as any)[keyField] === rowKey ? row : it))
-            : [row, ...prev];
+          if (exists) {
+            return prev.map((it) => ((it as any)[keyField] === rowKey ? row : it));
+          }
+          // Coleções com `limit` (ex.: orders, cash_shifts) não podem crescer sem
+          // parar durante a sessão — o insert via realtime respeita o mesmo teto
+          // do fetch inicial, descartando as linhas mais antigas.
+          const next = [row, ...prev];
+          return limit && next.length > limit ? next.slice(0, limit) : next;
         });
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Toda vez que o canal (RE)assina — inclusive depois de cair e voltar,
+        // ou de a aba ser reativada — re-busca a coleção inteira. Sem isso, um
+        // evento de realtime perdido durante a queda fica pra sempre fora do
+        // estado local (foi o que deixou o `sales_cash` do caixa desatualizado).
+        if (status === 'SUBSCRIBED') {
+          if (subscribedOnce) fetchNow();
+          subscribedOnce = true;
+        }
+      });
 
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [table, session?.user?.id, orderColumn, limit]);
+  }, [table, session?.user?.id, orderColumn, limit, refreshNonce]);
 
   return [items, setItems];
 }
@@ -214,6 +249,7 @@ interface AppContextType {
   setDeliveryDrivers: React.Dispatch<React.SetStateAction<DeliveryDriver[]>>;
   auditLogs: AuditLog[];
   toasts: Toast[];
+  connectionOnline: boolean;
 
   // Navigation
   activeView: string;
@@ -234,6 +270,8 @@ interface AppContextType {
   openComandas: (tableId: string, personNames: string[]) => Promise<Comanda[]>;
   addComandaItem: (tableId: string, comandaId: string, productId: string, quantity: number, additions?: any[], notes?: string, unitPriceOverride?: number) => Promise<void>;
   cancelComandaItem: (tableId: string, comandaId: string, itemId: string, reason: string) => Promise<void>;
+  setComandaCharge: (tableId: string, comandaId: string, charge: 'serviceFee' | 'couvert', applied: boolean, reason?: string) => Promise<void>;
+  setComandaCouvertQty: (tableId: string, comandaId: string, qty: number) => Promise<void>;
   transferComanda: (fromTableId: string, comandaId: string, toTableId: string) => Promise<void>;
   closeComandaAndPay: (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount?: number, splitPayments?: { method: PaymentMethod; amount: number }[], discountReason?: string, managerPin?: string) => Promise<Order | null>;
   addPartialPayment: (
@@ -241,6 +279,8 @@ interface AppContextType {
     comandaId: string,
     paymentData: {
       amount: number;
+      serviceFeePortion?: number;
+      couvertPortion?: number;
       paymentMethod: PaymentMethod | string;
       type: 'by_item' | 'by_amount';
       itemIdsPaid?: string[];
@@ -328,6 +368,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authLoading, setAuthLoading] = useState(true);
   const [authBanner, setAuthBanner] = useState<string | null>(null);
 
+  // ---- Saúde da conexão (item #10) ----
+  const [connectionOnline, setConnectionOnline] = useState(true);
+  // Muda quando a conexão volta; passado às coleções operacionais para forçar
+  // re-busca (o realtime não reenvia eventos perdidos durante o offline).
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  useEffect(() => {
+    let offline = false;
+    const goOffline = () => { offline = true; setConnectionOnline(false); };
+    const goOnline = () => {
+      setConnectionOnline(true);
+      if (offline) { offline = false; setRefreshNonce((n) => n + 1); }
+    };
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+
+    // Aba reativada (voltou de segundo plano / outra janela): re-valida as
+    // coleções. Enquanto a aba fica em segundo plano o navegador estrangula o
+    // WebSocket e eventos de realtime se perdem sem cair a conexão — foi o que
+    // deixou o `sales_cash` do caixa preso num valor velho até dar Ctrl+Shift+R.
+    let lastFocusRefresh = 0;
+    const revalidateOnFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastFocusRefresh < 8000) return; // não repete em rajada
+      lastFocusRefresh = now;
+      setRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', revalidateOnFocus);
+    window.addEventListener('focus', revalidateOnFocus);
+
+    // Canal dedicado só pra medir a conexão com o Supabase (o navegador dizer
+    // "online" não garante que o servidor está alcançável).
+    const heartbeat = supabase
+      .channel('connection-heartbeat')
+      .on('broadcast', { event: 'ping' }, () => {})
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') goOnline();
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') goOffline();
+      });
+
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+      document.removeEventListener('visibilitychange', revalidateOnFocus);
+      window.removeEventListener('focus', revalidateOnFocus);
+      supabase.removeChannel(heartbeat);
+    };
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -392,24 +482,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const [lossRecords, setLossRecords] = useState<LossRecord[]>(() => {
-    const saved = localStorage.getItem('ampliechef_losses');
-    return saved ? JSON.parse(saved) : initialLossRecords;
-  });
-  const [courtesyRecords, setCourtesyRecords] = useState<CourtesyRecord[]>(() => {
-    const saved = localStorage.getItem('ampliechef_courtesies');
-    return saved ? JSON.parse(saved) : initialCourtesyRecords;
-  });
-  const [printers, setPrinters] = useState<Printer[]>(initialPrinters);
-  const [deliveryDrivers, setDeliveryDrivers] = useState<DeliveryDriver[]>(initialDeliveryDrivers);
+  // Perdas, cortesias, impressoras e entregadores agora vêm do Supabase com
+  // realtime (migration 0038) — antes eram localStorage / memória e não
+  // sincronizavam entre terminais.
+  const [lossRecords] = useSupabaseCollection<LossRecord>('loss_records', session, mapLossRow, 'id', 'created_at', 500);
+  const [courtesyRecords] = useSupabaseCollection<CourtesyRecord>('courtesy_records', session, mapCourtesyRow, 'id', 'created_at', 500);
+  const [printers, setPrinters] = useSupabaseCollection<Printer>('printers', session, mapPrinterRow, 'id');
+  const [deliveryDrivers, setDeliveryDrivers] = useSupabaseCollection<DeliveryDriver>('delivery_drivers', session, mapDeliveryDriverRow, 'id');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [selectedCashShiftId, setSelectedCashShiftId] = useState<string | null>(null);
-
-  useEffect(() => { localStorage.setItem('ampliechef_losses', JSON.stringify(lossRecords)); }, [lossRecords]);
-  useEffect(() => { localStorage.setItem('ampliechef_courtesies', JSON.stringify(courtesyRecords)); }, [courtesyRecords]);
 
   // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
@@ -417,12 +501,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [suppliers] = useSupabaseCollection<Supplier>('suppliers', session, mapSupplier, 'id');
   const [tableSectors] = useSupabaseCollection<TableSector>('table_sectors', session, mapTableSector, 'id');
   const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
-  const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id');
-  const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id');
-  const [tables] = useSupabaseCollection<DiningTable>('dining_tables', session, mapDiningTable, 'id');
+  // As coleções operacionais recebem refreshNonce: ao reconectar, re-buscam do
+  // servidor pra recuperar o que mudou durante o offline.
+  const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id', undefined, undefined, refreshNonce);
+  const [products] = useSupabaseCollection<Product>('products', session, mapProduct, 'id', undefined, undefined, refreshNonce);
+  const [tables] = useSupabaseCollection<DiningTable>('dining_tables', session, mapDiningTable, 'id', undefined, undefined, refreshNonce);
   // Últimos 1000 pedidos: cobre com folga dashboard, vendas e caixa do dia a dia.
   // Relatórios que precisem de janelas maiores devem fazer query própria com filtro de data.
-  const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at', 1000);
+  const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at', 1000, refreshNonce);
 
   const [users, setUsers] = useState<User[]>([]);
   const refreshUsers = () => {
@@ -434,6 +520,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
   };
   useEffect(refreshUsers, [session?.user?.id]);
+
+  // Realtime em profiles (migration 0040): mudança de cargo/permissão/ativação
+  // feita por um admin vale na hora, sem o usuário precisar recarregar a aba.
+  useEffect(() => {
+    if (!session) return;
+    const uid = session.user.id;
+    const channel = supabase
+      .channel(`public:profiles:${uid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        refreshUsers(); // mantém a tela Usuários & Equipe em dia
+        const row = payload.new as Record<string, any> | null;
+        if (!row || row.id !== uid) return;
+        if (row.active === false) {
+          setCurrentUser(null);
+          setAuthBanner('Sua conta foi desativada. Fale com um administrador.');
+          supabase.auth.signOut();
+          return;
+        }
+        // Aplica cargo/permissões/dados novos no usuário logado imediatamente.
+        setCurrentUser((prev) => (prev ? { ...prev, ...mapProfileRow(row) } : prev));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
   const updateUserProfile: AppContextType['updateUserProfile'] = async (userId, patch) => {
     const { error } = await supabase.from('profiles').update(toRow(patch)).eq('id', userId);
@@ -463,7 +574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   };
 
-  const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at', 200);
+  const [cashShiftsHistory] = useSupabaseCollection<CashShift>('cash_shifts', session, mapCashShiftRow, 'id', 'created_at', 200, refreshNonce);
 
   const cashShift = cashShiftsHistory.find((s) => s.status === 'aberto') ?? cashShiftsHistory[0] ?? EMPTY_CASH_SHIFT;
 
@@ -551,12 +662,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       p_module: moduleName,
       p_details: details ? { text: details } : {},
     });
-  };
-
-  const deductStockForItems = async (items: { productId: string; quantity: number }[]) => {
-    if (items.length === 0) return;
-    const { error } = await supabase.rpc('deduct_stock_for_items', { p_items: items });
-    if (error) addToast('error', 'Erro ao baixar estoque', error.message);
   };
 
   // ---- Table Management Actions ----
@@ -685,26 +790,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       waiterName: currentUser.name,
     }));
 
-    const updatedItems = [...comanda.items, ...newItems];
-    const newSubtotal = updatedItems
-      .filter((i) => i.status !== 'cancelado')
-      .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-
-    const updatedComandas = table.comandas.map((c) =>
-      c.id === comandaId ? { ...c, items: updatedItems, subtotal: newSubtotal } : c
-    );
-
-    const { error } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
-      .eq('id', tableId);
+    // RPC atômica (migration 0037): trava a mesa com FOR UPDATE, relê a comanda,
+    // anexa os itens (carimbando hora/garçom no servidor) e dá baixa de estoque
+    // na MESMA transação. Substitui o read-modify-write do JSON no cliente, que
+    // perdia lançamentos concorrentes de garçons na mesma mesa.
+    const { error } = await supabase.rpc('comanda_add_items', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_items: newItems,
+      p_stock_items: [{ productId, quantity }],
+    });
 
     if (error) { addToast('error', 'Erro ao lançar item', error.message); return; }
 
-    await deductStockForItems([{ productId, quantity }]);
-
     addToast('success', 'Item lançado na comanda', `${quantity}x ${product.name}`);
-    logAudit('Lançamento de Pedido na Mesa', 'Garçom App', `Mesa ID: ${tableId} - ${quantity}x ${product.name}`);
   };
 
   const cancelComandaItem = async (tableId: string, comandaId: string, itemId: string, reason: string) => {
@@ -720,31 +819,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = comanda.items.find((i) => i.id === itemId);
     if (!target || target.status === 'cancelado') return;
 
-    const updatedItems = comanda.items.map((i) => (i.id === itemId ? { ...i, status: 'cancelado' as const } : i));
-    const newSubtotal = updatedItems
-      .filter((i) => i.status !== 'cancelado')
-      .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-
-    const updatedComandas = table.comandas.map((c) =>
-      c.id === comandaId ? { ...c, items: updatedItems, subtotal: newSubtotal } : c
-    );
-
-    const { error } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedComandas, status: computeTableStatus(updatedComandas) })
-      .eq('id', tableId);
+    // RPC atômica (migration 0037): trava a mesa, marca o item como cancelado,
+    // recalcula o subtotal e repõe o estoque (exceto cortesia) na mesma
+    // transação.
+    const { error } = await supabase.rpc('comanda_cancel_item', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_item_id: itemId,
+      p_reason: reason.trim(),
+    });
 
     if (error) { addToast('error', 'Erro ao cancelar item', error.message); return; }
 
-    // Repõe o estoque baixado no lançamento do item.
-    if (!target.isCourtesy) {
-      await supabase.rpc('reverse_stock_for_items', {
-        p_items: [{ productId: target.productId, quantity: target.quantity }],
-      });
-    }
-
     addToast('warning', 'Item cancelado na mesa', `Motivo: ${reason.trim()}`);
-    logAudit('Cancelamento de Item de Comanda', 'Mesas', `Mesa ${table.number} - ${target.quantity}x ${target.productName} - Motivo: ${reason.trim()}`);
+  };
+
+  // Liga/desliga a taxa de serviço OU o couvert de UMA comanda. Remover exige
+  // a permissão mesas.remover_taxa_servico; reativar (voltar ao padrão) é livre
+  // para quem edita a comanda.
+  const setComandaCharge = async (
+    tableId: string,
+    comandaId: string,
+    charge: 'serviceFee' | 'couvert',
+    applied: boolean,
+    reason?: string
+  ) => {
+    if (!currentUser) return;
+    const label = charge === 'serviceFee' ? 'taxa de serviço' : 'couvert';
+    if (!applied && !hasPermission(currentUser, 'mesas.remover_taxa_servico')) {
+      addToast('error', 'Sem permissão', `Você não pode remover a ${label}.`);
+      return;
+    }
+    const table = tables.find((t) => t.id === tableId);
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return;
+
+    // RPC atômica (migration 0037): trava a mesa e aplica o patch na comanda
+    // (serviceFeeApplied/couvertApplied + quem removeu / motivo).
+    const { error } = await supabase.rpc('comanda_set_charge', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_charge: charge,
+      p_applied: applied,
+      p_reason: reason?.trim() || null,
+    });
+    if (error) { addToast('error', `Erro ao alterar ${label}`, error.message); return; }
+
+    addToast(
+      applied ? 'success' : 'warning',
+      applied ? `${label[0].toUpperCase()}${label.slice(1)} reativada` : `${label[0].toUpperCase()}${label.slice(1)} removida`,
+      `Mesa ${table.number} - ${comanda.personName}`
+    );
+  };
+
+  // Define quantos couverts a comanda cobra (1 = padrão). Ex.: comanda de um
+  // grupo de 3 pessoas → 3 couverts. RPC atômica (migration 0041).
+  const setComandaCouvertQty = async (tableId: string, comandaId: string, qty: number) => {
+    if (!currentUser) return;
+    const clamped = Math.min(50, Math.max(1, Math.round(qty)));
+    const table = tables.find((t) => t.id === tableId);
+    const comanda = table?.comandas.find((c) => c.id === comandaId);
+    if (!table || !comanda) return;
+
+    const { error } = await supabase.rpc('comanda_set_couvert_qty', {
+      p_table_id: tableId,
+      p_comanda_id: comandaId,
+      p_qty: clamped,
+    });
+    if (error) { addToast('error', 'Erro ao alterar couvert', error.message); return; }
+
+    addToast('info', `Couvert: ${clamped}×`, `Mesa ${table.number} - ${comanda.personName}`);
   };
 
   // Move só uma comanda (com seus itens) para outra mesa — as demais
@@ -755,24 +899,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const comanda = sourceTable?.comandas.find((c) => c.id === comandaId);
     if (!sourceTable || !targetTable || !comanda) return;
 
-    const updatedTargetComandas = [...targetTable.comandas, comanda];
-    const { error: targetError } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedTargetComandas, status: computeTableStatus(updatedTargetComandas) })
-      .eq('id', toTableId);
+    // RPC atômica (migration 0037): trava as duas mesas em ordem estável de id
+    // (evita deadlock em transferências cruzadas) e move a comanda numa só
+    // transação — antes eram dois UPDATEs separados que podiam deixar a comanda
+    // duplicada ou sumida se um falhasse.
+    const { error } = await supabase.rpc('comanda_transfer', {
+      p_from_table_id: fromTableId,
+      p_comanda_id: comandaId,
+      p_to_table_id: toTableId,
+    });
 
-    if (targetError) { addToast('error', 'Erro ao transferir comanda', targetError.message); return; }
-
-    const updatedSourceComandas = sourceTable.comandas.filter((c) => c.id !== comandaId);
-    const { error: sourceError } = await supabase
-      .from('dining_tables')
-      .update({ comandas: updatedSourceComandas, status: computeTableStatus(updatedSourceComandas) })
-      .eq('id', fromTableId);
-
-    if (sourceError) { addToast('error', 'Erro ao limpar comanda na mesa de origem', sourceError.message); return; }
+    if (error) { addToast('error', 'Erro ao transferir comanda', error.message); return; }
 
     addToast('info', 'Comanda transferida com sucesso', `${comanda.personName}: Mesa ${sourceTable.number} → Mesa ${targetTable.number}`);
-    logAudit('Transferência de Comanda', 'Atendimento', `${comanda.personName} - Da Mesa ${sourceTable.number} para Mesa ${targetTable.number}`);
   };
 
   const closeComandaAndPay = async (tableId: string, comandaId: string, paymentMethod: PaymentMethod, discount = 0, splitPayments?: { method: PaymentMethod; amount: number }[], discountReason?: string, managerPin?: string): Promise<Order | null> => {
@@ -795,7 +934,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const finalTotal = Math.max(0, finalSubtotal + serviceFee + couvert - advancesTotal - discount);
 
     const newOrder: Order = {
-      id: 'ord-' + Date.now(),
+      id: newOrderId(),
       orderNumber: orders.length + 1001,
       channel: 'garcom',
       tableNumber: table.number,
@@ -838,6 +977,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (error) { addToast('error', 'Erro ao fechar comanda', error.message); return null; }
+
+    newOrder.orderNumber = await fetchServerOrderNumber(newOrder.id, newOrder.orderNumber);
 
     addToast(
       'success',
@@ -925,7 +1066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const total = subtotal + deliveryFee - (orderData.discount || 0);
 
     const newOrder: Order = {
-      id: 'ord-' + Date.now(),
+      id: newOrderId(),
       orderNumber: orders.length + 1001,
       channel: 'online',
       customer: orderData.customer || { name: 'Cliente Online', phone: '(11) 99999-9999' },
@@ -957,6 +1098,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw error;
     }
 
+    newOrder.orderNumber = await fetchServerOrderNumber(newOrder.id, newOrder.orderNumber);
+
     addToast('success', 'Pedido Online Recebido!', `Pedido #${newOrder.orderNumber} - R$ ${newOrder.total.toFixed(2)} (${newOrder.paymentMethod.toUpperCase()})`);
     logAudit('Novo Pedido Online', 'Cardápio Online', `Pedido #${newOrder.orderNumber} por ${newOrder.customer.name}`);
 
@@ -982,7 +1125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const total = Math.max(0, subtotal - discount);
 
     const newOrder: Order = {
-      id: 'ord-' + Date.now(),
+      id: newOrderId(),
       orderNumber: orders.length + 1001,
       channel: 'pdv',
       customer: { name: customerName, phone: '(11) 90000-0000' },
@@ -1016,6 +1159,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('error', 'Erro ao registrar venda', error.message);
       throw error;
     }
+
+    newOrder.orderNumber = await fetchServerOrderNumber(newOrder.id, newOrder.orderNumber);
 
     addToast('success', 'Venda realizada com sucesso', `Total R$ ${total.toFixed(2)} - NFC-e gerada`);
     logAudit('Venda Direta PDV', 'Frente de Caixa', `Pedido #${newOrder.orderNumber} - R$ ${total.toFixed(2)}`);
@@ -1202,13 +1347,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const recordStockEntry = async (ingredientId: string, qty: number, costUnit: number) => {
-    const ing = ingredients.find((i) => i.id === ingredientId);
-    if (!ing) return;
-
-    const { error } = await supabase
-      .from('ingredients')
-      .update({ stock_quantity: ing.stockQuantity + qty, avg_cost_unit: costUnit > 0 ? costUnit : ing.avgCostUnit })
-      .eq('id', ingredientId);
+    // Ajuste atômico no servidor (migration 0039): soma dentro do banco, sem
+    // read-modify-write no cliente.
+    const { error } = await supabase.rpc('adjust_stock', {
+      p_op: 'entrada',
+      p_item_type: 'ingredient',
+      p_id: ingredientId,
+      p_qty: qty,
+      p_cost_unit: costUnit > 0 ? costUnit : null,
+    });
 
     if (error) { addToast('error', 'Erro ao registrar entrada', error.message); return; }
 
@@ -1220,10 +1367,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prod = products.find((p) => p.id === productId);
     if (!prod) return;
 
-    const { error } = await supabase
-      .from('products')
-      .update({ stock_quantity: prod.stockQuantity + qty })
-      .eq('id', productId);
+    const { error } = await supabase.rpc('adjust_stock', {
+      p_op: 'entrada',
+      p_item_type: 'product',
+      p_id: productId,
+      p_qty: qty,
+    });
 
     if (error) { addToast('error', 'Erro ao registrar entrada', error.message); return; }
 
@@ -1232,12 +1381,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const recordLoss: AppContextType['recordLoss'] = async (data) => {
-    if (data.itemType === 'product' && data.itemId) {
-      const p = products.find((x) => x.id === data.itemId);
-      if (p) await supabase.from('products').update({ stock_quantity: Math.max(0, p.stockQuantity - data.quantity) }).eq('id', data.itemId);
-    } else if (data.itemId) {
-      const i = ingredients.find((x) => x.id === data.itemId);
-      if (i) await supabase.from('ingredients').update({ stock_quantity: Math.max(0, i.stockQuantity - data.quantity) }).eq('id', data.itemId);
+    if (data.itemId) {
+      // Baixa atômica (migration 0039). Vale para produto e insumo.
+      const { error: stockErr } = await supabase.rpc('adjust_stock', {
+        p_op: 'perda',
+        p_item_type: data.itemType,
+        p_id: data.itemId,
+        p_qty: data.quantity,
+      });
+      if (stockErr) { addToast('error', 'Erro ao baixar estoque', stockErr.message); return; }
     }
 
     const newLoss: LossRecord = {
@@ -1256,7 +1408,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sector: data.sector || 'Estoque',
     };
 
-    setLossRecords((prev) => [newLoss, ...prev]);
+    // Persiste no servidor; a subscription realtime injeta na lista local (e nos
+    // outros terminais). Antes ficava só no localStorage deste navegador.
+    const { error } = await supabase.from('loss_records').insert(toRow(newLoss));
+    if (error) { addToast('error', 'Erro ao registrar perda', error.message); return; }
+
     addToast('error', 'Perda de Estoque Registrada', `${data.quantity} ${data.unit} de ${data.itemName} - R$ ${data.costValue.toFixed(2)} (${data.reason.replace('_', ' ')})`);
     logAudit('Registro de Perdas de Estoque', 'Estoque', `${data.itemName}: ${data.quantity} ${data.unit} - Motivo: ${data.reason}`);
   };
@@ -1266,7 +1422,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!prod || !currentUser) return;
 
     if (prod.trackStock) {
-      await supabase.from('products').update({ stock_quantity: Math.max(0, prod.stockQuantity - data.quantity) }).eq('id', data.productId);
+      // Baixa atômica no servidor (migration 0039).
+      const { error: stockErr } = await supabase.rpc('adjust_stock', {
+        p_op: 'cortesia',
+        p_item_type: 'product',
+        p_id: data.productId,
+        p_qty: data.quantity,
+      });
+      if (stockErr) { addToast('error', 'Erro ao baixar estoque', stockErr.message); return; }
     }
 
     const totalRetail = prod.price * data.quantity;
@@ -1291,7 +1454,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: data.notes,
     };
 
-    setCourtesyRecords((prev) => [newCourtesy, ...prev]);
+    const { error } = await supabase.from('courtesy_records').insert(toRow(newCourtesy));
+    if (error) { addToast('error', 'Erro ao registrar cortesia', error.message); return; }
 
     if (data.tableId && data.comandaId) {
       const table = tables.find((t) => t.id === data.tableId);
@@ -1405,6 +1569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDeliveryDrivers,
         auditLogs,
         toasts,
+        connectionOnline,
         activeView,
         setActiveView,
         addToast,
@@ -1417,6 +1582,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openComandas,
         addComandaItem,
         cancelComandaItem,
+        setComandaCharge,
+        setComandaCouvertQty,
         transferComanda,
         closeComandaAndPay,
         addPartialPayment,

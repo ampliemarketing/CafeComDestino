@@ -69,7 +69,7 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'mesas.estornar_pagamento_parcial', label: 'Estornar pagamento parcial' },
           { key: 'mesas.desconto', label: 'Aplicar desconto no fechamento' },
           { key: 'mesas.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo' },
-          { key: 'mesas.remover_taxa_servico', label: 'Remover a taxa de serviço da comanda' },
+          { key: 'mesas.remover_taxa_servico', label: 'Remover a taxa de serviço / couvert da comanda' },
           { key: 'mesas.fechar_comanda', label: 'Fechar comanda e receber pagamento' },
           { key: 'mesas.imprimir', label: 'Imprimir pré-conta' },
         ],
@@ -191,12 +191,6 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         ],
       },
       {
-        screenId: 'finance',
-        screenLabel: 'Gestão Financeira & DRE',
-        access: 'financeiro_dre.acessar',
-        actions: [{ key: 'financeiro_dre.lancar', label: 'Registrar lançamento (receita/despesa)' }],
-      },
-      {
         screenId: 'printers',
         screenLabel: 'Impressoras Térmicas',
         access: 'impressoras.acessar',
@@ -254,6 +248,21 @@ export const SCREEN_ACCESS_PERMISSION: Record<string, string> = Object.fromEntri
   PERMISSION_CATALOG.flatMap((section) => section.groups.map((group) => [group.screenId, group.access]))
 );
 
+// Tela inicial por cargo pós-login (item #17). Evita que todo mundo caia no
+// Dashboard — que puxa o chunk de gráficos (~380 KB) — quando o operacional
+// (garçom, cozinha, caixa) vai direto pra outra tela. Se o cargo não tiver
+// acesso à tela sugerida, o App cai no fluxo padrão de "primeira tela
+// permitida".
+export const HOME_VIEW_BY_ROLE: Record<UserRole, string> = {
+  admin: 'dashboard',
+  gerente: 'dashboard',
+  financeiro: 'dashboard',
+  caixa: 'pdv',
+  garcom: 'waiter',
+  cozinha: 'kitchen',
+  estoque: 'inventory',
+};
+
 // Presets aplicados quando um cargo é escolhido no formulário de usuário —
 // só um ponto de partida editável, quem decide o acesso de verdade é a
 // lista `permissions` gravada no usuário (exceto admin, que sempre tem tudo).
@@ -269,7 +278,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, string[]> = {
   gerente: screenPermissions([
     'dashboard', 'online-menu', 'waiter', 'tables', 'kitchen', 'pdv', 'caixas', 'livro-caixa', 'sales',
     'products', 'inventory', 'groups', 'suppliers',
-    'deliveries', 'fiscal', 'finance', 'printers', 'reports', 'audit',
+    'deliveries', 'fiscal', 'printers', 'reports', 'audit',
   ]),
   caixa: screenPermissions(['online-menu', 'tables', 'pdv', 'caixas', 'livro-caixa', 'sales', 'deliveries', 'fiscal'])
     .filter((k) => k !== 'caixas.estornar_venda' && k !== 'caixas.reabrir'
@@ -279,7 +288,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, string[]> = {
     .filter((k) => k !== 'mesas.desconto_acima_limite' && k !== 'mesas.remover_taxa_servico'),
   cozinha: screenPermissions(['kitchen']),
   estoque: screenPermissions(['products', 'inventory', 'groups', 'suppliers']),
-  financeiro: screenPermissions(['dashboard', 'caixas', 'livro-caixa', 'sales', 'reports', 'fiscal', 'finance']),
+  financeiro: screenPermissions(['dashboard', 'caixas', 'livro-caixa', 'sales', 'reports', 'fiscal']),
 };
 
 export function hasPermission(user: { role: UserRole; permissions?: string[] } | null | undefined, key: string): boolean {

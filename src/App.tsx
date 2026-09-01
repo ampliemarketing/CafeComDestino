@@ -5,8 +5,10 @@ import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
 import { SupportButton } from './components/common/SupportButton';
-import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Wallet, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags, History } from 'lucide-react';
-import { hasPermission, SCREEN_ACCESS_PERMISSION } from './lib/permissions';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ConnectionBanner } from './components/common/ConnectionBanner';
+import { X, ChevronRight, LayoutDashboard, ShoppingBag, Smartphone, Grid2X2, ChefHat, Monitor, Receipt, Package, Boxes, Truck, FileText, Printer, BarChart3, Building2, Users, Tags, History } from 'lucide-react';
+import { hasPermission, SCREEN_ACCESS_PERMISSION, HOME_VIEW_BY_ROLE } from './lib/permissions';
 
 // Cada tela é um chunk separado, carregado só quando abre — evita um bundle
 // único gigante (recharts, telas pesadas etc.) no primeiro carregamento.
@@ -31,7 +33,6 @@ const ProductManagement = lazyNamed(() => import('./components/products/ProductM
 const InventoryManagement = lazyNamed(() => import('./components/inventory/InventoryManagement'), 'InventoryManagement');
 const GroupManagement = lazyNamed(() => import('./components/groups/GroupManagement'), 'GroupManagement');
 const SupplierManagement = lazyNamed(() => import('./components/suppliers/SupplierManagement'), 'SupplierManagement');
-const FinancialManagement = lazyNamed(() => import('./components/finance/FinancialManagement'), 'FinancialManagement');
 const FiscalManagement = lazyNamed(() => import('./components/fiscal/FiscalManagement'), 'FiscalManagement');
 const DeliveryManagement = lazyNamed(() => import('./components/delivery/DeliveryManagement'), 'DeliveryManagement');
 const ReportsView = lazyNamed(() => import('./components/reports/ReportsView'), 'ReportsView');
@@ -48,9 +49,19 @@ const AppContent: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Se a tela atual (ex.: o "dashboard" padrão do login) não é permitida
-  // para este usuário, manda ele para a primeira tela que ele pode acessar.
+  // Ao logar: manda o usuário pra tela inicial do cargo dele (garçom → app do
+  // garçom, cozinha → KDS etc.), evitando que todo mundo caia no Dashboard e
+  // pague o chunk de gráficos. Se a tela do cargo não for permitida, ou se o
+  // usuário já navegou pra outro lugar, cai no fallback de "primeira permitida".
   React.useEffect(() => {
+    if (activeView === 'dashboard') {
+      const home = HOME_VIEW_BY_ROLE[currentUser.role];
+      const homePerm = home ? SCREEN_ACCESS_PERMISSION[home] : undefined;
+      if (home && home !== 'dashboard' && (!homePerm || hasPermission(currentUser, homePerm))) {
+        setActiveView(home);
+        return;
+      }
+    }
     const requiredPermission = SCREEN_ACCESS_PERMISSION[activeView];
     if (requiredPermission && !hasPermission(currentUser, requiredPermission)) {
       const firstAllowed = Object.entries(SCREEN_ACCESS_PERMISSION).find(([, perm]) =>
@@ -106,9 +117,6 @@ const AppContent: React.FC = () => {
         return <SupplierManagement />;
       case 'groups':
         return <GroupManagement />;
-      case 'finance':
-      case 'financial':
-        return <FinancialManagement />;
       case 'fiscal':
         return <FiscalManagement />;
       case 'deliveries':
@@ -152,7 +160,6 @@ const AppContent: React.FC = () => {
         { id: 'suppliers', label: 'Fornecedores', icon: Truck },
         { id: 'deliveries', label: 'Gestão de Entregas', icon: Truck },
         { id: 'fiscal', label: 'Emissão Fiscal NFC-e', icon: FileText },
-        { id: 'finance', label: 'Financeiro', icon: Wallet },
         { id: 'reports', label: 'Relatórios', icon: BarChart3 },
         { id: 'company', label: 'Perfil do Restaurante', icon: Building2 },
         { id: 'users', label: 'Usuários & Equipe', icon: Users },
@@ -174,14 +181,17 @@ const AppContent: React.FC = () => {
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
         
         <main className="flex-1 overflow-y-auto pb-20 md:pb-8">
-          <Suspense fallback={<ViewFallback />}>
-            {renderView()}
-          </Suspense>
+          <ErrorBoundary label={`view:${activeView}`} key={activeView}>
+            <Suspense fallback={<ViewFallback />}>
+              {renderView()}
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
       <MobileNav onOpenFullMenu={() => setIsMobileMenuOpen(true)} />
       <NotificationToast />
+      <ConnectionBanner />
       <SupportButton />
 
       {/* Mobile Drawer Menu */}
@@ -252,15 +262,17 @@ export default function App() {
   // nem tocar na tabela profiles usada pelo login interno.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/pedir')) {
     return (
-      <Suspense
-        fallback={
-          <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-amber-800 border-t-transparent rounded-full animate-spin" />
-          </div>
-        }
-      >
-        <PublicOnlineMenu />
-      </Suspense>
+      <ErrorBoundary label="public-menu">
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-amber-800 border-t-transparent rounded-full animate-spin" />
+            </div>
+          }
+        >
+          <PublicOnlineMenu />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 

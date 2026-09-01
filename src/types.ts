@@ -176,6 +176,8 @@ export interface PartialPayment {
   tableNumber: number;
   comandaId: string;
   amount: number;
+  serviceFeePortion?: number; // parcela do `amount` que é taxa de serviço
+  couvertPortion?: number; // parcela do `amount` que é couvert
   paymentMethod: PaymentMethod | string;
   splitPayments?: { method: PaymentMethod; amount: number }[];
   type: 'by_item' | 'by_amount';
@@ -205,7 +207,10 @@ export interface Comanda {
   serviceFeeApplied?: boolean; // ausente = aplica quando a taxa está habilitada na empresa
   serviceFeeRemovedBy?: string;
   serviceFeeRemovedReason?: string;
-  couvertQty?: number; // nº de couverts; ausente = usa guestCount
+  couvertApplied?: boolean; // ausente = aplica quando o couvert está habilitado na empresa
+  couvertRemovedBy?: string;
+  couvertRemovedReason?: string;
+  couvertQty?: number; // multiplicador do couvert; ausente = 1 (valor fixo por comanda)
 }
 
 export interface DiningTable {

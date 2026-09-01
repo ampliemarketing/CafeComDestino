@@ -7,26 +7,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY precisam estar definidos no .env');
 }
 
-// Controla se a sessão sobrevive ao fechar a aba ("Manter conectado" no login).
-// Chamado antes do signIn; a leitura sempre olha os dois storages para não
-// derrubar sessões já existentes no localStorage de antes desta mudança.
-let keepConnected = true;
-export function setKeepConnected(value: boolean) {
-  keepConnected = value;
-}
-
-const authStorage = {
-  getItem: (key: string) => localStorage.getItem(key) ?? sessionStorage.getItem(key),
-  setItem: (key: string, value: string) => {
-    (keepConnected ? localStorage : sessionStorage).setItem(key, value);
-    (keepConnected ? sessionStorage : localStorage).removeItem(key);
-  },
-  removeItem: (key: string) => {
-    localStorage.removeItem(key);
-    sessionStorage.removeItem(key);
-  },
-};
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { storage: authStorage },
-});
+// Modelo de sessão: UM OPERADOR POR NAVEGADOR (decisão do item #13 do checklist
+// de go-live). A sessão vive no localStorage (padrão do supabase-js), que é
+// compartilhado entre todas as abas da mesma origem — então todas as abas
+// mostram sempre o mesmo usuário logado, e o supabase-js sincroniza login/logout
+// entre abas sozinho. Não há caminho de sessionStorage por aba (que era o que
+// permitia duas abas com usuários diferentes divergirem).
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

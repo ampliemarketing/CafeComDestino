@@ -20,7 +20,8 @@ import {
   DollarSign,
   Scale,
   Coffee,
-  UtensilsCrossed
+  UtensilsCrossed,
+  RotateCcw
 } from 'lucide-react';
 import { DiningTable, Product, ProductAddition, TableStatus, PaymentMethod, Order } from '../../types';
 import { PrintReceiptModal } from '../common/PrintReceiptModal';
@@ -42,6 +43,8 @@ export const WaiterApp: React.FC = () => {
     openComandas,
     addComandaItem,
     cancelComandaItem,
+    setComandaCharge,
+    setComandaCouvertQty,
     transferComanda,
     closeComandaAndPay,
     addToast
@@ -89,6 +92,9 @@ export const WaiterApp: React.FC = () => {
 
   // Pre-bill print modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Confirmação de remoção de taxa de serviço / couvert
+  const [pendingCharge, setPendingCharge] = useState<null | 'serviceFee' | 'couvert'>(null);
 
   // Final payment (close comanda) modal
   const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
@@ -625,10 +631,77 @@ export const WaiterApp: React.FC = () => {
                   <span className="font-bold text-stone-700">+ R$ {currentComandaServiceFee.toFixed(2)}</span>
                 </div>
               )}
-              {currentComandaCouvert > 0 && (
+              {companyProfile.couvertEnabled && currentComanda.couvertApplied !== false && companyProfile.couvertValue > 0 && (
                 <div className="flex justify-between items-center text-sm">
-                  <span className="font-semibold text-stone-600">Couvert:</span>
+                  <span className="font-semibold text-stone-600 flex items-center gap-2">
+                    Couvert
+                    {can('mesas.lancar_item') ? (
+                      <span className="inline-flex items-center border border-stone-200 rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          disabled={(currentComanda.couvertQty ?? 1) <= 1}
+                          onClick={() => setComandaCouvertQty(currentActiveTable.id, currentComanda.id, (currentComanda.couvertQty ?? 1) - 1)}
+                          className="px-2 py-0.5 font-bold text-stone-600 hover:bg-stone-100 disabled:opacity-30"
+                        >−</button>
+                        <span className="px-2 font-bold text-stone-800 tabular-nums">{currentComanda.couvertQty ?? 1}×</span>
+                        <button
+                          type="button"
+                          disabled={(currentComanda.couvertQty ?? 1) >= 50}
+                          onClick={() => setComandaCouvertQty(currentActiveTable.id, currentComanda.id, (currentComanda.couvertQty ?? 1) + 1)}
+                          className="px-2 py-0.5 font-bold text-stone-600 hover:bg-stone-100 disabled:opacity-30"
+                        >+</button>
+                      </span>
+                    ) : (
+                      <span className="font-bold text-stone-700">{currentComanda.couvertQty ?? 1}×</span>
+                    )}
+                  </span>
                   <span className="font-bold text-stone-700">+ R$ {currentComandaCouvert.toFixed(2)}</span>
+                </div>
+              )}
+              {(companyProfile.serviceFeeEnabled || companyProfile.couvertEnabled) && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {companyProfile.serviceFeeEnabled && (
+                    currentComanda.serviceFeeApplied === false ? (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-stone-200 bg-stone-50 text-[11px]">
+                        <span className="font-bold text-rose-600">Taxa removida</span>
+                        {currentComanda.serviceFeeRemovedBy && <span className="text-stone-400">· {currentComanda.serviceFeeRemovedBy}</span>}
+                        <button
+                          onClick={() => setComandaCharge(currentActiveTable.id, currentComanda.id, 'serviceFee', true)}
+                          className="inline-flex items-center gap-0.5 text-amber-800 font-bold hover:underline"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reativar
+                        </button>
+                      </div>
+                    ) : can('mesas.remover_taxa_servico') ? (
+                      <button
+                        onClick={() => setPendingCharge('serviceFee')}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[11px] font-bold hover:bg-rose-100 transition"
+                      >
+                        <X className="w-3 h-3" /> Remover taxa de serviço
+                      </button>
+                    ) : null
+                  )}
+                  {companyProfile.couvertEnabled && (
+                    currentComanda.couvertApplied === false ? (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-stone-200 bg-stone-50 text-[11px]">
+                        <span className="font-bold text-rose-600">Couvert removido</span>
+                        {currentComanda.couvertRemovedBy && <span className="text-stone-400">· {currentComanda.couvertRemovedBy}</span>}
+                        <button
+                          onClick={() => setComandaCharge(currentActiveTable.id, currentComanda.id, 'couvert', true)}
+                          className="inline-flex items-center gap-0.5 text-amber-800 font-bold hover:underline"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reativar
+                        </button>
+                      </div>
+                    ) : can('mesas.remover_taxa_servico') ? (
+                      <button
+                        onClick={() => setPendingCharge('couvert')}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-[11px] font-bold hover:bg-rose-100 transition"
+                      >
+                        <X className="w-3 h-3" /> Remover couvert
+                      </button>
+                    ) : null
+                  )}
                 </div>
               )}
               {currentComandaAdvancesTotal > 0 && (
@@ -1097,6 +1170,9 @@ export const WaiterApp: React.FC = () => {
             waiterName: lastFinalizedOrder.waiterName,
             items: lastFinalizedOrder.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
             subtotal: lastFinalizedOrder.subtotal,
+            serviceFee: lastFinalizedOrder.serviceFee || undefined,
+            servicePct: lastFinalizedOrder.serviceFee ? companyProfile.serviceFeePercent : undefined,
+            couvert: lastFinalizedOrder.couvert || undefined,
             discount: lastFinalizedOrder.discount,
             total: lastFinalizedOrder.total,
             paymentMethod: lastFinalizedOrder.paymentMethod,
@@ -1114,6 +1190,32 @@ export const WaiterApp: React.FC = () => {
         onConfirm={handleConfirmKgTableItem}
         initialType={selectedKgType}
       />
+
+      {/* Confirmar remoção de taxa de serviço / couvert */}
+      {pendingCharge && currentActiveTable && currentComanda && (
+        <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 shadow-2xl border border-stone-200">
+            <h3 className="font-bold text-stone-900 text-sm">
+              Remover {pendingCharge === 'serviceFee' ? 'a taxa de serviço' : 'o couvert'}?
+            </h3>
+            <p className="text-xs text-stone-500">
+              {pendingCharge === 'serviceFee' ? 'A taxa de serviço' : 'O couvert'} não será cobrado no fechamento da comanda de <strong>{currentComanda.personName}</strong> (Mesa #{currentActiveTable.number}).
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPendingCharge(null)} className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl text-xs transition">Cancelar</button>
+              <button
+                onClick={() => {
+                  setComandaCharge(currentActiveTable.id, currentComanda.id, pendingCharge, false);
+                  setPendingCharge(null);
+                }}
+                className="flex-1 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-xl text-xs shadow flex items-center justify-center gap-1.5 transition"
+              >
+                <X className="w-4 h-4" /> Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

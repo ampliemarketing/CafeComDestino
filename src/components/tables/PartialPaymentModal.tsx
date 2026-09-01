@@ -27,13 +27,15 @@ interface PartialPaymentModalProps {
 }
 
 export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen, onClose, table, comandaId }) => {
-  const { addPartialPayment, currentUser } = useApp();
+  const { addPartialPayment, currentUser, companyProfile } = useApp();
   const comanda = table.comandas.find((c) => c.id === comandaId);
 
   const [paymentType, setPaymentType] = useState<'by_item' | 'by_amount'>('by_item');
 
   // By Item state
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [includeServiceFee, setIncludeServiceFee] = useState(true);
+  const [includeCouvert, setIncludeCouvert] = useState(false);
 
   // By Amount state
   const [manualAmount, setManualAmount] = useState<string>('50.00');
@@ -74,7 +76,22 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
     .filter((i) => selectedItemIds.includes(i.id))
     .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
 
-  const effectivePaymentAmount = paymentType === 'by_item' ? selectedItemsTotal : (parseFloat(manualAmount) || 0);
+  // Taxa de serviço / couvert adiantáveis (só no modo "por produto")
+  const serviceFeeEnabled = companyProfile.serviceFeeEnabled && comanda.serviceFeeApplied !== false;
+  const serviceFeePct = companyProfile.serviceFeePercent || 0;
+  const couvertEnabled = companyProfile.couvertEnabled && comanda.couvertApplied !== false;
+  const couvertAlreadyAdvanced = activeAdvances.reduce((s, p) => s + (p.couvertPortion || 0), 0);
+  const couvertRemaining = Math.max(0, (companyProfile.couvertValue || 0) - couvertAlreadyAdvanced);
+
+  const serviceFeePortion = paymentType === 'by_item' && serviceFeeEnabled && includeServiceFee
+    ? Math.round(selectedItemsTotal * serviceFeePct) / 100
+    : 0;
+  const couvertPortion = paymentType === 'by_item' && couvertEnabled && includeCouvert
+    ? couvertRemaining
+    : 0;
+
+  const itemPortion = paymentType === 'by_item' ? selectedItemsTotal : (parseFloat(manualAmount) || 0);
+  const effectivePaymentAmount = itemPortion + serviceFeePortion + couvertPortion;
 
   const toggleItemSelection = (id: string) => {
     setSelectedItemIds((prev) =>
@@ -96,8 +113,8 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
       return;
     }
 
-    if (effectivePaymentAmount > remainingBalance + 0.05) {
-      alert(`O valor (R$ ${effectivePaymentAmount.toFixed(2)}) não pode ser superior ao saldo restante da mesa (R$ ${remainingBalance.toFixed(2)}).`);
+    if (itemPortion > remainingBalance + 0.05) {
+      alert(`O valor de itens (R$ ${itemPortion.toFixed(2)}) não pode ser superior ao saldo restante da mesa (R$ ${remainingBalance.toFixed(2)}).`);
       return;
     }
 
@@ -119,6 +136,8 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
 
     const created = await addPartialPayment(table.id, comandaId, {
       amount: effectivePaymentAmount,
+      serviceFeePortion: serviceFeePortion || undefined,
+      couvertPortion: couvertPortion || undefined,
       paymentMethod: isSplitPayment ? 'multiplo' : singleMethod,
       type: paymentType,
       itemIdsPaid: paymentType === 'by_item' ? selectedItemIds : undefined,
@@ -250,6 +269,38 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Encargos opcionais no adiantamento */}
+                {selectedItemsTotal > 0 && (serviceFeeEnabled || (couvertEnabled && couvertRemaining > 0)) && (
+                  <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 space-y-1.5 text-xs">
+                    <div className="flex justify-between text-stone-600">
+                      <span>Subtotal selecionado:</span>
+                      <strong className="text-stone-900">R$ {selectedItemsTotal.toFixed(2)}</strong>
+                    </div>
+                    {serviceFeeEnabled && (
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="flex items-center gap-2 font-semibold text-stone-700">
+                          <input type="checkbox" checked={includeServiceFee} onChange={(e) => setIncludeServiceFee(e.target.checked)} className="w-4 h-4 accent-amber-800" />
+                          Incluir taxa de serviço ({serviceFeePct}%)
+                        </span>
+                        <span className="font-bold text-stone-700">+ R$ {(Math.round(selectedItemsTotal * serviceFeePct) / 100).toFixed(2)}</span>
+                      </label>
+                    )}
+                    {couvertEnabled && couvertRemaining > 0 && (
+                      <label className="flex items-center justify-between cursor-pointer">
+                        <span className="flex items-center gap-2 font-semibold text-stone-700">
+                          <input type="checkbox" checked={includeCouvert} onChange={(e) => setIncludeCouvert(e.target.checked)} className="w-4 h-4 accent-amber-800" />
+                          Incluir couvert
+                        </span>
+                        <span className="font-bold text-stone-700">+ R$ {couvertRemaining.toFixed(2)}</span>
+                      </label>
+                    )}
+                    <div className="flex justify-between border-t border-stone-200 pt-1.5 font-bold text-emerald-900">
+                      <span>Total do adiantamento:</span>
+                      <span>R$ {effectivePaymentAmount.toFixed(2)}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -435,7 +486,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
               <span className="text-stone-500 font-semibold block">Total a Pagar Agora:</span>
               <strong className="text-amber-900 font-bold text-lg">R$ {effectivePaymentAmount.toFixed(2)}</strong>
               <span className="text-[10px] text-stone-400 block">
-                Novo saldo restante da mesa: R$ {Math.max(0, remainingBalance - effectivePaymentAmount).toFixed(2)}
+                Novo saldo restante da mesa: R$ {Math.max(0, remainingBalance - itemPortion).toFixed(2)}
               </span>
             </div>
 
@@ -475,8 +526,11 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
             waiterName: completedPayment.userName,
             items: completedPayment.paidItemsDetails
               ? completedPayment.paidItemsDetails.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice }))
-              : [{ name: `Adiantamento por Valor (Mesa #${table.number})`, quantity: 1, price: completedPayment.amount }],
-            subtotal: completedPayment.amount,
+              : [{ name: `Adiantamento por Valor (Mesa #${table.number})`, quantity: 1, price: completedPayment.amount - (completedPayment.serviceFeePortion || 0) - (completedPayment.couvertPortion || 0) }],
+            subtotal: completedPayment.amount - (completedPayment.serviceFeePortion || 0) - (completedPayment.couvertPortion || 0),
+            serviceFee: completedPayment.serviceFeePortion || undefined,
+            servicePct: completedPayment.serviceFeePortion ? companyProfile.serviceFeePercent : undefined,
+            couvert: completedPayment.couvertPortion || undefined,
             total: completedPayment.amount,
             type: 'adiantamento_parcial',
             paymentMethod: completedPayment.paymentMethod,

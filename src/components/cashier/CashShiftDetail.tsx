@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabaseClient';
-import { CashMovement, Order } from '../../types';
+import { rowToCamel } from '../../lib/caseMapping';
+import { CashMovement, CashShift, Order } from '../../types';
 import { fetchShiftOrders, computeShiftStats, diffTone, diffToneClasses } from './shiftStats';
 import { CashShiftPrintReport } from './CashShiftPrintReport';
 import { hasPermission } from '../../lib/permissions';
@@ -50,6 +51,10 @@ export const CashShiftDetail: React.FC = () => {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [shiftOrders, setShiftOrders] = useState<Order[]>([]);
+  // Cópia fresca do turno buscada ao abrir a tela — os totais (sales_cash etc.)
+  // vêm de um trigger no servidor e são a peça mais sensível a um evento de
+  // realtime perdido. Aqui a tela de conferência sempre lê o valor do banco.
+  const [dbShift, setDbShift] = useState<CashShift | null>(null);
 
   // Nova Movimentação (entrada/saída)
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
@@ -82,13 +87,15 @@ export const CashShiftDetail: React.FC = () => {
   }, [pinStepOpen]);
 
   const index = cashShiftsHistory.findIndex((s) => s.id === selectedCashShiftId);
-  const shift = index >= 0 ? cashShiftsHistory[index] : null;
   const turno = index >= 0 ? cashShiftsHistory.length - index : null;
+  // Prefere a cópia fresca do banco; cai pro cache do contexto enquanto carrega.
+  const shift = dbShift ?? (index >= 0 ? cashShiftsHistory[index] : null);
 
   useEffect(() => {
     if (!selectedCashShiftId) return;
     let cancelled = false;
     setLoading(true);
+    setDbShift(null);
     supabase
       .from('cash_movements')
       .select('*')
@@ -98,6 +105,14 @@ export const CashShiftDetail: React.FC = () => {
         if (cancelled) return;
         setMovements(data ? data.map(mapMovementRow) : []);
         setLoading(false);
+      });
+    supabase
+      .from('cash_shifts')
+      .select('*')
+      .eq('id', selectedCashShiftId)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled && data) setDbShift(rowToCamel<CashShift>(data));
       });
     fetchShiftOrders(selectedCashShiftId).then((data) => { if (!cancelled) setShiftOrders(data); });
     return () => { cancelled = true; };
@@ -196,6 +211,9 @@ export const CashShiftDetail: React.FC = () => {
     });
     setPinStepOpen(false);
     setIsClosing(false);
+    // Volta a ler o turno do contexto (que recebe o fechamento por realtime),
+    // pra tela refletir o status 'fechado' na hora.
+    setDbShift(null);
   };
 
   const reforcos = movements.filter((m) => m.type === 'reforco');
@@ -419,6 +437,32 @@ export const CashShiftDetail: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Taxa de serviço (garçom) & Couvert */}
+      {((shift.salesServiceFee ?? 0) > 0 || (shift.salesCouvert ?? 0) > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm">
+            <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs uppercase tracking-wide">
+              <Percent className="w-4 h-4" /> Taxa de Serviço (Garçom)
+            </div>
+            <p className="text-2xl font-bold text-amber-900 mt-2">R$ {(shift.salesServiceFee ?? 0).toFixed(2)}</p>
+            <p className="text-[10px] text-stone-500 mt-1">
+              Total dos {companyProfile.serviceFeePercent}% cobrados no turno (a repassar aos garçons)
+            </p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
+            <div className="flex items-center gap-1.5 text-stone-700 font-bold text-xs uppercase tracking-wide">
+              <Ticket className="w-4 h-4" /> Couvert
+            </div>
+            <p className="text-2xl font-bold text-stone-900 mt-2">R$ {(shift.salesCouvert ?? 0).toFixed(2)}</p>
+            <p className="text-[10px] text-stone-500 mt-1">
+              {companyProfile.couvertValue > 0
+                ? `${Math.round((shift.salesCouvert ?? 0) / companyProfile.couvertValue)} couvert(s) × R$ ${companyProfile.couvertValue.toFixed(2)}`
+                : 'Couvert cobrado no turno'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Vendas e pedidos do período */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
@@ -651,6 +695,9 @@ export const CashShiftDetail: React.FC = () => {
                   setMovName('');
                   setMovAmount('');
                   setMovReason('');
+                  // Reforço/sangria mexem nos totais do turno no servidor —
+                  // volta a ler do contexto (realtime) em vez do snapshot local.
+                  setDbShift(null);
                 }
               }}
               disabled={!(Number(movAmount) > 0 && movName.trim())}

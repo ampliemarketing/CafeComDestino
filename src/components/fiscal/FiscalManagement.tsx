@@ -165,7 +165,7 @@ export const FiscalManagement: React.FC = () => {
                     <tr key={o.id} className="hover:bg-stone-50">
                       <td className="p-3 font-bold font-mono text-stone-900">001 / #{o.orderNumber}</td>
                       <td className="p-3 text-stone-600">{o.createdAt}</td>
-                      <td className="p-3 font-mono text-[10px] text-stone-700">{o.nfceKey || '35240512345678000195650010000010011000012341'}</td>
+                      <td className="p-3 font-mono text-[10px] text-stone-700">{o.nfceKey || <span className="text-stone-400 italic font-sans">— sem chave —</span>}</td>
                       <td className="p-3 font-semibold text-stone-800">{o.customer.name}</td>
                       <td className="p-3 text-right font-bold text-amber-800">R$ {o.total.toFixed(2)}</td>
                       <td className="p-3 text-center">
