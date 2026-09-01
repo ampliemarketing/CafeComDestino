@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+.claude
+.vscode
+coverage
+bun.lock
+README.md
+TESTING.md
+SUPABASE_MIGRATIONS.md
