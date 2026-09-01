@@ -284,6 +284,7 @@ interface AppContextType {
       paymentMethod: PaymentMethod | string;
       type: 'by_item' | 'by_amount';
       itemIdsPaid?: string[];
+      paidItemsDetails?: { productName: string; quantity: number; unitPrice: number }[];
       customerName?: string;
       notes?: string;
       splitPayments?: { method: PaymentMethod; amount: number }[];
@@ -926,14 +927,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const comanda = table?.comandas.find((c) => c.id === comandaId);
     if (!table || !comanda) return null;
 
-    const finalSubtotal = comanda.subtotal;
-    // Taxa de serviço / couvert: mesma regra do servidor (close_comanda_and_pay).
+    // Itens já quitados por "adiantamento por produto" (isPaid) não entram no
+    // comprovante final — mesma regra do servidor (close_comanda_and_pay, 0044).
+    const activeItems = comanda.items.filter((it) => it.status !== 'cancelado');
+    const openItems = activeItems.filter((it) => !it.isPaid);
+    const paidItemsValue = activeItems
+      .filter((it) => it.isPaid)
+      .reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+    const openSubtotal = openItems.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+
+    const finalSubtotal = openSubtotal;
+    // Taxa de serviço / couvert: incidem sobre o consumo inteiro (comanda.subtotal),
+    // mesma regra do servidor (close_comanda_and_pay).
     const serviceFee = comandaServiceFee(comanda, companyProfile);
     const couvert = comandaCouvert(comanda, companyProfile);
     const advancesTotal = (comanda.advancePayments || [])
       .filter((p) => p.status === 'ativo')
       .reduce((sum, p) => sum + p.amount, 0);
-    const finalTotal = Math.max(0, finalSubtotal + serviceFee + couvert - advancesTotal - discount);
+    // O que ainda abate do restante: adiantamentos menos o valor dos itens que
+    // já saíram do comprovante (esses já foram descontados ao remover os itens).
+    const advancesForRemaining = Math.max(0, advancesTotal - paidItemsValue);
+    const finalTotal = Math.max(0, finalSubtotal + serviceFee + couvert - advancesForRemaining - discount);
 
     const newOrder: Order = {
       id: newOrderId(),
@@ -941,20 +955,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       channel: 'garcom',
       tableNumber: table.number,
       customer: { name: comanda.personName, phone: '(11) 00000-0000' },
-      // Itens cancelados não entram no pedido: o subtotal/total já os exclui, e
-      // mantê-los aqui inflava a quantidade vendida nos relatórios (dashboard).
-      items: comanda.items
-        .filter((it) => it.status !== 'cancelado')
-        .map((it) => ({
-          id: it.id, productId: it.productId, productName: it.productName, quantity: it.quantity,
-          unitPrice: it.unitPrice, additions: it.additions, notes: it.notes,
-        })),
+      // Itens cancelados não entram no pedido (inflavam a qtd vendida nos
+      // relatórios); itens já pagos em adiantamento também não (já têm o próprio
+      // comprovante). O servidor aplica a mesma exclusão em close_comanda_and_pay.
+      items: openItems.map((it) => ({
+        id: it.id, productId: it.productId, productName: it.productName, quantity: it.quantity,
+        unitPrice: it.unitPrice, additions: it.additions, notes: it.notes,
+      })),
       serviceType: 'consumo_local',
       subtotal: finalSubtotal,
       deliveryFee: 0,
       discount,
       serviceFee,
       couvert,
+      advancePaid: advancesForRemaining || undefined,
       total: finalTotal,
       paymentMethod,
       splitPayments,

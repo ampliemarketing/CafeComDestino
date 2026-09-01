@@ -66,16 +66,17 @@ describe('computeShiftStats', () => {
     });
   });
 
-  it('soma bruto e ticket médio só dos pedidos não cancelados', () => {
+  it('bruto = subtotal + entrega + taxa + couvert (sem tirar desconto nem adiantamento), só dos não cancelados', () => {
     const orders = [
-      order({ id: 'a', total: 100 }),
-      order({ id: 'b', total: 50 }),
-      order({ id: 'c', total: 999, orderStatus: 'cancelado' }),
+      // total já vem líquido de desconto (20) e adiantamento — não deve ser usado.
+      order({ id: 'a', subtotal: 100, couvert: 15, discount: 20, total: 40 }),
+      order({ id: 'b', subtotal: 50, deliveryFee: 6, serviceFee: 5, total: 61 }),
+      order({ id: 'c', subtotal: 999, total: 999, orderStatus: 'cancelado' }),
     ];
     const s = computeShiftStats(orders, [], []);
-    expect(s.totalBruto).toBe(150);
+    expect(s.totalBruto).toBe(176); // a: 100+15 ; b: 50+6+5
     expect(s.numPedidos).toBe(2);
-    expect(s.ticketMedio).toBe(75);
+    expect(s.ticketMedio).toBe(88);
   });
 
   it('contabiliza cancelamentos à parte (qtd e valor)', () => {

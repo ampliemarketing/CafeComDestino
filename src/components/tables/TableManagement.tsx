@@ -99,6 +99,24 @@ export const TableManagement: React.FC = () => {
   const currentActiveTable = activeTable ? tables.find((t) => t.id === activeTable.id) || null : null;
   const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
 
+  // Itens já quitados por "adiantamento por produto" saem da lista de consumo em
+  // aberto (vão para um bloco "Já pagos") e não entram na pré-conta.
+  const openItems = (currentComanda?.items || []).filter((i) => !i.isPaid);
+  const paidItems = (currentComanda?.items || []).filter((i) => i.isPaid);
+  const openItemsSubtotal = openItems
+    .filter((i) => i.status !== 'cancelado')
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const paidItemsValue = paidItems
+    .filter((i) => i.status !== 'cancelado')
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const activeAdvancesTotal = (currentComanda?.advancePayments || [])
+    .filter((p) => p.status === 'ativo')
+    .reduce((sum, p) => sum + p.amount, 0);
+  // Adiantamentos que ainda abatem do restante (os itens já pagos por produto já
+  // saíram do subtotal, então não podem ser descontados de novo).
+  const advancesForRemaining = Math.max(0, activeAdvancesTotal - paidItemsValue);
+  const [showPaidItems, setShowPaidItems] = useState(false);
+
   const handleOpenTableClick = (tb: DiningTable) => {
     setActiveTable(tb);
     setSelectedComandaId(null);
@@ -534,7 +552,7 @@ export const TableManagement: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">
-                Produtos Lançados na Comanda ({currentComanda.items.length})
+                Produtos Lançados na Comanda ({openItems.length})
               </h4>
             </div>
 
@@ -542,26 +560,20 @@ export const TableManagement: React.FC = () => {
               <p className="text-stone-400 text-xs italic py-2">Nenhum item consumido até o momento.</p>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {currentComanda.items.map((it) => (
+                {openItems.length === 0 && (
+                  <p className="text-stone-400 text-xs italic py-2">Todos os itens já foram pagos em adiantamento.</p>
+                )}
+                {openItems.map((it) => (
                   <div
                     key={it.id}
                     className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
-                      it.isPaid
-                        ? 'bg-emerald-50/60 border-emerald-200'
-                        : it.isCourtesy
-                        ? 'bg-amber-50/60 border-amber-200'
-                        : 'bg-stone-50 border-stone-200'
+                      it.isCourtesy ? 'bg-amber-50/60 border-amber-200' : 'bg-stone-50 border-stone-200'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-bold text-stone-900">{it.quantity}x {it.productName}</p>
-                          {it.isPaid && (
-                            <span className="text-[9px] bg-emerald-700 text-white px-2 py-0.5 rounded-full font-bold">
-                              PAGO EM ADIANTAMENTO
-                            </span>
-                          )}
                           {it.isCourtesy && (
                             <span className="text-[9px] bg-amber-800 text-white px-2 py-0.5 rounded-full font-bold">
                               CORTESIA
@@ -576,7 +588,7 @@ export const TableManagement: React.FC = () => {
                       <span className={`font-bold text-xs ${it.isCourtesy ? 'line-through text-stone-400' : 'text-stone-900'}`}>
                         R$ {(it.unitPrice * it.quantity).toFixed(2)}
                       </span>
-                      {!it.isPaid && !it.isCourtesy && can('mesas.cancelar_item') && (
+                      {!it.isCourtesy && can('mesas.cancelar_item') && (
                         <button
                           onClick={() => cancelComandaItem(currentActiveTable.id, currentComanda.id, it.id, 'Cancelado pelo operador')}
                           className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded-lg"
@@ -588,6 +600,29 @@ export const TableManagement: React.FC = () => {
                     </div>
                   </div>
                 ))}
+
+                {paidItems.length > 0 && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowPaidItems((v) => !v)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-bold text-emerald-900"
+                    >
+                      <span>Já pagos em adiantamento ({paidItems.length})</span>
+                      <span>{showPaidItems ? '−' : '+'}</span>
+                    </button>
+                    {showPaidItems && (
+                      <div className="px-3 pb-2.5 space-y-1.5">
+                        {paidItems.map((it) => (
+                          <div key={it.id} className="flex items-center justify-between text-[11px] text-emerald-900/80">
+                            <span>{it.quantity}x {it.productName}</span>
+                            <span className="font-semibold line-through">R$ {(it.unitPrice * it.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1033,12 +1068,13 @@ export const TableManagement: React.FC = () => {
             tableNumber: currentActiveTable.number,
             customerName: currentComanda.personName,
             waiterName: currentComanda.waiterName || currentUser.name,
-            items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
-            subtotal: currentComanda.subtotal,
+            items: openItems.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
+            subtotal: openItemsSubtotal,
             serviceFee: comandaServiceFee(currentComanda, companyProfile) || undefined,
             servicePct: companyProfile.serviceFeePercent,
             couvert: comandaCouvert(currentComanda, companyProfile) || undefined,
-            total: currentComanda.subtotal + comandaServiceFee(currentComanda, companyProfile) + comandaCouvert(currentComanda, companyProfile),
+            advancePaid: advancesForRemaining || undefined,
+            total: Math.max(0, openItemsSubtotal + comandaServiceFee(currentComanda, companyProfile) + comandaCouvert(currentComanda, companyProfile) - advancesForRemaining),
             type: 'pre_conta',
           }}
         />

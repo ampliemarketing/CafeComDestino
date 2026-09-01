@@ -277,6 +277,7 @@ export interface Order {
   shiftId?: string;
   serviceFee?: number; // taxa de serviço (não entra no subtotal de produtos)
   couvert?: number;
+  advancePaid?: number; // total já quitado por adiantamento(s), abatido no fechamento
   discountReason?: string;
   discountAuthorizedBy?: string;
 }

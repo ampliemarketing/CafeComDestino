@@ -44,7 +44,15 @@ export function computeShiftStats(orders: Order[], products: Product[], categori
   const cancelados = orders.filter((o) => o.orderStatus === 'cancelado');
   const comDesconto = orders.filter((o) => o.discount > 0);
 
-  const totalBruto = validOrders.reduce((sum, o) => sum + o.total, 0);
+  // "Bruto" = valor cheio dos pedidos (itens + entrega + taxa de serviço +
+  // couvert), SEM descontar desconto nem adiantamento. Não usar `o.total`: ele
+  // já vem líquido dos adiantamentos ("já pago") e do desconto, então subestima
+  // a venda quando a comanda foi paga em parcelas antes do fechamento.
+  // Depende da migration 0045 — sem ela, `o.subtotal` de comanda com
+  // adiantamento "por produto" vem cortado.
+  const grossOf = (o: Order) =>
+    o.subtotal + (o.deliveryFee || 0) + (o.serviceFee || 0) + (o.couvert || 0);
+  const totalBruto = validOrders.reduce((sum, o) => sum + grossOf(o), 0);
   const numPedidos = validOrders.length;
   const ticketMedio = numPedidos > 0 ? totalBruto / numPedidos : 0;
 

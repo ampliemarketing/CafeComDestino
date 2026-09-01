@@ -134,6 +134,12 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
       finalSplitPayments = parsedSplits;
     }
 
+    const paidItemsDetails = paymentType === 'by_item'
+      ? availableItems
+          .filter((i) => selectedItemIds.includes(i.id))
+          .map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice }))
+      : undefined;
+
     const created = await addPartialPayment(table.id, comandaId, {
       amount: effectivePaymentAmount,
       serviceFeePortion: serviceFeePortion || undefined,
@@ -141,6 +147,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
       paymentMethod: isSplitPayment ? 'multiplo' : singleMethod,
       type: paymentType,
       itemIdsPaid: paymentType === 'by_item' ? selectedItemIds : undefined,
+      paidItemsDetails,
       customerName: customerName.trim() || comanda.personName,
       notes,
       splitPayments: finalSplitPayments,
@@ -524,7 +531,7 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
             tableNumber: table.number,
             customerName: completedPayment.customerName,
             waiterName: completedPayment.userName,
-            items: completedPayment.paidItemsDetails
+            items: completedPayment.paidItemsDetails && completedPayment.paidItemsDetails.length > 0
               ? completedPayment.paidItemsDetails.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice }))
               : [{ name: `Adiantamento por Valor (Mesa #${table.number})`, quantity: 1, price: completedPayment.amount - (completedPayment.serviceFeePortion || 0) - (completedPayment.couvertPortion || 0) }],
             subtotal: completedPayment.amount - (completedPayment.serviceFeePortion || 0) - (completedPayment.couvertPortion || 0),

@@ -24,6 +24,8 @@ interface PrintReceiptModalProps {
     serviceFee?: number;
     servicePct?: number;
     couvert?: number;
+    // Valor já quitado em adiantamento(s) — abatido do total, mostrado como dedução.
+    advancePaid?: number;
     total: number;
     paymentMethod?: string;
     splitPayments?: Array<{ method: string; amount: number }>;
@@ -141,8 +143,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
                   <span>- R$ {receiptData.discount.toFixed(2)}</span>
                 </div>
               ) : null}
+              {receiptData.advancePaid ? (
+                <div className="flex justify-between text-amber-700 font-bold">
+                  <span>ADIANTAMENTO PAGO:</span>
+                  <span>- R$ {receiptData.advancePaid.toFixed(2)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between font-bold text-sm pt-1 text-stone-900 border-t">
-                <span>TOTAL:</span>
+                <span>{receiptData.advancePaid ? 'RESTANTE A PAGAR:' : 'TOTAL:'}</span>
                 <span>R$ {receiptData.total.toFixed(2)}</span>
               </div>
             </div>

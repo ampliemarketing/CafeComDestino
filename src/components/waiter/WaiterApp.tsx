@@ -132,6 +132,21 @@ export const WaiterApp: React.FC = () => {
     ? Math.max(0, currentComandaSubtotalComTaxa - currentComandaAdvancesTotal)
     : 0;
 
+  // Itens já quitados por "adiantamento por produto" saem da lista de consumo em
+  // aberto e vão para um bloco "Já pagos"; também não entram na pré-conta.
+  const currentComandaOpenItems = (currentComanda?.items || []).filter((i) => !i.isPaid);
+  const currentComandaPaidItems = (currentComanda?.items || []).filter((i) => i.isPaid);
+  const currentComandaOpenSubtotal = currentComandaOpenItems
+    .filter((i) => i.status !== 'cancelado')
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const currentComandaPaidItemsValue = currentComandaPaidItems
+    .filter((i) => i.status !== 'cancelado')
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  // Adiantamentos que ainda abatem do restante (os itens já pagos por produto já
+  // saíram do subtotal, então não podem ser descontados de novo).
+  const currentComandaAdvancesForRemaining = Math.max(0, currentComandaAdvancesTotal - currentComandaPaidItemsValue);
+  const [showPaidItems, setShowPaidItems] = useState(false);
+
   const selectedProductCategoryName = selectedProduct
     ? categories.find((cat) => cat.id === selectedProduct.categoryId)?.name
     : undefined;
@@ -596,7 +611,10 @@ export const WaiterApp: React.FC = () => {
               <p className="text-xs text-stone-400 py-6 text-center">Nenhum item lançado ainda.</p>
             ) : (
               <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
-                {currentComanda.items.map((item) => (
+                {currentComandaOpenItems.length === 0 && (
+                  <p className="text-xs text-stone-400 py-4 text-center">Todos os itens já foram pagos em adiantamento.</p>
+                )}
+                {currentComandaOpenItems.map((item) => (
                   <div key={item.id} className="p-3 rounded-xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
                     <div>
                       <p className="font-bold text-stone-900">{item.quantity}x {item.productName}</p>
@@ -617,6 +635,29 @@ export const WaiterApp: React.FC = () => {
                     </div>
                   </div>
                 ))}
+
+                {currentComandaPaidItems.length > 0 && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowPaidItems((v) => !v)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-bold text-emerald-900"
+                    >
+                      <span>Já pagos em adiantamento ({currentComandaPaidItems.length})</span>
+                      <span>{showPaidItems ? '−' : '+'}</span>
+                    </button>
+                    {showPaidItems && (
+                      <div className="px-3 pb-2 space-y-1.5">
+                        {currentComandaPaidItems.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between text-[11px] text-emerald-900/80">
+                            <span>{item.quantity}x {item.productName}</span>
+                            <span className="font-semibold line-through">R$ {(item.unitPrice * item.quantity).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1146,12 +1187,13 @@ export const WaiterApp: React.FC = () => {
             tableNumber: currentActiveTable.number,
             customerName: currentComanda.personName,
             waiterName: currentComanda.waiterName || currentUser.name,
-            items: currentComanda.items.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
-            subtotal: currentComanda.subtotal,
+            items: currentComandaOpenItems.map((i) => ({ name: i.productName, quantity: i.quantity, price: i.unitPrice, notes: i.notes })),
+            subtotal: currentComandaOpenSubtotal,
             serviceFee: currentComandaServiceFee || undefined,
             servicePct: companyProfile.serviceFeePercent,
             couvert: currentComandaCouvert || undefined,
-            total: currentComanda.subtotal + currentComandaServiceFee + currentComandaCouvert,
+            advancePaid: currentComandaAdvancesForRemaining || undefined,
+            total: Math.max(0, currentComandaOpenSubtotal + currentComandaServiceFee + currentComandaCouvert - currentComandaAdvancesForRemaining),
             type: 'pre_conta',
           }}
         />
@@ -1174,6 +1216,7 @@ export const WaiterApp: React.FC = () => {
             servicePct: lastFinalizedOrder.serviceFee ? companyProfile.serviceFeePercent : undefined,
             couvert: lastFinalizedOrder.couvert || undefined,
             discount: lastFinalizedOrder.discount,
+            advancePaid: lastFinalizedOrder.advancePaid,
             total: lastFinalizedOrder.total,
             paymentMethod: lastFinalizedOrder.paymentMethod,
             splitPayments: lastFinalizedOrder.splitPayments,

@@ -55,6 +55,10 @@ export const CashShiftDetail: React.FC = () => {
   // vêm de um trigger no servidor e são a peça mais sensível a um evento de
   // realtime perdido. Aqui a tela de conferência sempre lê o valor do banco.
   const [dbShift, setDbShift] = useState<CashShift | null>(null);
+  // Esperado em espécie calculado pelo servidor (RPC cash_shift_expected_cash) —
+  // é a base que o fechamento usa de verdade. O cálculo local abaixo omite
+  // couvert/taxa recebidos em dinheiro, o que gerava "diferença" fantasma.
+  const [serverExpectedCash, setServerExpectedCash] = useState<number | null>(null);
 
   // Nova Movimentação (entrada/saída)
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
@@ -115,6 +119,12 @@ export const CashShiftDetail: React.FC = () => {
         if (!cancelled && data) setDbShift(rowToCamel<CashShift>(data));
       });
     fetchShiftOrders(selectedCashShiftId).then((data) => { if (!cancelled) setShiftOrders(data); });
+    // Esperado na gaveta pela MESMA conta do servidor (close_cash_shift):
+    // todo dinheiro do livro-caixa, incluindo couvert e taxa de serviço pagos
+    // em espécie — que o cálculo local (base salesCash) não enxerga.
+    setServerExpectedCash(null);
+    supabase.rpc('cash_shift_expected_cash', { p_shift_id: selectedCashShiftId })
+      .then(({ data }) => { if (!cancelled && data != null) setServerExpectedCash(Number(data)); });
     return () => { cancelled = true; };
   }, [selectedCashShiftId]);
 
@@ -137,9 +147,10 @@ export const CashShiftDetail: React.FC = () => {
   const stats = computeShiftStats(shiftOrders, products, categories);
 
   // salesCash é bruto: desconta troco entregue e despesas pagas em dinheiro.
+  // Fallback local (usado enquanto a RPC não respondeu ou em turno sem ledger).
   const liveExpectedTotal = shift.initialFloat + shift.salesCash + shift.additions
     - shift.withdrawals - (shift.cashChangeGiven ?? 0) - (shift.cashExpenses ?? 0);
-  const expectedTotal = isOpen ? liveExpectedTotal : shift.expectedTotal;
+  const expectedTotal = isOpen ? (serverExpectedCash ?? liveExpectedTotal) : shift.expectedTotal;
 
   // Conferência CEGA: os campos começam zerados — o operador conta e digita,
   // a diferença só aparece depois. (Não pré-preencher com o valor do sistema.)
