@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
-import { rowToCamel, toRow } from '../lib/caseMapping';
+import { rowToCamel, toRow, num, numOrNull } from '../lib/caseMapping';
 import { hasPermission } from '../lib/permissions';
 import { comandaServiceFee, comandaCouvert } from '../lib/serviceFee';
 import { LoginScreen } from '../components/auth/LoginScreen';
@@ -74,8 +74,40 @@ const mapDiningTable = (row: any): DiningTable => {
   const base = rowToCamel<DiningTable>(row);
   return { ...base, comandas: base.comandas || [] };
 };
-const mapCashShiftRow = (row: any): CashShift => rowToCamel<CashShift>(row);
-const mapCashMovementRow = (row: any): CashMovement => rowToCamel<CashMovement>(row);
+// Realtime entrega `numeric` como string — coage tudo que a UI soma / .toFixed().
+export const mapCashShiftRow = (row: any): CashShift => {
+  const b = rowToCamel<CashShift>(row);
+  return {
+    ...b,
+    initialFloat: num(b.initialFloat),
+    salesCash: num(b.salesCash),
+    salesCard: num(b.salesCard),
+    salesCredit: num(b.salesCredit),
+    salesDebit: num(b.salesDebit),
+    salesPix: num(b.salesPix),
+    salesMealVoucher: num(b.salesMealVoucher),
+    salesOther: num(b.salesOther),
+    additions: num(b.additions),
+    withdrawals: num(b.withdrawals),
+    expectedTotal: num(b.expectedTotal),
+    salesServiceFee: num(b.salesServiceFee),
+    salesCouvert: num(b.salesCouvert),
+    cashChangeGiven: num(b.cashChangeGiven),
+    cashExpenses: num(b.cashExpenses),
+    goodsOut: num(b.goodsOut),
+    actualTotal: numOrNull(b.actualTotal) ?? undefined,
+    difference: numOrNull(b.difference) ?? undefined,
+    conferredCredit: numOrNull(b.conferredCredit) ?? undefined,
+    conferredDebit: numOrNull(b.conferredDebit) ?? undefined,
+    conferredPix: numOrNull(b.conferredPix) ?? undefined,
+    conferredMealVoucher: numOrNull(b.conferredMealVoucher) ?? undefined,
+    conferredOther: numOrNull(b.conferredOther) ?? undefined,
+  };
+};
+const mapCashMovementRow = (row: any): CashMovement => {
+  const b = rowToCamel<CashMovement>(row);
+  return { ...b, amount: num(b.amount) };
+};
 const mapFinancialEntryRow = (row: any): FinancialEntry => rowToCamel<FinancialEntry>(row);
 const mapLossRow = (row: any): LossRecord => rowToCamel<LossRecord>(row);
 const mapCourtesyRow = (row: any): CourtesyRecord => rowToCamel<CourtesyRecord>(row);

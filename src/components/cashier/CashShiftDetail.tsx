@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp, mapCashShiftRow } from '../../context/AppContext';
 import { supabase } from '../../lib/supabaseClient';
-import { rowToCamel } from '../../lib/caseMapping';
+import { num } from '../../lib/caseMapping';
 import { CashMovement, CashShift, Order } from '../../types';
 import { fetchShiftOrders, computeShiftStats, diffTone, diffToneClasses } from './shiftStats';
 import { CashShiftPrintReport } from './CashShiftPrintReport';
@@ -116,7 +116,7 @@ export const CashShiftDetail: React.FC = () => {
       .eq('id', selectedCashShiftId)
       .single()
       .then(({ data }) => {
-        if (!cancelled && data) setDbShift(rowToCamel<CashShift>(data));
+        if (!cancelled && data) setDbShift(mapCashShiftRow(data));
       });
     fetchShiftOrders(selectedCashShiftId).then((data) => { if (!cancelled) setShiftOrders(data); });
     // Esperado na gaveta pela MESMA conta do servidor (close_cash_shift):
@@ -124,7 +124,7 @@ export const CashShiftDetail: React.FC = () => {
     // em espécie — que o cálculo local (base salesCash) não enxerga.
     setServerExpectedCash(null);
     supabase.rpc('cash_shift_expected_cash', { p_shift_id: selectedCashShiftId })
-      .then(({ data }) => { if (!cancelled && data != null) setServerExpectedCash(Number(data)); });
+      .then(({ data }) => { if (!cancelled && data != null) setServerExpectedCash(num(data)); });
     return () => { cancelled = true; };
   }, [selectedCashShiftId]);
 
