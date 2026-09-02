@@ -83,6 +83,7 @@ export const CashShiftDetail: React.FC = () => {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [pinChecking, setPinChecking] = useState(false);
 
   useEffect(() => {
     if (!pinStepOpen) return;
@@ -199,7 +200,6 @@ export const CashShiftDetail: React.FC = () => {
     setPinStepOpen(true);
   };
 
-  const [pinChecking, setPinChecking] = useState(false);
   const confirmClose = async () => {
     setPinError('');
     setPinChecking(true);
