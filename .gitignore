@@ -6,5 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+# .env* não cobre nomes tipo "zapi.secrets.env" (não começam com .env)
+*.secrets.env
+zapi.secrets.env
 .temp/
 

@@ -245,6 +245,8 @@ export interface Order {
   customer: {
     name: string;
     phone: string;
+    /** Opt-in do cliente (checkout do /pedir) para receber status via WhatsApp. */
+    wantsWhatsappUpdates?: boolean;
     address?: {
       street: string;
       number: string;

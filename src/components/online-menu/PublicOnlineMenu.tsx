@@ -137,6 +137,7 @@ export const PublicOnlineMenu: React.FC = () => {
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [wantsWhatsappUpdates, setWantsWhatsappUpdates] = useState(true);
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -268,6 +269,7 @@ export const PublicOnlineMenu: React.FC = () => {
       customer: {
         name: customerName.trim().slice(0, MAXLEN.personName),
         phone: customerPhone.trim().slice(0, MAXLEN.phone),
+        wantsWhatsappUpdates,
         address: serviceType === 'entrega'
           ? {
               street: street.trim().slice(0, MAXLEN.address),
@@ -322,6 +324,7 @@ export const PublicOnlineMenu: React.FC = () => {
       setConfirmedOrderNumber(null);
       setCustomerName('');
       setCustomerPhone('');
+      setWantsWhatsappUpdates(true);
       setStreet('');
       setNumber('');
       setNeighborhood('');
@@ -713,6 +716,19 @@ export const PublicOnlineMenu: React.FC = () => {
                     <input type="text" inputMode="text" maxLength={MAXLEN.personName} placeholder="Nome completo *" value={customerName} onChange={(e) => setCustomerName(sanitizeText(e.target.value, MAXLEN.personName))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                     <input type="tel" inputMode="tel" maxLength={MAXLEN.phone} placeholder="WhatsApp / Telefone com DDD *" value={customerPhone} onChange={(e) => setCustomerPhone(maskPhone(e.target.value))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                   </div>
+
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={wantsWhatsappUpdates}
+                      onChange={(e) => setWantsWhatsappUpdates(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-emerald-600 shrink-0"
+                    />
+                    <span className="text-[11px] leading-snug text-stone-600">
+                      Quero acompanhar meu pedido pelo <strong>WhatsApp</strong> — receber aviso de
+                      confirmação, preparo, pronto e saída para entrega no número informado acima.
+                    </span>
+                  </label>
 
                   {serviceType === 'entrega' && (
                     <div className="space-y-2 pt-2">
