@@ -10,11 +10,14 @@ import {
   X,
   FileText,
   Sparkles,
-  Trash2
+  Trash2,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { Product, ProductAddition, Category, SaleUnit } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber, maskNCM, isValidNCM, isValidImageUrl } from '../../lib/validation';
+import { uploadProductImage } from '../../lib/storage';
 
 export const ProductManagement: React.FC = () => {
   const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
@@ -27,6 +30,23 @@ export const ProductManagement: React.FC = () => {
   // Product Form Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const url = await uploadProductImage(file);
+      setEditingProduct((prev) => (prev ? { ...prev, imageUrl: url } : prev));
+      addToast('success', 'Imagem enviada', 'A foto do produto foi carregada.');
+    } catch (err) {
+      addToast('error', 'Erro na imagem', err instanceof Error ? err.message : 'Falha ao enviar a imagem.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   // Category Modal (create or edit)
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -428,15 +448,47 @@ export const ProductManagement: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-semibold text-stone-700 block mb-1">URL da Imagem</label>
-                <input
-                  type="url"
-                  maxLength={MAXLEN.url}
-                  placeholder="https://..."
-                  value={editingProduct.imageUrl || ''}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value.slice(0, MAXLEN.url) })}
-                  className="w-full border rounded-xl p-2.5"
-                />
+                <label className="font-semibold text-stone-700 block mb-1">Imagem do Produto</label>
+                <div className="flex items-start gap-3">
+                  <div className="w-20 h-20 rounded-xl border border-stone-200 bg-stone-50 overflow-hidden shrink-0 flex items-center justify-center">
+                    {editingProduct.imageUrl
+                      ? <img src={editingProduct.imageUrl} alt="" className="w-full h-full object-cover" />
+                      : <Package className="w-6 h-6 text-stone-300" />}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition ${
+                      uploadingImage ? 'bg-stone-100 text-stone-400 border-stone-200' : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
+                    }`}>
+                      {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      <span>{uploadingImage ? 'Enviando...' : 'Enviar foto'}</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={uploadingImage}
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="url"
+                      maxLength={MAXLEN.url}
+                      placeholder="ou cole um link https://..."
+                      value={editingProduct.imageUrl || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value.slice(0, MAXLEN.url) })}
+                      className="w-full border rounded-xl p-2.5 text-xs"
+                    />
+                    {editingProduct.imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingProduct({ ...editingProduct, imageUrl: '' })}
+                        className="text-[11px] font-semibold text-rose-600 hover:text-rose-800"
+                      >
+                        Remover imagem
+                      </button>
+                    )}
+                    <p className="text-[10px] text-stone-400">JPG, PNG, WEBP ou GIF até 512 KB. A foto vai pro Storage e o produto guarda só o link.</p>
+                  </div>
+                </div>
               </div>
 
               <div>

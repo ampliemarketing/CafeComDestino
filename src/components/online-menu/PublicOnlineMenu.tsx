@@ -370,8 +370,12 @@ export const PublicOnlineMenu: React.FC = () => {
 
       <div className="max-w-[1240px] mx-auto pb-[110px]">
         {/* Header da loja */}
-        <header className="bg-[linear-gradient(180deg,#241a12_0%,#100a06_100%)] text-[#f6efe4] px-[22px] pt-[26px] pb-[30px] rounded-b-[26px]">
-          <div className="max-w-[1140px] mx-auto flex flex-wrap items-center justify-between gap-[18px]">
+        <header className="relative overflow-hidden bg-[linear-gradient(180deg,#241a12_0%,#100a06_100%)] text-[#f6efe4] px-[22px] pt-[26px] pb-[30px] rounded-b-[26px]">
+          {companyProfile.coverUrl && (
+            <img src={companyProfile.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+          )}
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(36,26,18,0.72)_0%,rgba(16,10,6,0.93)_100%)]" />
+          <div className="relative max-w-[1140px] mx-auto flex flex-wrap items-center justify-between gap-[18px]">
             <div className="flex items-center gap-4 min-w-[280px]">
               <div className="w-[74px] h-[74px] rounded-[20px] shrink-0 overflow-hidden border-2 border-[#9c4a17] bg-[#1b120b]">
                 {companyProfile.logoUrl && (

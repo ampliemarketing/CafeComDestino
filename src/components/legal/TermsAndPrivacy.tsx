@@ -21,7 +21,7 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 );
 
 export const TermsAndPrivacy: React.FC<TermsAndPrivacyProps> = ({ company }) => {
-  const companyName = company?.name || '[Razão Social / Nome Fantasia do restaurante]';
+  const companyName = company?.name || 'Café com destino';
   const cnpj = company?.cnpj || '[CNPJ]';
   const address = company?.address || '[Endereço completo do estabelecimento]';
   const phone = company?.phone || '[Telefone de contato]';

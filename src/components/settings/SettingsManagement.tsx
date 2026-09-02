@@ -14,12 +14,14 @@ import {
   Upload,
   Image,
   Camera,
-  Globe
+  Globe,
+  Loader2
 } from 'lucide-react';
 import { User } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { UserFormModal } from './UserFormModal';
-import { MAXLEN, sanitizeText, maskPhone, toBoundedNumber, validateImageFile } from '../../lib/validation';
+import { MAXLEN, sanitizeText, maskPhone, toBoundedNumber } from '../../lib/validation';
+import { uploadCompanyAsset } from '../../lib/storage';
 
 interface SettingsManagementProps {
   initialTab?: 'profile' | 'users' | 'printers';
@@ -71,45 +73,41 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const [discGerenteInput, setDiscGerenteInput] = useState<number>(companyProfile.discountLimits?.gerente ?? 20);
   const [discFinanceiroInput, setDiscFinanceiroInput] = useState<number>(companyProfile.discountLimits?.financeiro ?? 10);
 
-  // File upload handlers
-  const readImageInto = (
+  // File upload handlers — a imagem vai pro Supabase Storage e o cadastro guarda
+  // só a URL pública (curta). Base64 embutido não cabe no limite de 2048 chars
+  // das colunas logo_url / cover_url.
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  const uploadInto = async (
     file: File,
     setter: (v: string) => void,
+    setBusy: (b: boolean) => void,
     successTitle: string,
     successMsg: string,
   ) => {
-    const problem = validateImageFile(file);
-    if (problem) {
-      addToast('error', 'Imagem inválida', problem);
-      return;
+    setBusy(true);
+    try {
+      const url = await uploadCompanyAsset(file);
+      setter(url);
+      addToast('success', successTitle, successMsg);
+    } catch (err) {
+      addToast('error', 'Erro na imagem', err instanceof Error ? err.message : 'Falha ao enviar a imagem.');
+    } finally {
+      setBusy(false);
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        // A imagem é embutida como data URI. O banco limita a URL a 2048 chars
-        // (constraint company_profile_*_url_len), então arquivo grande não cabe.
-        if (reader.result.length > MAXLEN.url) {
-          addToast('error', 'Imagem grande demais',
-            'O arquivo não cabe no cadastro. Hospede a imagem em algum lugar e cole o link (URL) no campo, ou use um dos modelos.');
-          return;
-        }
-        setter(reader.result);
-        addToast('success', successTitle, successMsg);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) readImageInto(file, setLogoUrlInput, 'Foto de Perfil Carregada', 'A nova foto de perfil foi selecionada.');
     e.target.value = '';
+    if (file) void uploadInto(file, setLogoUrlInput, setUploadingLogo, 'Foto de Perfil Carregada', 'A nova foto de perfil foi enviada.');
   };
 
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) readImageInto(file, setCoverUrlInput, 'Banner de Capa Carregado', 'O novo banner de fundo foi selecionado.');
     e.target.value = '';
+    if (file) void uploadInto(file, setCoverUrlInput, setUploadingCover, 'Banner de Capa Carregado', 'O novo banner de fundo foi enviado.');
   };
 
   return (
@@ -275,35 +273,19 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                         placeholder="Link da imagem (URL) ou escolha um arquivo..."
                         className="w-full border rounded-xl p-2 font-mono text-[11px]"
                       />
-                      <label className="px-3 py-2 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded-xl cursor-pointer font-bold text-stone-700 flex items-center gap-1.5 shrink-0 transition">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Arquivo</span>
+                      <label className={`px-3 py-2 border rounded-xl font-bold flex items-center gap-1.5 shrink-0 transition ${
+                        uploadingLogo ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-wait' : 'bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-700 cursor-pointer'
+                      }`}>
+                        {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        <span>{uploadingLogo ? 'Enviando...' : 'Arquivo'}</span>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          disabled={uploadingLogo}
                           onChange={handleLogoUpload}
                           className="hidden"
                         />
                       </label>
-                    </div>
-
-                    {/* Presets for Logo */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] text-stone-400 font-semibold">Sugestões:</span>
-                      {[
-                        { label: 'Café & Coa', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=300&q=80' },
-                        { label: 'Gourmet', url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=300&q=80' },
-                        { label: 'Buffet', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=300&q=80' },
-                      ].map((preset, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setLogoUrlInput(preset.url)}
-                          className="px-2 py-0.5 bg-stone-100 hover:bg-amber-100 hover:text-amber-900 rounded-md text-[10px] text-stone-600 border transition font-medium"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -336,36 +318,19 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       placeholder="Link do banner de capa (URL)..."
                       className="w-full border rounded-xl p-2 font-mono text-[11px]"
                     />
-                    <label className="px-3 py-2 bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded-xl cursor-pointer font-bold text-stone-700 flex items-center gap-1.5 shrink-0 transition">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Arquivo</span>
+                    <label className={`px-3 py-2 border rounded-xl font-bold flex items-center gap-1.5 shrink-0 transition ${
+                      uploadingCover ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-wait' : 'bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-700 cursor-pointer'
+                    }`}>
+                      {uploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>{uploadingCover ? 'Enviando...' : 'Arquivo'}</span>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        disabled={uploadingCover}
                         onChange={handleCoverUpload}
                         className="hidden"
                       />
                     </label>
-                  </div>
-
-                  {/* Presets for Cover */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-stone-400 font-semibold">Galeria de Capas:</span>
-                    {[
-                      { label: 'Cafeteria Aconchegante', url: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1200&q=80' },
-                      { label: 'Buffet & Saladas', url: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80' },
-                      { label: 'Churrasco & Grelhados', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80' },
-                      { label: 'Bistrô Elegante', url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80' },
-                    ].map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setCoverUrlInput(preset.url)}
-                        className="px-2 py-1 bg-stone-100 hover:bg-amber-100 hover:text-amber-900 rounded-lg text-[10px] text-stone-700 border transition font-medium"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
               </div>

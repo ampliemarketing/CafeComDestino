@@ -249,11 +249,13 @@ export const OnlineMenuCatalog: React.FC = () => {
 
         <div className="absolute bottom-4 left-4 right-4 max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-white">
           <div className="flex items-center gap-4">
-            <img
-              src={companyProfile.logoUrl}
-              alt="Logo"
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white/80 object-cover shadow-lg shrink-0"
-            />
+            {companyProfile.logoUrl && (
+              <img
+                src={companyProfile.logoUrl}
+                alt="Logo"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white/80 object-cover shadow-lg shrink-0"
+              />
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{companyProfile.tradeName}</h1>
