@@ -113,6 +113,15 @@ create table sale_units (
   abbreviation text not null
 );
 
+-- Grupos Tributários: dados fiscais reutilizáveis vinculáveis a produtos.
+create table tax_groups (
+  id text primary key,
+  name text not null,
+  description text,
+  active boolean not null default true,
+  fiscal jsonb not null default '{}'::jsonb
+);
+
 create table products (
   id text primary key,
   code text not null default '',
@@ -131,7 +140,8 @@ create table products (
   stock_quantity numeric(10,3) not null default 0,
   min_stock numeric(10,3) not null default 0,
   additions jsonb not null default '[]'::jsonb,
-  fiscal jsonb not null default '{}'::jsonb
+  fiscal jsonb not null default '{}'::jsonb,
+  tax_group_id text references tax_groups(id) on delete set null
 );
 
 create table technical_sheets (
@@ -248,6 +258,7 @@ alter table categories enable row level security;
 alter table ingredient_categories enable row level security;
 alter table suppliers enable row level security;
 alter table sale_units enable row level security;
+alter table tax_groups enable row level security;
 alter table ingredients enable row level security;
 alter table products enable row level security;
 alter table technical_sheets enable row level security;
@@ -267,6 +278,7 @@ create policy "authenticated_all_categories" on categories for all using (auth.r
 create policy "authenticated_all_ingredient_categories" on ingredient_categories for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_suppliers" on suppliers for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_sale_units" on sale_units for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "authenticated_all_tax_groups" on tax_groups for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_ingredients" on ingredients for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_products" on products for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "authenticated_all_technical_sheets" on technical_sheets for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -279,7 +291,7 @@ create policy "authenticated_all_cash_movements" on cash_movements for all using
 -- ----------------------------------------------------------------------------
 -- 5. Realtime — cozinha/garçom/caixa recebem mudanças ao vivo
 -- ----------------------------------------------------------------------------
-alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements, table_sectors, suppliers;
+alter publication supabase_realtime add table dining_tables, orders, products, categories, ingredient_categories, ingredients, cash_shifts, cash_movements, table_sectors, suppliers, tax_groups;
 
 -- ----------------------------------------------------------------------------
 -- 6. Funções RPC transacionais para os fluxos financeiros críticos

@@ -131,12 +131,12 @@ begin
   select value into v_url    from integration_settings where key = 'notify_whatsapp_url';
   select value into v_secret from integration_settings where key = 'notify_whatsapp_secret';
 
-  -- (a) esse evento deve gerar mensagem?
+  -- (a) esse evento deve gerar mensagem? Só recebido, em preparo e saiu p/ entrega.
   if tg_op = 'INSERT' then
     v_should := (v_status = 'novo');
   elsif tg_op = 'UPDATE' then
     v_should := (new.order_status is distinct from old.order_status)
-                and v_status in ('aceito', 'em_preparo', 'pronto', 'saiu_entrega', 'cancelado');
+                and v_status in ('em_preparo', 'saiu_entrega');
   end if;
   if not v_should then
     return new;

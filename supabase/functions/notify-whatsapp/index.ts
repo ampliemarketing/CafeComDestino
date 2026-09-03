@@ -40,6 +40,15 @@ interface Payload {
   customer_name?: string | null;
   service_type?: string | null;
   driver_name?: string | null;
+  tracking_token?: string | null;
+  base_url?: string | null;
+}
+
+// Link "Acompanhe seu pedido" — só quando temos token e base URL configurada.
+function trackingLine(p: Payload): string {
+  const base = (p.base_url ?? '').replace(/\/+$/, '');
+  if (!base || !p.tracking_token) return '';
+  return `\n\n📍 Acompanhe seu pedido: ${base}/acompanhar?t=${p.tracking_token}`;
 }
 
 const firstName = (name?: string | null) => (name ?? '').trim().split(/\s+/)[0] || 'tudo bem';
@@ -55,23 +64,24 @@ function normalizePhone(raw: string): string | null {
 function buildMessage(p: Payload, restaurant: string): string {
   const n = p.order_number ?? '';
   const isDelivery = p.service_type === 'entrega';
+  const link = trackingLine(p);
   switch (p.status) {
     case 'novo':
-      return `Olá, ${firstName(p.customer_name)}! 👋\n\nRecebemos seu pedido *#${n}* na *${restaurant}* e ele já está na fila. Vamos te avisar por aqui a cada etapa. ☕`;
+      return `Olá, ${firstName(p.customer_name)}! 👋\n\nRecebemos seu pedido *#${n}* na *${restaurant}* e ele já está na fila. Vamos te avisar por aqui a cada etapa. ☕${link}`;
     case 'aceito':
-      return `Pedido *#${n}* confirmado! ✅\n\nJá foi pra cozinha — em instantes começamos o preparo.`;
+      return `Pedido *#${n}* confirmado! ✅\n\nJá foi pra cozinha — em instantes começamos o preparo.${link}`;
     case 'em_preparo':
-      return `Seu pedido *#${n}* está *em preparo* agora. 👨‍🍳🔥\n\nJá já fica pronto!`;
+      return `Seu pedido *#${n}* está *em preparo* agora. 👨‍🍳🔥\n\nJá já fica pronto!${link}`;
     case 'pronto':
-      return isDelivery
+      return (isDelivery
         ? `Pedido *#${n}* *pronto*! 📦\n\nJá vamos despachar pra entrega.`
-        : `Pedido *#${n}* *pronto* para retirada no balcão! 🎉`;
+        : `Pedido *#${n}* *pronto* para retirada no balcão! 🎉`) + link;
     case 'saiu_entrega':
-      return `Seu pedido *#${n}* *saiu para entrega*! 🛵💨${p.driver_name ? `\n\nEntregador: *${p.driver_name}*` : ''}\n\nJá está a caminho.`;
+      return `Seu pedido *#${n}* *saiu para entrega*! 🛵💨${p.driver_name ? `\n\nEntregador: *${p.driver_name}*` : ''}\n\nJá está a caminho.${link}`;
     case 'cancelado':
       return `Seu pedido *#${n}* foi *cancelado*.\n\nSe tiver qualquer dúvida, é só responder esta mensagem. 🙏`;
     default:
-      return `Atualização do seu pedido *#${n}*: ${p.status}`;
+      return `Atualização do seu pedido *#${n}*: ${p.status}${link}`;
   }
 }
 

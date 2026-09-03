@@ -12,6 +12,7 @@ import {
   IngredientCategory,
   TableSector,
   SaleUnit,
+  TaxGroup,
   Product,
   Ingredient,
   DiningTable,
@@ -30,7 +31,6 @@ import {
   CourtesyReason,
   PartialPayment,
   Printer,
-  DeliveryDriver,
   AuditLog,
   TableItem,
   OrderItem,
@@ -68,6 +68,7 @@ const mapSupplier = (row: any): Supplier => {
 };
 const mapTableSector = (row: any): TableSector => rowToCamel<TableSector>(row);
 const mapSaleUnit = (row: any): SaleUnit => rowToCamel<SaleUnit>(row);
+const mapTaxGroup = (row: any): TaxGroup => rowToCamel<TaxGroup>(row);
 const mapIngredient = (row: any): Ingredient => rowToCamel<Ingredient>(row);
 const mapProduct = (row: any): Product => rowToCamel<Product>(row);
 const mapDiningTable = (row: any): DiningTable => {
@@ -112,7 +113,6 @@ const mapFinancialEntryRow = (row: any): FinancialEntry => rowToCamel<FinancialE
 const mapLossRow = (row: any): LossRecord => rowToCamel<LossRecord>(row);
 const mapCourtesyRow = (row: any): CourtesyRecord => rowToCamel<CourtesyRecord>(row);
 const mapPrinterRow = (row: any): Printer => rowToCamel<Printer>(row);
-const mapDeliveryDriverRow = (row: any): DeliveryDriver => rowToCamel<DeliveryDriver>(row);
 const mapAuditRow = (row: any): AuditLog => ({
   id: row.id,
   userName: row.actor_name || 'Sistema',
@@ -262,6 +262,7 @@ interface AppContextType {
   ingredientCategories: IngredientCategory[];
   tableSectors: TableSector[];
   saleUnits: SaleUnit[];
+  taxGroups: TaxGroup[];
   products: Product[];
   ingredients: Ingredient[];
   tables: DiningTable[];
@@ -277,8 +278,6 @@ interface AppContextType {
   courtesyRecords: CourtesyRecord[];
   printers: Printer[];
   setPrinters: React.Dispatch<React.SetStateAction<Printer[]>>;
-  deliveryDrivers: DeliveryDriver[];
-  setDeliveryDrivers: React.Dispatch<React.SetStateAction<DeliveryDriver[]>>;
   auditLogs: AuditLog[];
   toasts: Toast[];
   connectionOnline: boolean;
@@ -324,7 +323,7 @@ interface AppContextType {
   ) => Promise<PartialPayment | null>;
   cancelPartialPayment: (tableId: string, comandaId: string, paymentId: string, reason: string) => Promise<void>;
 
-  updateOrderStatus: (orderId: string, status: OrderStatus, driverName?: string) => Promise<void>;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   updatePaymentStatus: (orderId: string, status: PaymentStatus) => Promise<void>;
 
   createOnlineOrder: (orderData: Partial<Order>) => Promise<Order>;
@@ -355,6 +354,8 @@ interface AppContextType {
   saveTableSector: (sector: TableSector) => Promise<void>;
   deleteTableSector: (sectorId: string) => Promise<void>;
   saveSaleUnit: (saleUnit: SaleUnit) => Promise<void>;
+  saveTaxGroup: (group: TaxGroup) => Promise<void>;
+  deleteTaxGroup: (groupId: string) => Promise<{ error?: string }>;
   saveProduct: (product: Product) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
 
@@ -388,7 +389,6 @@ interface AppContextType {
   }) => Promise<void>;
 
   issueNfce: (orderId: string) => Promise<string>;
-  dispatchWhatsApp: (orderId: string, driverName: string) => Promise<string>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -522,7 +522,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lossRecords] = useSupabaseCollection<LossRecord>('loss_records', session, mapLossRow, 'id', 'created_at', 500);
   const [courtesyRecords] = useSupabaseCollection<CourtesyRecord>('courtesy_records', session, mapCourtesyRow, 'id', 'created_at', 500);
   const [printers, setPrinters] = useSupabaseCollection<Printer>('printers', session, mapPrinterRow, 'id');
-  const [deliveryDrivers, setDeliveryDrivers] = useSupabaseCollection<DeliveryDriver>('delivery_drivers', session, mapDeliveryDriverRow, 'id');
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -535,6 +534,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [suppliers] = useSupabaseCollection<Supplier>('suppliers', session, mapSupplier, 'id');
   const [tableSectors] = useSupabaseCollection<TableSector>('table_sectors', session, mapTableSector, 'id');
   const [saleUnits] = useSupabaseCollection<SaleUnit>('sale_units', session, mapSaleUnit, 'id');
+  const [taxGroups] = useSupabaseCollection<TaxGroup>('tax_groups', session, mapTaxGroup, 'id');
   // As coleções operacionais recebem refreshNonce: ao reconectar, re-buscam do
   // servidor pra recuperar o que mudou durante o offline.
   const [ingredients] = useSupabaseCollection<Ingredient>('ingredients', session, mapIngredient, 'id', undefined, undefined, refreshNonce);
@@ -1080,7 +1080,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ---- Kitchen & Delivery Order Flow ----
-  const updateOrderStatus = async (orderId: string, status: OrderStatus, driverName?: string) => {
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     const order = orders.find((o) => o.id === orderId);
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -1088,7 +1088,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .from('orders')
       .update({
         order_status: status,
-        delivery_driver_name: driverName || order?.deliveryDriverName || null,
         updated_at: new Date().toISOString(),
         prepared_at: status === 'pronto' ? nowStr : order?.preparedAt || null,
         delivered_at: status === 'concluido' ? nowStr : order?.deliveredAt || null,
@@ -1365,6 +1364,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Cadastro de Unidade de Venda', 'Produtos', `Unidade: ${saleUnit.name} (${saleUnit.abbreviation})`);
   };
 
+  // ---- Grupos Tributários ----
+  const saveTaxGroup = async (group: TaxGroup) => {
+    const { error } = await supabase.from('tax_groups').upsert(toRow(group));
+    if (error) { addToast('error', 'Erro ao salvar grupo tributário', error.message); return; }
+    addToast('success', 'Grupo tributário salvo', group.name);
+    logAudit('Cadastro de Grupo Tributário', 'Fiscal', `Grupo: ${group.name}`);
+  };
+
+  const deleteTaxGroup = async (groupId: string): Promise<{ error?: string }> => {
+    const linked = products.filter((p) => p.taxGroupId === groupId);
+    if (linked.length > 0) {
+      const msg = `${linked.length} produto(s) ainda usam este grupo. Desvincule-os antes de excluir.`;
+      addToast('error', 'Grupo em uso', msg);
+      return { error: msg };
+    }
+    const { error } = await supabase.from('tax_groups').delete().eq('id', groupId);
+    if (error) { addToast('error', 'Erro ao remover grupo tributário', error.message); return { error: error.message }; }
+    addToast('warning', 'Grupo tributário removido');
+    logAudit('Exclusão de Grupo Tributário', 'Fiscal', `ID do grupo: ${groupId}`);
+    return {};
+  };
+
   // ---- Product CRUD ----
   const saveProduct = async (product: Product) => {
     const { error } = await supabase.from('products').upsert(toRow(product));
@@ -1548,29 +1569,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return key;
   };
 
-  // ---- WhatsApp Driver Dispatch message generator ----
-  const dispatchWhatsApp = async (orderId: string, driverName: string): Promise<string> => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) return '';
-
-    const itemsText = order.items.map((i) => `• ${i.quantity}x ${i.productName}`).join('\n');
-    const msg = `🛵 *${companyProfile.name.toUpperCase()} - NOVO PEDIDO PARA ENTREGA*\n\n` +
-      `📦 *Pedido:* #${order.orderNumber}\n` +
-      `👤 *Cliente:* ${order.customer.name}\n` +
-      `📞 *Telefone:* ${order.customer.phone}\n` +
-      `📍 *Endereço:* ${order.customer.address?.street}, ${order.customer.address?.number} - ${order.customer.address?.neighborhood}\n` +
-      `🧭 *Ref:* ${order.customer.address?.reference || 'Sem referência'}\n\n` +
-      `🛒 *Itens:*\n${itemsText}\n\n` +
-      `💰 *Valor Total:* R$ ${order.total.toFixed(2)}\n` +
-      `💳 *Pagamento:* ${order.paymentMethod.toUpperCase()} (${order.paymentStatus === 'pagamento_aprovado' ? 'PAGO ONLINE ✅' : 'COBRAR NA ENTREGA ⚠️'})\n\n` +
-      `👨‍✈️ *Entregador Responsável:* ${driverName}\n` +
-      `🗺️ *Google Maps:* https://maps.google.com/?q=${encodeURIComponent(`${order.customer.address?.street}, ${order.customer.address?.number}`)}`;
-
-    await updateOrderStatus(orderId, 'saiu_entrega', driverName);
-    addToast('success', 'Mensagem WhatsApp Gerada', `Notificação enviada para ${driverName}`);
-    return msg;
-  };
-
   if (!sessionChecked || (session && authLoading)) {
     return (
       <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
@@ -1596,6 +1594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ingredientCategories,
         tableSectors,
         saleUnits,
+        taxGroups,
         products,
         ingredients,
         tables,
@@ -1613,8 +1612,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courtesyRecords,
         printers,
         setPrinters,
-        deliveryDrivers,
-        setDeliveryDrivers,
         auditLogs,
         toasts,
         connectionOnline,
@@ -1654,6 +1651,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveTableSector,
         deleteTableSector,
         saveSaleUnit,
+        saveTaxGroup,
+        deleteTaxGroup,
         saveProduct,
         deleteProduct,
         saveIngredient,
@@ -1663,7 +1662,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordLoss,
         recordCourtesy,
         issueNfce,
-        dispatchWhatsApp,
       }}
     >
       {children}

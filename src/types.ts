@@ -110,6 +110,58 @@ export interface ProductAddition {
   price: number;
 }
 
+/**
+ * Dados fiscais de um item para emissão de NFC-e / NF-e (via emissor externo:
+ * PlugNotas, Focus NFe, NFe.io, etc.). Mesma estrutura usada no produto e no
+ * Grupo Tributário — o produto vinculado a um grupo herda estes campos e não
+ * pode editá-los direto no cadastro (ver src/lib/fiscal.ts::resolveProductFiscal).
+ */
+export interface FiscalData {
+  // Classificação
+  origem: string;        // * Origem da mercadoria (0-8)
+  ncm: string;           // * NCM 8 dígitos (0000.00.00)
+  cest?: string;         // CEST 7 dígitos — obrigatório p/ produto em Substituição Tributária
+  cfop: string;          // * CFOP padrão de saída (ex: 5102); o PDV ajusta p/ interestadual
+  gtin?: string;         // GTIN/EAN; vazio = "SEM GTIN" no XML
+  unidadeTributavel?: string; // unidade tributável, se diferente da comercial
+
+  // ICMS
+  cstCsosn: string;      // * CSOSN (Simples Nacional) ou CST de ICMS (regime normal)
+  aliqIcms?: number;     // alíquota de ICMS (%) quando tributado
+  temSt?: boolean;       // produto sujeito a Substituição Tributária
+  aliqFcp?: number;      // Fundo de Combate à Pobreza (%) — alguns estados/produtos
+
+  // PIS / COFINS
+  cstPis: string;        // * CST de PIS
+  aliqPis: number;       // * alíquota de PIS (%)
+  cstCofins: string;     // * CST de COFINS
+  aliqCofins: number;    // * alíquota de COFINS (%)
+
+  // IPI (indústria/importador — normalmente não se aplica a bar/café)
+  cstIpi?: string;
+  aliqIpi?: number;
+  codEnquadramentoIpi?: string;
+
+  // Outros
+  cBenef?: string;       // código de benefício fiscal (exigido em alguns estados)
+  infAdicional?: string; // informação adicional / mensagem fiscal do item
+
+  // Legado (mantido p/ compatibilidade com linhas antigas)
+  taxPercentage?: number;
+}
+
+/**
+ * Grupo Tributário: conjunto reutilizável de dados fiscais. O usuário cria os
+ * grupos que quiser em Fiscal ▸ Grupos Tributários e vincula produtos a eles.
+ */
+export interface TaxGroup {
+  id: string;
+  name: string;
+  description?: string;
+  active: boolean;
+  fiscal: FiscalData;
+}
+
 export interface Product {
   id: string;
   code: string;
@@ -128,14 +180,10 @@ export interface Product {
   stockQuantity: number;
   minStock: number;
   additions?: ProductAddition[];
-  // Fiscal fields
-  fiscal: {
-    ncm: string;
-    cfop: string;
-    cest?: string;
-    cstCsosn: string;
-    taxPercentage: number;
-  };
+  /** Quando preenchido, os dados fiscais vêm do grupo e `fiscal` é só um espelho. */
+  taxGroupId?: string;
+  // Fiscal fields (espelho do grupo quando `taxGroupId` está preenchido)
+  fiscal: FiscalData;
 }
 
 export interface Ingredient {
@@ -247,6 +295,8 @@ export interface Order {
     phone: string;
     /** Opt-in do cliente (checkout do /pedir) para receber status via WhatsApp. */
     wantsWhatsappUpdates?: boolean;
+    /** Token aleatório (UUID) para a página pública de acompanhamento /acompanhar?t=. */
+    trackingToken?: string;
     address?: {
       street: string;
       number: string;
@@ -459,16 +509,6 @@ export interface Printer {
   paperWidth: '58mm' | '80mm';
   autoPrint: boolean;
   status: 'online' | 'offline';
-}
-
-export interface DeliveryDriver {
-  id: string;
-  name: string;
-  phone: string;
-  vehicle: string;
-  plate: string;
-  active: boolean;
-  currentDeliveries: number;
 }
 
 export interface AuditLog {

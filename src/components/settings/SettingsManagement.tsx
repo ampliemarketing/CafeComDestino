@@ -22,6 +22,8 @@ import { hasPermission } from '../../lib/permissions';
 import { UserFormModal } from './UserFormModal';
 import { MAXLEN, sanitizeText, maskPhone, toBoundedNumber } from '../../lib/validation';
 import { uploadCompanyAsset } from '../../lib/storage';
+import { isAutoPrintDeliveryEnabled, setAutoPrintDeliveryEnabled } from '../../lib/autoPrint';
+import { buildReceiptHtml, printReceiptHtml, ReceiptData } from '../../lib/printReceipt';
 
 interface SettingsManagementProps {
   initialTab?: 'profile' | 'users' | 'printers';
@@ -32,6 +34,28 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
 
   const [activeTab, setActiveTab] = useState<'profile' | 'users' | 'printers'>(initialTab);
   const [userModalTarget, setUserModalTarget] = useState<User | 'new' | null>(null);
+  const [autoPrintDelivery, setAutoPrintDelivery] = useState(isAutoPrintDeliveryEnabled());
+
+  const handleTestPrint = () => {
+    const sample: ReceiptData = {
+      orderNumber: 9999,
+      customerName: 'CLIENTE TESTE',
+      customerPhone: '(00) 00000-0000',
+      deliveryAddress: 'Rua de Teste, 123 - Centro',
+      items: [
+        { name: 'Cafe Coado 300ml', quantity: 2, price: 8.5 },
+        { name: 'Pao de Queijo (un)', quantity: 3, price: 4 },
+      ],
+      subtotal: 29,
+      deliveryFee: 6,
+      total: 35,
+      paymentMethod: 'pix',
+      type: 'delivery',
+    };
+    printReceiptHtml(buildReceiptHtml(sample, companyProfile), (msg) =>
+      addToast('error', 'Falha na impressão', msg),
+    );
+  };
 
   const canEditCompanyProfile = hasPermission(currentUser, 'empresa.editar_perfil');
   const canEditCompanyMedia = hasPermission(currentUser, 'empresa.editar_midia');
@@ -627,6 +651,38 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
         {activeTab === 'printers' && (
           <div className="max-w-xl space-y-4 text-xs">
             <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Impressão de Comprovantes e Comandas</h3>
+
+            <label className="flex items-start gap-3 p-4 bg-white rounded-xl border border-stone-200 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoPrintDelivery}
+                onChange={(e) => { setAutoPrintDelivery(e.target.checked); setAutoPrintDeliveryEnabled(e.target.checked); }}
+                className="rounded text-amber-800 w-4 h-4 mt-0.5"
+              />
+              <div className="space-y-1">
+                <p className="font-bold text-stone-800">Imprimir automaticamente pedidos de delivery</p>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  Quando entra um novo pedido pelo cardápio online, WhatsApp ou telefone,
+                  o cupom é impresso sozinho na impressora padrão <span className="font-semibold">deste computador</span>.
+                  Ative só na máquina da cozinha/expedição que fica com o sistema aberto. Para
+                  imprimir sem abrir a janela do navegador, inicie o Chrome/Edge com
+                  {' '}<span className="font-mono">--kiosk-printing</span>.
+                </p>
+              </div>
+            </label>
+
+            <button
+              onClick={handleTestPrint}
+              className="w-full py-2.5 rounded-xl bg-amber-800 text-white font-bold text-xs shadow-sm hover:bg-amber-900 flex items-center justify-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimir cupom de teste
+            </button>
+            <p className="text-[11px] text-stone-500 leading-relaxed -mt-2">
+              Use este botão para conferir a impressão. Se o cupom de teste sair mas os pedidos
+              não saírem sozinhos, o problema está na chegada do pedido (teste enviando um pedido
+              de <span className="font-semibold">outro aparelho</span>, com o sistema aberto aqui).
+            </p>
 
             <div className="p-4 bg-stone-50 rounded-xl border border-dashed border-stone-300 text-center space-y-2">
               <Printer className="w-8 h-8 text-stone-400 mx-auto" />

@@ -1,9 +1,17 @@
 # Notificações de status de pedido no WhatsApp (Z-API)
 
-Envia um WhatsApp para o cliente a cada mudança de status de um pedido de
-delivery/retirada feito em `/pedir` — recebido, confirmado, em preparo, pronto,
-saiu para entrega, cancelado. O disparo acompanha exatamente o que a cozinha faz
-no painel KDS e o que a Gestão de Entregas faz ao despachar.
+Envia um WhatsApp para o cliente em três momentos de um pedido de
+delivery/retirada feito em `/pedir`:
+
+| Evento | `order_status` | Origem |
+|---|---|---|
+| **Pedido recebido** (com o link de acompanhamento) | `novo` | criação em `/pedir` |
+| **Em preparo** | `em_preparo` | KDS → "Iniciar Preparo" |
+| **Saiu para entrega** | `saiu_entrega` | Gestão de Entregas → "Despachar" |
+
+"Confirmado" (`aceito`), "Pronto" (`pronto`) e "Cancelado" (`cancelado`) **não**
+disparam mensagem — mudar isso é só editar a lista `v_status in (...)` no
+trigger `tg_notify_order_status_whatsapp`.
 
 ## Como funciona
 
@@ -87,10 +95,9 @@ on conflict (key) do update set value = excluded.value, updated_at = now();
 
 1. Faça um pedido em `/pedir` com o checkbox do WhatsApp marcado e um número
    real. Deve chegar "Recebemos seu pedido #N".
-2. No painel da cozinha, "Aceitar Pedido" → "Iniciar Preparo" → "Marcar como
-   PRONTO!". A cada clique, um WhatsApp.
-3. Em Gestão de Entregas, selecione o entregador e "Despachar" → mensagem
-   "saiu para entrega" com o nome do entregador.
+2. No painel da cozinha, "Aceitar Pedido" (sem mensagem) → "Iniciar Preparo"
+   → chega o WhatsApp "em preparo".
+3. Em Gestão de Entregas, "Despachar" → mensagem "saiu para entrega".
 4. Conferir os envios:
 
 ```sql
@@ -117,6 +124,50 @@ limit 20;
 -- apaga o registro daquela etapa; o próximo UPDATE de status recria e reenvia
 delete from whatsapp_notifications where order_id = 'ord-...' and status = 'pronto';
 ```
+
+## Página pública de acompanhamento (`/acompanhar`)
+
+Migration **0047**. O cliente abre `https://cafecomdestino.ampliechef.com.br/acompanhar?t=<token>`
+e vê o status ao vivo (polling a cada 20s), sem login.
+
+- **Token**: UUID gerado no navegador, guardado em `orders.customer->>'trackingToken'`
+  (mesmo mecanismo do opt-in — não altera `create_order_and_credit_cash`).
+- **Leitura**: RPC `get_order_tracking(token)` (`security definer`, liberada p/ `anon`),
+  devolve só campos seguros — status, itens, horários, primeiro nome do
+  entregador, total. **Nunca** telefone, endereço completo, forma/estado de
+  pagamento ou observações.
+- **Link**: aparece na tela de confirmação do `/pedir` (botão "Acompanhar meu
+  pedido") e em toda mensagem de WhatsApp (a Edge Function acrescenta a linha
+  "📍 Acompanhe seu pedido: …").
+
+### Setup extra da 0047
+
+```
+npx supabase db push        # aplica a 0047
+npx supabase functions deploy notify-whatsapp --no-verify-jwt   # buildMessage mudou
+```
+
+No **SQL Editor**, cadastre a base URL pública (usada para montar o link):
+
+```sql
+insert into integration_settings (key, value)
+values ('public_base_url', 'https://cafecomdestino.ampliechef.com.br')
+on conflict (key) do update set value = excluded.value, updated_at = now();
+```
+
+Sem `public_base_url` cadastrada, a mensagem de WhatsApp sai sem o link (o
+resto continua funcionando).
+
+### Testar
+
+```sql
+-- token de um pedido real
+select customer->>'trackingToken' from orders
+where customer->>'trackingToken' is not null order by created_at desc limit 1;
+```
+
+Abra `/acompanhar?t=<esse token>` no navegador e avance o pedido no KDS — a
+página atualiza sozinha.
 
 ## Pontos em aberto / futuro
 

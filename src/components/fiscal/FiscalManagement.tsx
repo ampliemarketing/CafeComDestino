@@ -1,25 +1,77 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { PaymentMethod, OrderChannel } from '../../types';
+import { PaymentMethod, OrderChannel, TaxGroup } from '../../types';
 import {
-  FileText, 
-  CheckCircle2, 
-  Search, 
-  Printer, 
-  Download, 
-  ShieldCheck, 
-  Building2, 
-  Sliders,
-  Sparkles
+  FileText,
+  Search,
+  Download,
+  ShieldCheck,
+  Layers,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, maskCNPJ, isValidCNPJ } from '../../lib/validation';
+import { emptyFiscalData, normalizeFiscalData, fiscalMissingFields } from '../../lib/fiscal';
+import { FiscalFieldsForm } from './FiscalFieldsForm';
 
 export const FiscalManagement: React.FC = () => {
-  const { orders, companyProfile, setCompanyProfile, addToast, currentUser } = useApp();
+  const {
+    orders, companyProfile, setCompanyProfile, addToast, currentUser,
+    taxGroups, products, saveTaxGroup, deleteTaxGroup,
+  } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
+  const canEditFiscal = can('fiscal.editar_dados_empresa');
 
-  const [activeTab, setActiveTab] = useState<'notes' | 'config'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'config' | 'grupos'>('notes');
+
+  // Editor de Grupo Tributário
+  const [editingGroup, setEditingGroup] = useState<TaxGroup | null>(null);
+  const [showGroupErrors, setShowGroupErrors] = useState(false);
+  const [groupNameError, setGroupNameError] = useState(false);
+
+  const productsPerGroup = (groupId: string) => products.filter((p) => p.taxGroupId === groupId).length;
+
+  const openGroupEditor = (g: TaxGroup) => {
+    setShowGroupErrors(false);
+    setGroupNameError(false);
+    setEditingGroup(g);
+  };
+
+  const handleNewGroup = () => openGroupEditor({
+    id: 'taxg-' + Date.now(),
+    name: '',
+    description: '',
+    active: true,
+    fiscal: emptyFiscalData(),
+  });
+
+  const handleSaveGroup = () => {
+    if (!editingGroup) return;
+    const nameEmpty = !editingGroup.name.trim();
+    const missing = fiscalMissingFields(editingGroup.fiscal);
+    if (nameEmpty || missing.length > 0) {
+      setGroupNameError(nameEmpty);
+      setShowGroupErrors(true);
+      addToast('error', 'Dados incompletos', 'Preencha os campos destacados em vermelho.');
+      return;
+    }
+    saveTaxGroup({ ...editingGroup, name: editingGroup.name.trim(), fiscal: normalizeFiscalData(editingGroup.fiscal) });
+    setEditingGroup(null);
+  };
+
+  const handleDeleteGroup = async (g: TaxGroup) => {
+    const count = productsPerGroup(g.id);
+    if (count > 0) {
+      addToast('error', 'Grupo em uso', `${count} produto(s) ainda usam "${g.name}". Desvincule-os primeiro.`);
+      return;
+    }
+    if (confirm(`Excluir o grupo tributário "${g.name}"?`)) {
+      await deleteTaxGroup(g.id);
+    }
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'todas'>('todas');
   const [channelFilter, setChannelFilter] = useState<OrderChannel | 'todos'>('todos');
@@ -106,6 +158,15 @@ export const FiscalManagement: React.FC = () => {
             }`}
           >
             Dados da Empresa Emitente
+          </button>
+          <button
+            onClick={() => setActiveTab('grupos')}
+            className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 ${
+              activeTab === 'grupos' ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-700'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Grupos Tributários ({taxGroups.length})
           </button>
         </div>
 
@@ -272,7 +333,161 @@ export const FiscalManagement: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Grupos Tributários Tab */}
+        {activeTab === 'grupos' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-bold text-stone-900 text-sm">Grupos Tributários</h3>
+              {canEditFiscal && (
+                <button
+                  onClick={handleNewGroup}
+                  className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Novo Grupo</span>
+                </button>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b">
+                  <tr>
+                    <th className="p-3">Grupo</th>
+                    <th className="p-3">NCM</th>
+                    <th className="p-3">CFOP</th>
+                    <th className="p-3">CST/CSOSN</th>
+                    <th className="p-3 text-center">Produtos</th>
+                    <th className="p-3 text-center">Status</th>
+                    <th className="p-3 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {taxGroups.map((g) => (
+                    <tr key={g.id} className="hover:bg-stone-50">
+                      <td className="p-3">
+                        <p className="font-bold text-stone-900">{g.name}</p>
+                        {g.description && <p className="text-[10px] text-stone-400 font-normal">{g.description}</p>}
+                      </td>
+                      <td className="p-3 font-mono text-stone-700">{g.fiscal?.ncm || '—'}</td>
+                      <td className="p-3 font-mono text-stone-700">{g.fiscal?.cfop || '—'}</td>
+                      <td className="p-3 font-mono text-stone-700">{g.fiscal?.cstCsosn || '—'}</td>
+                      <td className="p-3 text-center font-semibold text-stone-700">{productsPerGroup(g.id)}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                          g.active ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                        }`}>
+                          {g.active ? 'ATIVO' : 'INATIVO'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openGroupEditor({ ...g, fiscal: normalizeFiscalData(g.fiscal) })}
+                            disabled={!canEditFiscal}
+                            title="Editar grupo"
+                            className="p-1.5 text-stone-600 hover:text-stone-900 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGroup(g)}
+                            disabled={!canEditFiscal}
+                            title="Excluir grupo"
+                            className="p-1.5 text-rose-600 hover:text-rose-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {taxGroups.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-stone-400">
+                        Nenhum grupo tributário cadastrado ainda.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Editor de Grupo Tributário */}
+      {editingGroup && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-stone-900 text-base flex items-center gap-2">
+                <Layers className="w-4 h-4 text-amber-800" />
+                {taxGroups.some((g) => g.id === editingGroup.id) ? 'Editar Grupo Tributário' : 'Novo Grupo Tributário'}
+              </h3>
+              <button onClick={() => setEditingGroup(null)} className="p-1 text-stone-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="font-medium text-stone-700 block mb-1">Nome do Grupo *</label>
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={MAXLEN.name}
+                  value={editingGroup.name}
+                  onChange={(e) => { setEditingGroup({ ...editingGroup, name: sanitizeText(e.target.value, MAXLEN.name) }); setGroupNameError(false); }}
+                  className={`w-full border rounded-lg px-3 py-2${groupNameError ? ' border-rose-400 ring-2 ring-rose-200' : ''}`}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="font-medium text-stone-700 block mb-1">Descrição</label>
+                <input
+                  type="text"
+                  maxLength={MAXLEN.shortNote}
+                  value={editingGroup.description || ''}
+                  onChange={(e) => setEditingGroup({ ...editingGroup, description: sanitizeText(e.target.value, MAXLEN.shortNote) })}
+                  className="w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editingGroup.active}
+                onChange={(e) => setEditingGroup({ ...editingGroup, active: e.target.checked })}
+                className="rounded text-amber-800 w-4 h-4"
+              />
+              <span>Grupo ativo</span>
+            </label>
+
+            <FiscalFieldsForm
+              value={editingGroup.fiscal}
+              onChange={(fiscal) => setEditingGroup({ ...editingGroup, fiscal })}
+              showErrors={showGroupErrors}
+            />
+
+            <div className="flex gap-2 pt-3 border-t">
+              <button
+                onClick={() => setEditingGroup(null)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveGroup}
+                className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow"
+              >
+                Salvar Grupo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

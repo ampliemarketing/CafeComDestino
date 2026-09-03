@@ -1,38 +1,19 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, Check } from 'lucide-react';
+import { Printer, X } from 'lucide-react';
+import {
+  ReceiptData,
+  RECEIPT_TYPE_LABEL,
+  paymentLabel,
+  buildReceiptHtml,
+  printReceiptHtml,
+} from '../../lib/printReceipt';
 
 interface PrintReceiptModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  receiptData: {
-    orderNumber?: number;
-    tableNumber?: number;
-    customerName?: string;
-    waiterName?: string;
-    items: Array<{
-      name: string;
-      quantity: number;
-      price: number;
-      notes?: string;
-      additions?: Array<{ name: string; price: number }>;
-    }>;
-    subtotal: number;
-    discount?: number;
-    deliveryFee?: number;
-    serviceFee?: number;
-    servicePct?: number;
-    couvert?: number;
-    // Valor já quitado em adiantamento(s) — abatido do total, mostrado como dedução.
-    advancePaid?: number;
-    total: number;
-    paymentMethod?: string;
-    splitPayments?: Array<{ method: string; amount: number }>;
-    remainingBalance?: number;
-    nfceKey?: string;
-    type: 'caixa' | 'cozinha' | 'pre_conta' | 'adiantamento_parcial';
-  };
+  receiptData: ReceiptData;
 }
 
 export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
@@ -46,7 +27,9 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    addToast('success', 'Impressão Enviada', `Comprovante impresso com sucesso!`);
+    printReceiptHtml(buildReceiptHtml(receiptData, companyProfile), (msg) =>
+      addToast('error', 'Falha na impressão', msg),
+    );
     onClose();
   };
 
@@ -76,10 +59,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
 
             {/* Ticket Type */}
             <div className="text-center py-2 my-2 bg-stone-100 border-y border-stone-300 font-bold uppercase">
-              {receiptData.type === 'cozinha' && '*** PEDIDO COZINHA ***'}
-              {receiptData.type === 'caixa' && '*** COMPROVANTE DE VENDA ***'}
-              {receiptData.type === 'pre_conta' && '*** PRÉ-CONTA / CONFERÊNCIA ***'}
-              {receiptData.type === 'adiantamento_parcial' && '*** COMPROVANTE DE ADIANTAMENTO ***'}
+              {RECEIPT_TYPE_LABEL[receiptData.type]}
             </div>
 
             {/* Meta */}
@@ -87,6 +67,8 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               {receiptData.orderNumber && <p>PEDIDO #: <span className="font-bold">{receiptData.orderNumber}</span></p>}
               {receiptData.tableNumber && <p>MESA #: <span className="font-bold text-sm">{receiptData.tableNumber}</span></p>}
               {receiptData.customerName && <p>CLIENTE: {receiptData.customerName}</p>}
+              {receiptData.customerPhone && <p>TEL: {receiptData.customerPhone}</p>}
+              {receiptData.deliveryAddress && <p>ENDEREÇO: {receiptData.deliveryAddress}</p>}
               {receiptData.waiterName && <p>ATENDENTE: {receiptData.waiterName}</p>}
               <p>DATA: {new Date().toLocaleString('pt-BR')}</p>
             </div>
@@ -157,7 +139,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
 
             {receiptData.paymentMethod && (!receiptData.splitPayments || receiptData.splitPayments.length === 0) && (
               <div className="py-2 text-center text-[10px] uppercase font-bold text-stone-700">
-                PAGAMENTO: {receiptData.paymentMethod}
+                PAGAMENTO: {paymentLabel(receiptData.paymentMethod)}
               </div>
             )}
 
@@ -166,7 +148,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
                 <p className="text-[10px] uppercase font-bold text-stone-700 text-center">Pagamento Misto</p>
                 {receiptData.splitPayments.map((sp, idx) => (
                   <div key={idx} className="flex justify-between text-[10px] uppercase">
-                    <span>{sp.method}:</span>
+                    <span>{paymentLabel(sp.method)}:</span>
                     <span className="font-semibold">R$ {sp.amount.toFixed(2)}</span>
                   </div>
                 ))}
