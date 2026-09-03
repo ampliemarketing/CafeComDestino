@@ -1,3 +1,8 @@
+# check=skip=SecretsUsedInArgOrEnv
+# ^ A VITE_SUPABASE_ANON_KEY NÃO é segredo: é chave pública (anon), embutida no
+#   bundle do frontend que todo navegador baixa. A proteção real é o RLS no
+#   banco. O linter só reclama por causa do "KEY" no nome.
+
 # ---------- build ----------
 FROM node:22-alpine AS build
 WORKDIR /app

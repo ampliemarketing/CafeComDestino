@@ -3,7 +3,6 @@ import {
   LossRecord,
   CourtesyRecord,
   Printer,
-  DeliveryDriver,
   AuditLog
 } from '../types';
 
@@ -73,7 +72,5 @@ export const initialLossRecords: LossRecord[] = [];
 export const initialCourtesyRecords: CourtesyRecord[] = [];
 
 export const initialPrinters: Printer[] = [];
-
-export const initialDeliveryDrivers: DeliveryDriver[] = [];
 
 export const initialAuditLogs: AuditLog[] = [];

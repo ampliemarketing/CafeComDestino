@@ -44,6 +44,14 @@ const BITTER: React.CSSProperties = { fontFamily: "'Bitter', Georgia, 'Times New
 
 const money = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
 
+// Token do link público de acompanhamento (/acompanhar?t=). UUID quando
+// disponível; senão um aleatório longo o bastante (a RPC exige >= 20 chars).
+const genTrackingToken = (): string => {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+};
+
 const STEPS: Array<{ key: 'cart' | 'customer' | 'payment'; label: string }> = [
   { key: 'cart', label: 'Carrinho' },
   { key: 'customer', label: 'Dados' },
@@ -137,6 +145,7 @@ export const PublicOnlineMenu: React.FC = () => {
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [wantsWhatsappUpdates, setWantsWhatsappUpdates] = useState(true);
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -145,6 +154,7 @@ export const PublicOnlineMenu: React.FC = () => {
   const [isPixCopied, setIsPixCopied] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
+  const [confirmedTrackingToken, setConfirmedTrackingToken] = useState<string | null>(null);
 
   // Status aberto/fechado: mesmo critério do toggle no Navbar interno
   // (companyProfile.operatingHours === 'Fechado'). Fechado = cliente
@@ -261,6 +271,7 @@ export const PublicOnlineMenu: React.FC = () => {
     }));
 
     const orderNumber = 1000 + Math.floor(Math.random() * 9000);
+    const trackingToken = genTrackingToken();
     const newOrder = {
       id: 'ord-' + Date.now(),
       orderNumber,
@@ -268,6 +279,8 @@ export const PublicOnlineMenu: React.FC = () => {
       customer: {
         name: customerName.trim().slice(0, MAXLEN.personName),
         phone: customerPhone.trim().slice(0, MAXLEN.phone),
+        wantsWhatsappUpdates,
+        trackingToken,
         address: serviceType === 'entrega'
           ? {
               street: street.trim().slice(0, MAXLEN.address),
@@ -309,6 +322,7 @@ export const PublicOnlineMenu: React.FC = () => {
     }
 
     setConfirmedOrderNumber(orderNumber);
+    setConfirmedTrackingToken(trackingToken);
     setCart([]);
     setCheckoutStep('confirmed');
   };
@@ -320,8 +334,10 @@ export const PublicOnlineMenu: React.FC = () => {
     if (checkoutStep === 'confirmed') {
       setCheckoutStep('cart');
       setConfirmedOrderNumber(null);
+      setConfirmedTrackingToken(null);
       setCustomerName('');
       setCustomerPhone('');
+      setWantsWhatsappUpdates(true);
       setStreet('');
       setNumber('');
       setNeighborhood('');
@@ -714,6 +730,19 @@ export const PublicOnlineMenu: React.FC = () => {
                     <input type="tel" inputMode="tel" maxLength={MAXLEN.phone} placeholder="WhatsApp / Telefone com DDD *" value={customerPhone} onChange={(e) => setCustomerPhone(maskPhone(e.target.value))} className="w-full border border-stone-300 rounded-xl p-2.5" />
                   </div>
 
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={wantsWhatsappUpdates}
+                      onChange={(e) => setWantsWhatsappUpdates(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-emerald-600 shrink-0"
+                    />
+                    <span className="text-[11px] leading-snug text-stone-600">
+                      Quero acompanhar meu pedido pelo <strong>WhatsApp</strong> — receber aviso de
+                      confirmação, preparo, pronto e saída para entrega no número informado acima.
+                    </span>
+                  </label>
+
                   {serviceType === 'entrega' && (
                     <div className="space-y-2 pt-2">
                       <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Endereço de Entrega</h4>
@@ -815,8 +844,18 @@ export const PublicOnlineMenu: React.FC = () => {
                     pedido acima caso precise falar com o restaurante.
                   </p>
 
+                  {confirmedTrackingToken && (
+                    <a
+                      href={`/acompanhar?t=${encodeURIComponent(confirmedTrackingToken)}`}
+                      className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5"
+                    >
+                      <Truck className="w-4 h-4" />
+                      <span>Acompanhar meu pedido</span>
+                    </a>
+                  )}
+
                   <button
-                    onClick={() => { setCheckoutStep('cart'); setConfirmedOrderNumber(null); }}
+                    onClick={() => { setCheckoutStep('cart'); setConfirmedOrderNumber(null); setConfirmedTrackingToken(null); }}
                     className="w-full bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md"
                   >
                     Fazer novo pedido

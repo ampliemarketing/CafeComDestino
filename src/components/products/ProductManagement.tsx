@@ -5,23 +5,27 @@ import {
   Plus,
   Search,
   Edit2,
-  Boxes,
-  CheckCircle2,
   X,
-  FileText,
-  Sparkles,
   Trash2,
   Upload,
-  Loader2
+  Loader2,
+  Layers,
+  Lock,
 } from 'lucide-react';
-import { Product, ProductAddition, Category, SaleUnit } from '../../types';
+import { Product, Category, SaleUnit } from '../../types';
 import { hasPermission } from '../../lib/permissions';
-import { MAXLEN, sanitizeText, toBoundedNumber, maskNCM, isValidNCM, isValidImageUrl } from '../../lib/validation';
+import { MAXLEN, sanitizeText, toBoundedNumber, isValidImageUrl } from '../../lib/validation';
 import { uploadProductImage } from '../../lib/storage';
+import { FiscalFieldsForm } from '../fiscal/FiscalFieldsForm';
+import { emptyFiscalData, normalizeFiscalData, fiscalMissingFields } from '../../lib/fiscal';
 
 export const ProductManagement: React.FC = () => {
-  const { products, categories, saleUnits, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
+  const { products, categories, saleUnits, taxGroups, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
+
+  // Abas do modal de produto
+  const [modalTab, setModalTab] = useState<'geral' | 'fiscal'>('geral');
+  const [showFiscalErrors, setShowFiscalErrors] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
@@ -105,19 +109,39 @@ export const ProductManagement: React.FC = () => {
       stockQuantity: 0,
       minStock: 0,
       additions: [],
-      fiscal: {
-        ncm: '2106.90.90',
-        cfop: '5102',
-        cstCsosn: '102',
-        taxPercentage: 4.5,
-      }
+      taxGroupId: undefined,
+      fiscal: { ...emptyFiscalData(), ncm: '2106.90.90' },
     });
+    setModalTab('geral');
+    setShowFiscalErrors(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (p: Product) => {
-    setEditingProduct(p);
+    setEditingProduct({ ...p, fiscal: normalizeFiscalData(p.fiscal) });
+    setModalTab('geral');
+    setShowFiscalErrors(false);
     setIsModalOpen(true);
+  };
+
+  const selectedTaxGroup = editingProduct?.taxGroupId
+    ? taxGroups.find((g) => g.id === editingProduct.taxGroupId)
+    : undefined;
+
+  /** Vincula/desvincula o produto de um grupo tributário. */
+  const handleSelectTaxGroup = (groupId: string) => {
+    if (!editingProduct) return;
+    if (!groupId) {
+      // Desvincula, mas mantém os dados herdados visíveis e agora editáveis.
+      setEditingProduct({ ...editingProduct, taxGroupId: undefined });
+      return;
+    }
+    const group = taxGroups.find((g) => g.id === groupId);
+    setEditingProduct({
+      ...editingProduct,
+      taxGroupId: groupId,
+      fiscal: group ? normalizeFiscalData(group.fiscal) : editingProduct.fiscal,
+    });
   };
 
   const handleSave = () => {
@@ -141,9 +165,27 @@ export const ProductManagement: React.FC = () => {
       addToast('error', 'URL de imagem inválida', 'Use um link http(s) ou deixe em branco.');
       return;
     }
-    if (editingProduct.fiscal?.ncm && !isValidNCM(editingProduct.fiscal.ncm)) {
-      addToast('error', 'NCM inválido', 'O NCM deve ter 8 dígitos (0000.00.00).');
+    // Dados fiscais: se vinculado a um grupo, o grupo é a fonte de verdade e o
+    // `fiscal` do produto é só um espelho. Sem grupo, os campos obrigatórios
+    // precisam estar completos.
+    const linkedGroup = editingProduct.taxGroupId
+      ? taxGroups.find((g) => g.id === editingProduct.taxGroupId)
+      : undefined;
+    if (editingProduct.taxGroupId && !linkedGroup) {
+      addToast('error', 'Grupo tributário inválido', 'O grupo selecionado não existe mais. Escolha outro ou desvincule.');
       return;
+    }
+    const effectiveFiscal = linkedGroup
+      ? normalizeFiscalData(linkedGroup.fiscal)
+      : normalizeFiscalData(editingProduct.fiscal);
+    if (!linkedGroup) {
+      const missing = fiscalMissingFields(effectiveFiscal);
+      if (missing.length > 0) {
+        setModalTab('fiscal');
+        setShowFiscalErrors(true);
+        addToast('error', 'Dados fiscais incompletos', `Aba Fiscal — faltam: ${missing.join(', ')}.`);
+        return;
+      }
     }
     if (!editingProduct?.categoryId) {
       addToast('error', 'Categoria obrigatória', 'Selecione ou crie uma categoria para o produto.');
@@ -161,7 +203,7 @@ export const ProductManagement: React.FC = () => {
     const category = categories.find((c) => c.id === editingProduct.categoryId);
     const trackStock = category ? category.showsInStock !== false : true;
 
-    saveProduct({ ...editingProduct, trackStock } as Product);
+    saveProduct({ ...editingProduct, trackStock, fiscal: effectiveFiscal } as Product);
     setIsModalOpen(false);
   };
 
@@ -272,7 +314,14 @@ export const ProductManagement: React.FC = () => {
                       <img src={p.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover border" />
                       <div>
                         <p>{p.name}</p>
-                        <p className="text-[10px] text-stone-400 font-normal">NCM: {p.fiscal.ncm}</p>
+                        <p className="text-[10px] text-stone-400 font-normal">
+                          NCM: {p.fiscal?.ncm || '—'}
+                          {p.taxGroupId && (
+                            <span className="ml-1 text-amber-700 font-semibold">
+                              · {taxGroups.find((g) => g.id === p.taxGroupId)?.name || 'grupo removido'}
+                            </span>
+                          )}
+                        </p>
                       </div>
                     </td>
                     <td className="p-3.5 text-stone-600 font-medium">{category?.name || 'Geral'}</td>
@@ -320,7 +369,7 @@ export const ProductManagement: React.FC = () => {
       {/* Edit/Create Product Modal */}
       {isModalOpen && editingProduct && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-bold text-stone-900 text-base">Cadastro de Produto</h3>
               <button onClick={() => setIsModalOpen(false)} className="p-1 text-stone-400">
@@ -328,7 +377,30 @@ export const ProductManagement: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {/* Abas */}
+            <div className="flex gap-2 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setModalTab('geral')}
+                className={`px-4 py-2 rounded-xl transition ${
+                  modalTab === 'geral' ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                Geral
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalTab('fiscal')}
+                className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 ${
+                  modalTab === 'fiscal' ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-700'
+                }`}
+              >
+                {editingProduct.taxGroupId && <Lock className="w-3 h-3" />}
+                Fiscal
+              </button>
+            </div>
+
+            <div className={`${modalTab === 'geral' ? 'grid' : 'hidden'} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs`}>
               <div>
                 <label className="font-semibold text-stone-700 block mb-1">Código do Produto</label>
                 <input
@@ -436,7 +508,7 @@ export const ProductManagement: React.FC = () => {
                 />
               </div>
 
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 lg:col-span-3">
                 <label className="font-semibold text-stone-700 block mb-1">Descrição Comercial</label>
                 <textarea
                   maxLength={MAXLEN.description}
@@ -447,7 +519,7 @@ export const ProductManagement: React.FC = () => {
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-2 lg:col-span-3">
                 <label className="font-semibold text-stone-700 block mb-1">Imagem do Produto</label>
                 <div className="flex items-start gap-3">
                   <div className="w-20 h-20 rounded-xl border border-stone-200 bg-stone-50 overflow-hidden shrink-0 flex items-center justify-center">
@@ -491,22 +563,60 @@ export const ProductManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="font-semibold text-stone-700 block mb-1">NCM Fiscal</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={MAXLEN.ncm}
-                  placeholder="0000.00.00"
-                  value={editingProduct.fiscal?.ncm || '2106.90.90'}
-                  onChange={(e) => setEditingProduct({
-                    ...editingProduct,
-                    fiscal: { ...editingProduct.fiscal!, ncm: maskNCM(e.target.value) }
-                  })}
-                  className="w-full border rounded-xl p-2.5 font-mono"
+            </div>
+
+            {/* Aba Fiscal */}
+            {modalTab === 'fiscal' && (
+              <div className="space-y-5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="font-medium text-stone-700 mb-1 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-amber-800" />
+                      Grupo Tributário
+                    </label>
+                    <select
+                      value={editingProduct.taxGroupId || ''}
+                      onChange={(e) => handleSelectTaxGroup(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2"
+                    >
+                      <option value="">Sem grupo — preencher manualmente</option>
+                      {taxGroups
+                        .filter((g) => g.active || g.id === editingProduct.taxGroupId)
+                        .map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}{!g.active ? ' (inativo)' : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  {selectedTaxGroup && (
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTaxGroup('')}
+                        className="w-full border border-amber-300 text-amber-800 font-bold rounded-lg px-3 py-2 hover:bg-amber-50"
+                      >
+                        Desvincular grupo
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {selectedTaxGroup && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2 flex items-center gap-2">
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                    <span>Campos herdados do grupo <strong>{selectedTaxGroup.name}</strong>.</span>
+                  </div>
+                )}
+
+                <FiscalFieldsForm
+                  value={editingProduct.fiscal ?? emptyFiscalData()}
+                  onChange={(fiscal) => setEditingProduct({ ...editingProduct, fiscal })}
+                  disabled={!!editingProduct.taxGroupId}
+                  showErrors={showFiscalErrors}
                 />
               </div>
-            </div>
+            )}
 
             <div className="flex justify-between items-center pt-3 border-t">
               <div className="flex items-center gap-4">

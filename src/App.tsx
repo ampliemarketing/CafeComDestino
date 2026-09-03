@@ -4,6 +4,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
+import { AutoPrintDelivery } from './components/common/AutoPrintDelivery';
 import { SupportButton } from './components/common/SupportButton';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ConnectionBanner } from './components/common/ConnectionBanner';
@@ -20,6 +21,7 @@ const lazyNamed = <M extends Record<string, any>, K extends keyof M>(
 const DashboardView = lazyNamed(() => import('./components/dashboard/DashboardView'), 'DashboardView');
 const OnlineMenuCatalog = lazyNamed(() => import('./components/online-menu/OnlineMenuCatalog'), 'OnlineMenuCatalog');
 const PublicOnlineMenu = lazyNamed(() => import('./components/online-menu/PublicOnlineMenu'), 'PublicOnlineMenu');
+const PublicOrderTracking = lazyNamed(() => import('./components/online-menu/PublicOrderTracking'), 'PublicOrderTracking');
 const PdvView = lazyNamed(() => import('./components/pdv/PdvView'), 'PdvView');
 const WaiterApp = lazyNamed(() => import('./components/waiter/WaiterApp'), 'WaiterApp');
 const KitchenKDS = lazyNamed(() => import('./components/kitchen/KitchenKDS'), 'KitchenKDS');
@@ -191,6 +193,7 @@ const AppContent: React.FC = () => {
 
       <MobileNav onOpenFullMenu={() => setIsMobileMenuOpen(true)} />
       <NotificationToast />
+      <AutoPrintDelivery />
       <ConnectionBanner />
       <SupportButton />
 
@@ -271,6 +274,24 @@ export default function App() {
           }
         >
           <PublicOnlineMenu />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  // /acompanhar?t=<token> — página pública de status do pedido, sem login.
+  // Mesma lógica do /pedir: roda fora do AppProvider, com a chave anon.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/acompanhar')) {
+    return (
+      <ErrorBoundary label="public-order-tracking">
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-amber-800 border-t-transparent rounded-full animate-spin" />
+            </div>
+          }
+        >
+          <PublicOrderTracking />
         </Suspense>
       </ErrorBoundary>
     );

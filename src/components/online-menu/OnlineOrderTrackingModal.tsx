@@ -363,9 +363,7 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                             🛵 Pedido Pronto / Saiu para Entrega!
                           </p>
                           <p className="text-[11px] text-stone-600 mt-0.5">
-                            {activeOrder.deliveryDriverName
-                              ? `Entregador a caminho: ${activeOrder.deliveryDriverName}`
-                              : 'Seu pedido está pronto para entrega ou retirada no balcão!'}
+                            Seu pedido está pronto para entrega ou retirada no balcão!
                           </p>
                         </div>
                       )}
@@ -492,7 +490,7 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                   {activeOrder.orderStatus === 'em_preparo' && (
                     <button
                       type="button"
-                      onClick={() => updateOrderStatus(activeOrder.id, 'saiu_entrega', 'Roberto Motoboy')}
+                      onClick={() => updateOrderStatus(activeOrder.id, 'saiu_entrega')}
                       className="px-2.5 py-3 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl font-bold text-[10px] transition shrink-0"
                       title="Simular avanço para Saiu p/ Entrega"
                     >
