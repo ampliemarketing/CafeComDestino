@@ -20,7 +20,7 @@ import { FiscalFieldsForm } from './FiscalFieldsForm';
 export const FiscalManagement: React.FC = () => {
   const {
     orders, companyProfile, setCompanyProfile, addToast, currentUser,
-    taxGroups, products, saveTaxGroup, deleteTaxGroup,
+    taxGroups, products, saveTaxGroup, deleteTaxGroup, confirmDialog,
   } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
   const canEditFiscal = can('fiscal.editar_dados_empresa');
@@ -68,9 +68,8 @@ export const FiscalManagement: React.FC = () => {
       addToast('error', 'Grupo em uso', `${count} produto(s) ainda usam "${g.name}". Desvincule-os primeiro.`);
       return;
     }
-    if (confirm(`Excluir o grupo tributário "${g.name}"?`)) {
-      await deleteTaxGroup(g.id);
-    }
+    const ok = await confirmDialog({ title: 'Excluir grupo tributário', message: `Excluir o grupo tributário "${g.name}"?` });
+    if (ok) await deleteTaxGroup(g.id);
   };
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'todas'>('todas');

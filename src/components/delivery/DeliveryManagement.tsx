@@ -9,9 +9,10 @@ export const DeliveryManagement: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Entrega é entrega, venha de onde vier (cardápio online, WhatsApp, telefone
+  // ou digitado no PDV) — o que define é o serviceType, não o canal.
   const deliveryOrders = orders.filter(
     (o) =>
-      (o.channel === 'online' || o.channel === 'whatsapp' || o.channel === 'telefone') &&
       o.serviceType === 'entrega' &&
       o.orderStatus !== 'concluido' &&
       o.orderStatus !== 'cancelado'
@@ -111,10 +112,23 @@ export const DeliveryManagement: React.FC = () => {
 
                   <div className="pt-2 border-t">
                     {dispatched ? (
-                      <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 py-2">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Despachado — cliente notificado
-                      </p>
+                      <div className="space-y-2">
+                        <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 py-1">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Despachado — cliente notificado
+                        </p>
+                        <button
+                          onClick={() => {
+                            updateOrderStatus(ord.id, 'concluido');
+                            addToast('success', 'Entrega concluída', `Pedido #${ord.orderNumber} finalizado.`);
+                          }}
+                          disabled={!canDispatch}
+                          className="w-full bg-stone-800 hover:bg-stone-900 text-white px-3 py-2 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Confirmar entrega
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={() => {

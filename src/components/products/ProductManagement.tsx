@@ -20,7 +20,7 @@ import { FiscalFieldsForm } from '../fiscal/FiscalFieldsForm';
 import { emptyFiscalData, normalizeFiscalData, fiscalMissingFields } from '../../lib/fiscal';
 
 export const ProductManagement: React.FC = () => {
-  const { products, categories, saleUnits, taxGroups, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, currentUser } = useApp();
+  const { products, categories, saleUnits, taxGroups, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, confirmDialog, currentUser } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
   // Abas do modal de produto
@@ -78,10 +78,12 @@ export const ProductManagement: React.FC = () => {
     return matchCat && matchSearch && matchStatus;
   });
 
-  const handleDeleteProduct = (p: Product) => {
-    if (confirm(`Excluir o produto "${p.name}"? Essa ação não pode ser desfeita. Para apenas ocultá-lo do PDV/Cardápio, use "Desativar" em vez de excluir.`)) {
-      deleteProduct(p.id);
-    }
+  const handleDeleteProduct = async (p: Product) => {
+    const ok = await confirmDialog({
+      title: 'Excluir produto',
+      message: `Excluir o produto "${p.name}"? Essa ação não pode ser desfeita. Para apenas ocultá-lo do PDV/Cardápio, use "Desativar" em vez de excluir.`,
+    });
+    if (ok) deleteProduct(p.id);
   };
 
   const getNextProductCode = () => {

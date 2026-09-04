@@ -251,6 +251,24 @@ export interface Toast {
   timestamp: string;
 }
 
+export interface ConfirmOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'danger' | 'warning' | 'info';
+}
+
+export interface ConfirmState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  variant: 'danger' | 'warning' | 'info';
+  mode: 'confirm' | 'alert';
+  resolve: (value: boolean) => void;
+}
+
 interface AppContextType {
   currentUser: User;
   companyProfile: CompanyProfileData;
@@ -291,6 +309,12 @@ interface AppContextType {
   // Toast
   addToast: (type: Toast['type'], title: string, message?: string) => void;
   removeToast: (id: string) => void;
+
+  // Confirm/Alert modal — substitui window.confirm/alert nativos
+  confirmState: ConfirmState | null;
+  confirmDialog: (options: ConfirmOptions) => Promise<boolean>;
+  alertDialog: (options: { title: string; message: string }) => Promise<void>;
+  resolveConfirm: (value: boolean) => void;
 
   // Actions
   logAudit: (action: string, moduleName: string, details?: string) => void;
@@ -525,6 +549,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [selectedCashShiftId, setSelectedCashShiftId] = useState<string | null>(null);
 
@@ -676,6 +701,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // ---- Confirm/Alert modal (substitui window.confirm/alert) ----
+  const confirmDialog = (options: ConfirmOptions): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfirmState({
+        title: options.title,
+        message: options.message,
+        confirmLabel: options.confirmLabel || 'Confirmar',
+        cancelLabel: options.cancelLabel || 'Cancelar',
+        variant: options.variant || 'danger',
+        mode: 'confirm',
+        resolve,
+      });
+    });
+  };
+
+  const alertDialog = (options: { title: string; message: string }): Promise<void> => {
+    return new Promise((resolve) => {
+      setConfirmState({
+        title: options.title,
+        message: options.message,
+        confirmLabel: 'OK',
+        cancelLabel: '',
+        variant: 'warning',
+        mode: 'alert',
+        resolve: () => resolve(),
+      });
+    });
+  };
+
+  const resolveConfirm = (value: boolean) => {
+    setConfirmState((prev) => {
+      prev?.resolve(value);
+      return null;
+    });
   };
 
   const logAudit = (action: string, moduleName: string, details?: string) => {
@@ -1619,6 +1680,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveView,
         addToast,
         removeToast,
+        confirmState,
+        confirmDialog,
+        alertDialog,
+        resolveConfirm,
         logAudit,
         logout,
         createTable,

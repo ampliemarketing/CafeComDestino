@@ -15,7 +15,7 @@ import {
   Volume2,
   ChevronDown
 } from 'lucide-react';
-import { OrderStatus } from '../../types';
+import { Order, OrderStatus } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 
 export const KitchenKDS: React.FC = () => {
@@ -40,7 +40,12 @@ export const KitchenKDS: React.FC = () => {
     { status: 'pronto', title: 'Prontos para Expedição', color: 'border-emerald-500 bg-emerald-50 text-emerald-950' },
   ];
 
-  const handleAdvanceStatus = (orderId: string, currentStatus: OrderStatus) => {
+  const handleAdvanceStatus = (orderId: string, currentStatus: OrderStatus, serviceType: Order['serviceType']) => {
+    // Pedido de entrega: a cozinha para em "pronto". Quem conclui é a Gestão de
+    // Entregas ("Despachar" -> saiu_entrega -> WhatsApp -> concluído). Concluir
+    // aqui pularia a expedição e a notificação de "saiu para entrega".
+    if (currentStatus === 'pronto' && serviceType === 'entrega') return;
+
     let nextStatus: OrderStatus = 'aceito';
     if (currentStatus === 'novo') nextStatus = 'aceito';
     else if (currentStatus === 'aceito') nextStatus = 'em_preparo';
@@ -187,18 +192,25 @@ export const KitchenKDS: React.FC = () => {
                               {/* Kitchen Action Buttons */}
                               <div className="pt-2 border-t flex flex-col gap-1.5">
                                 {canAdvance && (
-                                <button
-                                  onClick={() => handleAdvanceStatus(ord.id, ord.orderStatus)}
-                                  className="w-full bg-amber-800 hover:bg-amber-900 text-white py-2 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  <span>
-                                    {ord.orderStatus === 'novo' && 'Aceitar Pedido'}
-                                    {ord.orderStatus === 'aceito' && 'Iniciar Preparo'}
-                                    {ord.orderStatus === 'em_preparo' && 'Marcar como PRONTO!'}
-                                    {ord.orderStatus === 'pronto' && 'Concluir Expedição'}
-                                  </span>
-                                </button>
+                                  ord.orderStatus === 'pronto' && ord.serviceType === 'entrega' ? (
+                                    <div className="w-full bg-emerald-50 text-emerald-800 border border-emerald-200 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                                      <Truck className="w-4 h-4" />
+                                      <span>Pronto — expedir em Gestão de Entregas</span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAdvanceStatus(ord.id, ord.orderStatus, ord.serviceType)}
+                                      className="w-full bg-amber-800 hover:bg-amber-900 text-white py-2 rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      <span>
+                                        {ord.orderStatus === 'novo' && 'Aceitar Pedido'}
+                                        {ord.orderStatus === 'aceito' && 'Iniciar Preparo'}
+                                        {ord.orderStatus === 'em_preparo' && 'Marcar como PRONTO!'}
+                                        {ord.orderStatus === 'pronto' && 'Concluir Expedição'}
+                                      </span>
+                                    </button>
+                                  )
                                 )}
 
                                 {canCallSupport && (

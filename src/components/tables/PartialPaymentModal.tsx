@@ -27,7 +27,7 @@ interface PartialPaymentModalProps {
 }
 
 export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen, onClose, table, comandaId }) => {
-  const { addPartialPayment, currentUser, companyProfile } = useApp();
+  const { addPartialPayment, currentUser, companyProfile, alertDialog } = useApp();
   const comanda = table.comandas.find((c) => c.id === comandaId);
 
   const [paymentType, setPaymentType] = useState<'by_item' | 'by_amount'>('by_item');
@@ -109,12 +109,15 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
 
   const handleConfirmPayment = async () => {
     if (effectivePaymentAmount <= 0) {
-      alert('Selecione pelo menos um item ou informe um valor maior que zero.');
+      await alertDialog({ title: 'Pagamento inválido', message: 'Selecione pelo menos um item ou informe um valor maior que zero.' });
       return;
     }
 
     if (itemPortion > remainingBalance + 0.05) {
-      alert(`O valor de itens (R$ ${itemPortion.toFixed(2)}) não pode ser superior ao saldo restante da mesa (R$ ${remainingBalance.toFixed(2)}).`);
+      await alertDialog({
+        title: 'Valor acima do saldo',
+        message: `O valor de itens (R$ ${itemPortion.toFixed(2)}) não pode ser superior ao saldo restante da mesa (R$ ${remainingBalance.toFixed(2)}).`,
+      });
       return;
     }
 
@@ -128,7 +131,10 @@ export const PartialPaymentModal: React.FC<PartialPaymentModalProps> = ({ isOpen
 
       const splitSum = parsedSplits.reduce((acc, r) => acc + r.amount, 0);
       if (Math.abs(splitSum - effectivePaymentAmount) > 0.05) {
-        alert(`A soma dos pagamentos fracionados (R$ ${splitSum.toFixed(2)}) deve ser exatamente igual ao total a pagar (R$ ${effectivePaymentAmount.toFixed(2)}).`);
+        await alertDialog({
+          title: 'Soma dos pagamentos incorreta',
+          message: `A soma dos pagamentos fracionados (R$ ${splitSum.toFixed(2)}) deve ser exatamente igual ao total a pagar (R$ ${effectivePaymentAmount.toFixed(2)}).`,
+        });
         return;
       }
       finalSplitPayments = parsedSplits;

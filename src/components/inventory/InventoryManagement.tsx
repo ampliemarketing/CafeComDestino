@@ -44,7 +44,8 @@ export const InventoryManagement: React.FC = () => {
     currentUser,
     users,
     setActiveView,
-    addToast
+    addToast,
+    confirmDialog
   } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
@@ -114,10 +115,9 @@ export const InventoryManagement: React.FC = () => {
     setIsIngredientModalOpen(false);
   };
 
-  const handleDeleteIngredient = (ing: Ingredient) => {
-    if (confirm(`Excluir o insumo "${ing.name}"? Essa ação não pode ser desfeita.`)) {
-      deleteIngredient(ing.id);
-    }
+  const handleDeleteIngredient = async (ing: Ingredient) => {
+    const ok = await confirmDialog({ title: 'Excluir insumo', message: `Excluir o insumo "${ing.name}"? Essa ação não pode ser desfeita.` });
+    if (ok) deleteIngredient(ing.id);
   };
 
   // Filtered products
@@ -131,10 +131,9 @@ export const InventoryManagement: React.FC = () => {
     setActiveView('products');
   };
 
-  const handleDeleteProduct = (p: Product) => {
-    if (confirm(`Excluir o produto "${p.name}"? Essa ação não pode ser desfeita.`)) {
-      deleteProduct(p.id);
-    }
+  const handleDeleteProduct = async (p: Product) => {
+    const ok = await confirmDialog({ title: 'Excluir produto', message: `Excluir o produto "${p.name}"? Essa ação não pode ser desfeita.` });
+    if (ok) deleteProduct(p.id);
   };
 
   // Combined list of ingredients + stock-tracked products for the unified "Adicionar Estoque" modal

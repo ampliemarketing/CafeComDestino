@@ -4,6 +4,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { NotificationToast } from './components/common/NotificationToast';
+import { ConfirmDialog } from './components/common/ConfirmDialog';
 import { AutoPrintDelivery } from './components/common/AutoPrintDelivery';
 import { SupportButton } from './components/common/SupportButton';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -193,6 +194,7 @@ const AppContent: React.FC = () => {
 
       <MobileNav onOpenFullMenu={() => setIsMobileMenuOpen(true)} />
       <NotificationToast />
+      <ConfirmDialog />
       <AutoPrintDelivery />
       <ConnectionBanner />
       <SupportButton />

@@ -19,15 +19,20 @@ import {
   PieChart, Pie, Cell 
 } from 'recharts';
 import { hasPermission } from '../../lib/permissions';
+import { buildManagementReportHtml, printManagementReportHtml } from '../../lib/printManagementReport';
 
 export const ReportsView: React.FC = () => {
-  const { orders, products, lossRecords, courtesyRecords, addToast, currentUser } = useApp();
+  const { orders, lossRecords, courtesyRecords, addToast, currentUser, companyProfile } = useApp();
   const canExport = hasPermission(currentUser, 'relatorios.exportar');
 
   const [activeReportTab, setActiveReportTab] = useState<'sales' | 'losses' | 'courtesies'>('sales');
 
-  const totalSalesCount = orders.length;
-  const totalRevenue = orders.reduce((acc, o) => acc + o.total, 0);
+  // Pedidos cancelados não representam faturamento real — mesmo critério usado
+  // no fechamento de caixa (ver shiftStats.ts: orderStatus !== 'cancelado').
+  const validOrders = orders.filter((o) => o.orderStatus !== 'cancelado');
+
+  const totalSalesCount = validOrders.length;
+  const totalRevenue = validOrders.reduce((acc, o) => acc + o.total, 0);
   const averageTicket = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
 
   // Losses metrics
@@ -41,10 +46,26 @@ export const ReportsView: React.FC = () => {
 
   // Sales Chart data
   const salesByChannel = [
-    { name: 'PDV Balcão', value: orders.filter((o) => o.channel === 'pdv').reduce((acc, o) => acc + o.total, 0) },
-    { name: 'Garçom Salão', value: orders.filter((o) => o.channel === 'garcom').reduce((acc, o) => acc + o.total, 0) },
-    { name: 'Online Menu', value: orders.filter((o) => o.channel === 'online').reduce((acc, o) => acc + o.total, 0) },
+    { name: 'PDV Balcão', value: validOrders.filter((o) => o.channel === 'pdv').reduce((acc, o) => acc + o.total, 0) },
+    { name: 'Garçom Salão', value: validOrders.filter((o) => o.channel === 'garcom').reduce((acc, o) => acc + o.total, 0) },
+    { name: 'Online Menu', value: validOrders.filter((o) => o.channel === 'online').reduce((acc, o) => acc + o.total, 0) },
   ];
+
+  // Produtos mais vendidos — soma real de quantidade/faturamento por item dos
+  // pedidos válidos (a versão anterior desta tela mostrava os 5 primeiros
+  // produtos do cadastro com um valor fictício, sem relação com vendas reais).
+  const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
+  validOrders.forEach((o) => {
+    o.items.forEach((it) => {
+      const entry = productSales.get(it.productId) || { name: it.productName, quantity: 0, revenue: 0 };
+      entry.quantity += it.quantity;
+      entry.revenue += it.quantity * it.unitPrice;
+      productSales.set(it.productId, entry);
+    });
+  });
+  const topProducts = Array.from(productSales.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
 
   // Losses by Reason chart data
   const lossByReasonMap: Record<string, number> = {};
@@ -70,6 +91,24 @@ export const ReportsView: React.FC = () => {
 
   const COLORS = ['#A67C52', '#3D2A1D', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
+  const handleExport = () => {
+    const html = buildManagementReportHtml(
+      {
+        generatedAt: new Date().toLocaleString('pt-BR'),
+        sales: { totalRevenue, totalCount: totalSalesCount, averageTicket, byChannel: salesByChannel, topProducts },
+        losses: { totalCost: totalLossCost, count: lossCount, byReason: lossByReasonData },
+        courtesies: {
+          totalRetailValue: totalCourtesyRetail,
+          totalCostValue: totalCourtesyCost,
+          count: courtesyCount,
+          byReason: courtesyByReasonData,
+        },
+      },
+      companyProfile,
+    );
+    printManagementReportHtml(html, (msg) => addToast('error', 'Falha ao exportar', msg));
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
       {/* Header Banner */}
@@ -88,11 +127,11 @@ export const ReportsView: React.FC = () => {
 
         {canExport && (
         <button
-          onClick={() => addToast('info', 'Exportando Relatório', 'Relatório gerencial exportado com sucesso!')}
+          onClick={handleExport}
           className="bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2"
         >
           <Download className="w-4 h-4" />
-          <span>Exportar Relatórios (PDF / Excel)</span>
+          <span>Exportar Relatório (PDF)</span>
         </button>
         )}
       </div>
@@ -179,20 +218,23 @@ export const ReportsView: React.FC = () => {
             </div>
 
             <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
-              <h3 className="font-bold text-stone-900 text-sm">Produtos Mais Vendidos (Curva ABC)</h3>
+              <h3 className="font-bold text-stone-900 text-sm">Produtos Mais Vendidos (por Faturamento)</h3>
               <div className="space-y-2">
-                {products.slice(0, 5).map((p, idx) => (
-                  <div key={p.id} className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between text-xs">
+                {topProducts.length === 0 && (
+                  <p className="text-xs text-stone-400 italic">Sem itens vendidos registrados.</p>
+                )}
+                {topProducts.map((p, idx) => (
+                  <div key={p.name + idx} className="p-3 bg-stone-50 rounded-xl border flex items-center justify-between text-xs">
                     <div className="flex items-center gap-3">
                       <span className="w-6 h-6 rounded-lg bg-amber-800 text-white font-bold flex items-center justify-center text-[10px]">
                         #{idx + 1}
                       </span>
                       <div>
                         <p className="font-bold text-stone-900">{p.name}</p>
-                        <p className="text-[10px] text-stone-500">Preço: R$ {p.price.toFixed(2)}</p>
+                        <p className="text-[10px] text-stone-500">{p.quantity} unid. vendidas</p>
                       </div>
                     </div>
-                    <span className="font-bold text-amber-900">R$ {(p.price * 12).toFixed(2)}</span>
+                    <span className="font-bold text-amber-900">R$ {p.revenue.toFixed(2)}</span>
                   </div>
                 ))}
               </div>

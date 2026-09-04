@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Relatório de Auditoria de Segurança — Café com Destino (AmplieChef)</title>
+<style>
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font: 12px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: #1c1917; margin: 0; }
+  h1,h2,h3 { color: #292524; line-height: 1.25; }
+  h2 { font-size: 17px; margin: 26px 0 10px; padding-bottom: 5px; border-bottom: 2px solid #e7e5e4; }
+  h3 { font-size: 13.5px; margin: 0 0 4px; }
+  code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 10.5px;
+         background: #f5f5f4; padding: 1px 4px; border-radius: 3px; color: #44403c; }
+  pre.code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 9.5px;
+             line-height: 1.45; background: #1c1917; color: #e7e5e4; padding: 10px 12px;
+             border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+             margin: 4px 0 10px; }
+  pre.code.fix { background: #052e16; color: #d1fae5; }
+  .muted { color: #78716c; }
+  .chip { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 1px 8px;
+          border-radius: 999px; border: 1px solid; vertical-align: middle; margin-left: 4px;
+          letter-spacing: .3px; text-transform: uppercase; }
+
+  /* ---- Capa ---- */
+  .cover { height: 247mm; display: flex; flex-direction: column; justify-content: space-between;
+           page-break-after: always; }
+  .cover-top { border-left: 6px solid #B91C1C; padding-left: 18px; margin-top: 40mm; }
+  .cover h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .cover .sub { font-size: 14px; color: #57534e; }
+  .cover .meta { margin-top: 26px; font-size: 12px; color: #44403c; }
+  .cover .meta b { color: #1c1917; }
+  .cover-method { font-size: 10.5px; color: #57534e; border-top: 1px solid #e7e5e4; padding-top: 12px; }
+  .cover-method h4 { margin: 0 0 6px; font-size: 11px; color: #292524; text-transform: uppercase; letter-spacing: .5px; }
+  .cover-method ul { margin: 0; padding-left: 16px; }
+  .cover-method li { margin-bottom: 5px; }
+
+  /* ---- Tabelas ---- */
+  table { border-collapse: collapse; width: 100%; font-size: 11px; }
+  table.kv th { text-align: left; width: 150px; vertical-align: top; color: #57534e;
+                font-weight: 600; padding: 4px 8px 4px 0; }
+  table.kv td { padding: 4px 0; vertical-align: top; }
+  table.grid { margin: 8px 0 4px; }
+  table.grid th { background: #f5f5f4; text-align: left; padding: 6px 8px; border: 1px solid #e7e5e4;
+                  font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #57534e; }
+  table.grid td { padding: 6px 8px; border: 1px solid #e7e5e4; vertical-align: top; }
+  table.grid tr { page-break-inside: avoid; }
+
+  .stack-strength { border-left: 3px solid #059669; padding: 2px 0 2px 10px; margin-bottom: 9px; }
+  .stack-strength b { color: #059669; }
+  .weak { border-left: 3px solid #EA580C; padding: 2px 0 2px 10px; margin-bottom: 9px; }
+
+  .cards { display: flex; gap: 8px; margin: 10px 0 4px; }
+  .card { flex: 1; border: 1px solid #e7e5e4; border-radius: 8px; padding: 10px 12px; text-align: center; }
+  .card .n { font-size: 22px; font-weight: 800; display: block; }
+  .card .l { font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; color: #78716c; }
+
+  .chart-wrap { display: flex; align-items: center; gap: 22px; margin: 6px 0 4px; }
+  .donut-num { font-size: 30px; font-weight: 800; fill: #1c1917; }
+  .donut-lbl { font-size: 10px; fill: #78716c; }
+  .legend { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
+  .leg-item { display: flex; align-items: center; gap: 7px; }
+  .leg-item .dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .bar-cat { font-size: 10px; fill: #44403c; }
+  .bar-num { font-size: 11px; font-weight: 700; fill: #1c1917; }
+
+  .finding { page-break-inside: avoid; margin: 14px 0; padding-top: 6px; border-top: 1px solid #f0eeec; }
+  .finding-cat { font-size: 10px; color: #78716c; margin: 0 0 6px; }
+  .code-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-top: 6px; }
+
+  pre.issue { white-space: pre-wrap; word-break: break-word; font-family: "SF Mono", Consolas, monospace;
+              font-size: 9px; line-height: 1.5; background: #fafaf9; border: 1px solid #e7e5e4;
+              border-radius: 6px; padding: 12px 14px; margin: 10px 0; page-break-inside: avoid; }
+  .rec-p { font-weight: 800; }
+  section, h2 { page-break-after: avoid; }
+</style></head><body>
+
+<div class="cover">
+  <div>
+    <div class="cover-top">
+      <h1>Relatório de Auditoria de Segurança</h1>
+      <div class="sub">Café com Destino (AmplieChef)</div>
+    </div>
+    <div class="meta">
+      <p><b>Data:</b> 02/09/2026 &nbsp;·&nbsp; <b>Commit:</b> 136b6d7 (main)</p>
+      <p><b>Escopo auditado:</b> aplicação SPA (<code>src/</code>), esquema e migrations do banco
+      (<code>supabase/schema.sql</code>, <code>supabase/migrations/0002–0045</code>), Edge Functions
+      (<code>supabase/functions/</code>), artefatos de deploy (<code>Dockerfile</code>, <code>nginx.conf</code>,
+      <code>.env*</code>, <code>.dockerignore</code>) e arquivos versionados (<code>git ls-files</code> / histórico).</p>
+    </div>
+    <div class="meta">
+      <table class="grid"><tbody>
+      <tr><th style="width:170px">Linguagem / build</th><td>TypeScript, Vite 6, React 19 (SPA)</td></tr><tr><th style="width:170px">Backend / dados</th><td>Supabase (PostgreSQL 17) — sem servidor de aplicação próprio</td></tr><tr><th style="width:170px">ORM / query builder</th><td>@supabase/supabase-js (PostgREST) + funções RPC PL/pgSQL</td></tr><tr><th style="width:170px">Autenticação</th><td>Supabase Auth (GoTrue) via Edge Function secure-login; sessão em localStorage</td></tr><tr><th style="width:170px">Autorização</th><td>RLS no Postgres + has_any_permission() (coluna profiles.permissions); espelho no front em src/lib/permissions.ts</td></tr><tr><th style="width:170px">Isolamento</th><td>Instância única (um restaurante). Fronteira real: anon (cardápio público /pedir) x authenticated (funcionário) x papel/permissão do funcionário</td></tr><tr><th style="width:170px">Deploy</th><td>Dockerfile multi-stage -&gt; nginx:1.27-alpine servindo dist/; EasyPanel injeta VITE_* como build-args</td></tr><tr><th style="width:170px">Edge Functions</th><td>Deno — secure-login, admin-create-user (usam SUPABASE_SERVICE_ROLE_KEY injetada pelo Supabase)</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="cover-method">
+    <h4>Nota metodológica — como cada categoria foi mapeada para a stack</h4>
+    <ul><li><b>1. Banco sem tranca (isolamento):</b> O projeto e instancia unica, entao &quot;tenant&quot; = a fronteira anon/authenticated/papel. Mapeamos toda policy RLS de SELECT/UPDATE/INSERT/DELETE em supabase/schema.sql + migrations 0002-0045 e cruzamos com os pontos de leitura/escrita em src/context/AppContext.tsx. Procuramos tabelas cujo SELECT/UPDATE so exige auth.role() = 'authenticated' enquanto a UI restringe por permissao.</li><li><b>2. Permissão definida no navegador:</b> Para cada gate hasPermission() / tela escondida no front, verificamos se existe verificacao equivalente no servidor — policy RLS permission-aware, has_any_permission() dentro da RPC, ou trigger. Onde o servidor so checa authenticated, e achado.</li><li><b>3. IDOR:</b> Percorremos todos os handlers de escrita de AppContext.tsx e todas as RPCs de supabase/migrations/*. Como o modelo e instancia unica, &quot;posse&quot; recai sobre papel/permissao e sobre a coluna/estado que a operacao pode tocar. Procuramos escrita direta por ID que ignore a camada RPC endurecida.</li><li><b>4. Chaves expostas:</b> Varredura de .env*, Dockerfile, nginx.conf, supabase/, scripts/, docs/, historico git (git log -- .env) e arquivos versionados sensiveis (git ls-files). Distincao entre chave publica (anon key, por design no bundle) e segredo real.</li><li><b>5. Inputs sem tratamento (XSS):</b> Busca por dangerouslySetInnerHTML, innerHTML, v-html, eval, new Function, render de markdown/HTML e href/src controlados por usuario em todo src/. Backend: input de usuario em HTML de e-mail/template (nao ha e-mail transacional proprio).</li></ul>
+  </div>
+</div>
+
+<h2>Resumo executivo</h2>
+<div class="cards">
+  <div class="card"><span class="n" style="color:#B91C1C">1</span><span class="l">Crítica</span></div><div class="card"><span class="n" style="color:#EA580C">1</span><span class="l">Alta</span></div><div class="card"><span class="n" style="color:#D97706">2</span><span class="l">Média</span></div><div class="card"><span class="n" style="color:#2563EB">1</span><span class="l">Baixa</span></div><div class="card"><span class="n" style="color:#6B7280">1</span><span class="l">Informativa</span></div>
+</div>
+<p class="muted">6 achados no total — 5 acionáveis + 1 informativo.
+Nenhuma falha de XSS e nenhum segredo real no código-fonte (ver Pontos fortes).</p>
+
+<h3>Distribuição por severidade</h3>
+<div class="chart-wrap">
+    <svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Achados por severidade">
+      <circle cx="90" cy="90" r="66" fill="none" stroke="#B91C1C" stroke-width="34"
+      stroke-dasharray="69.12 345.58"
+      stroke-dashoffset="0.00" transform="rotate(-90 90 90)"/><circle cx="90" cy="90" r="66" fill="none" stroke="#EA580C" stroke-width="34"
+      stroke-dasharray="69.12 345.58"
+      stroke-dashoffset="-69.12" transform="rotate(-90 90 90)"/><circle cx="90" cy="90" r="66" fill="none" stroke="#D97706" stroke-width="34"
+      stroke-dasharray="138.23 276.46"
+      stroke-dashoffset="-138.23" transform="rotate(-90 90 90)"/><circle cx="90" cy="90" r="66" fill="none" stroke="#2563EB" stroke-width="34"
+      stroke-dasharray="69.12 345.58"
+      stroke-dashoffset="-276.46" transform="rotate(-90 90 90)"/><circle cx="90" cy="90" r="66" fill="none" stroke="#6B7280" stroke-width="34"
+      stroke-dasharray="69.12 345.58"
+      stroke-dashoffset="-345.58" transform="rotate(-90 90 90)"/>
+      <text x="90" y="86" text-anchor="middle" class="donut-num">6</text>
+      <text x="90" y="104" text-anchor="middle" class="donut-lbl">achados</text>
+    </svg>
+    <div class="legend"><div class="leg-item"><span class="dot" style="background:#B91C1C"></span>Crítica <b>1</b></div><div class="leg-item"><span class="dot" style="background:#EA580C"></span>Alta <b>1</b></div><div class="leg-item"><span class="dot" style="background:#D97706"></span>Média <b>2</b></div><div class="leg-item"><span class="dot" style="background:#2563EB"></span>Baixa <b>1</b></div><div class="leg-item"><span class="dot" style="background:#6B7280"></span>Informativa <b>1</b></div></div>
+  </div>
+
+<h3>Achados por categoria</h3>
+<svg viewBox="0 0 470 210" width="100%" height="210" role="img" aria-label="Achados por categoria">
+    
+      <text x="8" y="24" class="bar-cat">Banco sem tranca (isolamento / leitura sem escopo)</text>
+      <rect x="250" y="8" width="45" height="22" rx="4" fill="#D97706"/>
+      <text x="303" y="24" class="bar-num">1</text>
+      <text x="8" y="64" class="bar-cat">Permissão definida no navegador</text>
+      <rect x="250" y="48" width="180" height="22" rx="4" fill="#B91C1C"/>
+      <text x="438" y="64" class="bar-num">4</text>
+      <text x="8" y="104" class="bar-cat">IDOR</text>
+      <rect x="250" y="88" width="45" height="22" rx="4" fill="#EA580C"/>
+      <text x="303" y="104" class="bar-num">1</text>
+      <text x="8" y="144" class="bar-cat">Chaves expostas / arquivos sensíveis</text>
+      <rect x="250" y="128" width="45" height="22" rx="4" fill="#6B7280"/>
+      <text x="303" y="144" class="bar-num">1</text>
+      <text x="8" y="184" class="bar-cat">Inputs sem tratamento (XSS)</text>
+      <rect x="250" y="168" width="0" height="22" rx="4" fill="#2563EB"/>
+      <text x="262" y="184" class="bar-num">0</text>
+  </svg>
+
+<h2>Pontos fortes (o que está protegido)</h2>
+<div class="stack-strength"><b>Validação de preço no servidor.</b> create_order_and_credit_cash (migrations 0017/0023/0027) recalcula preço unitário, adicionais, subtotal e total a partir de products — ignora o valor enviado pelo cliente. Adicional inexistente ou produto removido derruba a transação inteira.</div><div class="stack-strength"><b>Cardápio público (anon) fortemente contido.</b> Migration 0023: chamador anon tem canal forçado a online, itens limitados a 1-50, nome/telefone do cliente validados em tamanho e formato, desconto e already_paid zerados, notes &lt;= 1000. anon só tem EXECUTE em create_order_and_credit_cash — nenhum SELECT em orders.</div><div class="stack-strength"><b>Escalonamento de privilégio em profiles bloqueado no banco.</b> Trigger prevent_self_privilege_escalation (0014/0015) rejeita alteração de role/active/code/permissions por quem não é admin, independente da policy. admin-create-user (Edge Function) confere o papel do chamador pelo próprio JWT antes de usar a service role.</div><div class="stack-strength"><b>Grants de função travados.</b> Migration 0016 revoga EXECUTE de PUBLIC/anon em todas as funções do schema public e re-concede só as necessárias, a authenticated. alter default privileges ... revoke execute fecha o padrão para funções futuras.</div><div class="stack-strength"><b>Camada de caixa reescrita como RPC security definer com guard de permissão.</b> Migrations 0027/0028: open_cash_shift, close_cash_shift, add_cash_movement, credit_partial_payment, reverse_partial_payment, reverse_paid_order, record_cash_expense — todas checam has_any_permission(...) e resolvem o autor por auth.uid(). Escrita direta em cash_shifts/cash_movements revogada de authenticated/anon.</div><div class="stack-strength"><b>Livro-caixa e trilha de auditoria imutáveis.</b> cash_ledger e audit_log (0025) são append-only: RLS sem policy de INSERT/UPDATE/DELETE, revoke de authenticated/anon/public e triggers reject_mutation que barram até service_role/console.</div><div class="stack-strength"><b>PIN de caixa com hash e rate-limit.</b> Migration 0042: profiles.code migrado para bcrypt (crypt+gen_salt(bf)), trigger que hasheia toda escrita nova, validação server-side (validate_user_pin/validate_manager_pin) devolvendo só boolean. pin_attempts faz lockout. Colunas code (0028) e cpf (0043) revogadas do cliente e retiradas do realtime.</div><div class="stack-strength"><b>Força bruta de login contida.</b> secure-login (Edge Function) centraliza o login, com lockout de 5 tentativas / 15 min por e-mail em login_attempts (RLS sem policy). Mensagens de erro não permitem enumeração de conta. Formato de e-mail/senha validado antes de bater no GoTrue.</div><div class="stack-strength"><b>RLS permission-aware onde foi aplicada.</b> Migration 0022: products, dining_tables, ingredients, suppliers, categories, table_sectors etc. têm INSERT/UPDATE/DELETE amarrados a has_any_permission() com as mesmas chaves do front. audit_log e financial_entries também nos SELECT.</div><div class="stack-strength"><b>RPCs de comanda atômicas e com permissão.</b> Migration 0037: comanda_add_items, comanda_cancel_item, comanda_set_charge, comanda_transfer — FOR UPDATE na mesa, checagem de has_any_permission e ordem estável de lock para evitar deadlock. adjust_stock (0039) idem para entrada/perda/cortesia.</div><div class="stack-strength"><b>Sem superfície de XSS no frontend.</b> Nenhum dangerouslySetInnerHTML, innerHTML, eval, new Function ou render de markdown/HTML em todo src/. React 19 escapa o texto interpolado. Os poucos href dinâmicos (getWhatsAppLink, SupportButton) têm prefixo https:// fixo e só concatenam dígitos de telefone / texto encodeURIComponent. primary_color não é injetado em style em runtime.</div><div class="stack-strength"><b>Sem segredo real no repositório.</b> git ls-files e git log -- .env não revelam service role key, JWT secret, senha de banco ou chave privada. .env está no .gitignore; o VITE_SUPABASE_ANON_KEY no Dockerfile/.env é a chave pública anon (por design no bundle). Edge Functions recebem SUPABASE_SERVICE_ROLE_KEY via secret injetado pelo Supabase, não do código.</div>
+
+<h2>Pontos fracos (riscos centrais)</h2>
+<div class="weak"><b>Camada de autorização em duas velocidades.</b> A escrita passou por um endurecimento sério (RPCs security definer com <code>has_any_permission</code>, triggers de imutabilidade, validação de preço no servidor), mas sobraram <b>ilhas que só checam <code>auth.role() = 'authenticated'</code></b>: a escrita de <code>company_profile</code> (Achado 1), o UPDATE de <code>orders</code> (Achado 2) e duas RPCs de venda sem guard (Achado 4). Como o front esconde essas ações por permissão, a diferença só aparece para quem chama a API direto.</div>
+<div class="weak"><b>Leitura sem escopo de papel.</b> Quase todos os SELECT financeiros e a PII de clientes em <code>orders.customer</code> são visíveis a qualquer funcionário logado (Achado 3). <code>audit_log</code> e <code>financial_entries</code> mostram que o padrão permission-aware era conhecido — só não foi aplicado de forma consistente.</div>
+<div class="weak"><b>Storage sem dono.</b> As policies do bucket <code>product-images</code> não amarram update/delete ao autor nem a permissão (Achado 5) — qualquer conta apaga a mídia do cardápio público.</div>
+
+<h2>Achados detalhados</h2>
+<h3 style="color:#B91C1C">Crítica (1)</h3><section class="finding">
+    <h3>#1 · Tabela company_profile pode ser reescrita por qualquer funcionário autenticado <span class="chip" style="background:#B91C1C1a;color:#B91C1C;border-color:#B91C1C55">Crítica</span></h3>
+    <p class="finding-cat">Categoria 2 — Permissão definida no navegador</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>supabase/migrations/0018_public_online_ordering.sql:71-72</code><br><code>supabase/migrations/0026_service_fee_couvert_discount_finance.sql:14-21</code><br><code>src/context/AppContext.tsx:512-517</code></td></tr>
+      <tr><th>Por que é explorável</th><td>A unica policy de UPDATE de company_profile exige apenas auth.role() = 'authenticated' — qualquer usuario logado (garcom, cozinha, estoque) passa. Nao ha trigger de protecao de coluna (ao contrario de profiles, que tem prevent_self_privilege_escalation). A migration 0022 tornou dezenas de tabelas permission-aware, mas company_profile ficou de fora e nunca foi corrigida (verificado ate a 0045). discount_limits nao tem sequer CHECK constraint.<br><br>Impacto encadeado — a linha guarda parametros que o servidor confia:<br>- discount_limits e lida por discount_limit_percent() para autorizar desconto acima do teto (0027:307-316). Um caixa faz update company_profile set discount_limits='{&quot;caixa&quot;:100}' e passa a dar 100% de desconto sem PIN de gerente.<br>- blind_conference_threshold define quando a diferenca de fechamento de caixa exige justificativa (0027:599). Eleva-la esconde furto de caixa.<br>- pix_key e bank_info aparecem no cardapio publico (/pedir). Troca-las redireciona o pagamento dos clientes.<br>- buffet_prices (preco por kg) alimenta o preco de venda dos itens por quilo no PDV.<br>- min_order_value / delivery_fee afetam todo pedido online.<br><br>Exploravel direto pelo console do navegador com a sessao de qualquer funcionario — nao depende da UI.</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code">-- 0018_public_online_ordering.sql:71
+create policy &quot;authenticated_update_company_profile&quot; on company_profile for update
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- 0026: colunas de negocio que passam a morar nessa mesma linha, sem CHECK de autor:
+--   discount_limits jsonb default '{&quot;caixa&quot;:5,&quot;gerente&quot;:20,&quot;financeiro&quot;:10,&quot;admin&quot;:100}'
+--   blind_conference_threshold, service_fee_percent, couvert_value
+--   buffet_prices, pix_key, bank_info, fiscal_info, min_order_value, delivery_fee
+
+// src/context/AppContext.tsx:514  (UI gateada por 'empresa.editar_perfil' / 'empresa.editar_precos_buffet')
+supabase.from('company_profile').update(toRow(profile)).eq('id', true)</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">Substituir a policy por uma permission-aware:
+  create policy company_profile_update on public.company_profile for update
+    using (public.has_any_permission(array['empresa.editar_perfil','empresa.editar_midia','empresa.editar_precos_buffet']))
+    with check (public.has_any_permission(array['empresa.editar_perfil','empresa.editar_midia','empresa.editar_precos_buffet']));
+
+Isolar os campos financeiros sensiveis (discount_limits, blind_conference_threshold, pix_key,
+bank_info, fiscal_info) numa RPC security definer so-admin, com linha em audit_log.
+Adicionar CHECK em discount_limits (cada valor entre 0 e 100).</pre>
+  </section><h3 style="color:#EA580C">Alta (1)</h3><section class="finding">
+    <h3>#2 · UPDATE irrestrito em orders permite adulterar pagamento, valores e dados do cliente <span class="chip" style="background:#EA580C1a;color:#EA580C;border-color:#EA580C55">Alta</span></h3>
+    <p class="finding-cat">Categoria 2 — Permissão definida no navegador &nbsp;·&nbsp; Categoria 3 — IDOR</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>supabase/migrations/0022_permission_aware_rls.sql:46-55</code><br><code>src/context/AppContext.tsx:1083-1108</code></td></tr>
+      <tr><th>Por que é explorável</th><td>online_menu.acessar e concedida a garcom, caixa e gerente; kitchen.avancar_status a cozinha. Qualquer um desses papeis pode fazer, direto pelo supabase-js:<br>  update orders set payment_status='pagamento_aprovado', order_status='concluido' where id='&lt;qualquer&gt;'<br>  update orders set total=1, discount=0, nfce_key='...', customer='{...}' where id='&lt;qualquer&gt;'<br><br>Isso contorna toda a camada RPC endurecida (0017/0023/0027), que so protege a criacao e o estorno. O estorno legitimo (reverse_paid_order) exige caixas.estornar_venda + PIN de gerente; aqui um garcom marca payment_status='pagamento_estornado' num pedido pago sem nada disso, ou quita um pedido de entrega ainda nao pago, ou reescreve o total de pedidos historicos para encobrir diferenca de caixa. Relatorios e conferencia leem orders diretamente.</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code">-- 0022_permission_aware_rls.sql:46
+create policy permission_update_orders on public.orders
+  for update
+  using (public.has_any_permission(array[
+    'kitchen.avancar_status', 'entregas.despachar', 'vendas.emitir_nfce',
+    'vendas.acessar', 'online_menu.acessar'
+  ]))
+  with check (public.has_any_permission(array[ ...as mesmas... ]));
+-- sem restricao de coluna, sem restricao de estado, sem checar autoria (waiter_name)
+-- 'orders' so tem trigger BEFORE INSERT (0036, order_number). Nada protege o UPDATE.</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">Restringir a policy de UPDATE ao minimo do fluxo de cozinha/expedicao e mover o resto para RPC:
+- Manter UPDATE direto apenas de order_status / prepared_at / delivered_at / delivery_driver_name,
+  idealmente via RPC advance_order_status(p_id, p_status) que valida a transicao de estado.
+- payment_status, payment_method, total, subtotal, discount, fiscal_issued, nfce_key, customer,
+  split_payments, shift_id: nunca por UPDATE direto do cliente — so RPC security definer com
+  checagem de permissao especifica.
+- Trigger BEFORE UPDATE em orders que rejeita alteracao das colunas financeiras quando auth.uid()
+  nao tem vendas.acessar (cinto e suspensorio).</pre>
+  </section><h3 style="color:#D97706">Média (2)</h3><section class="finding">
+    <h3>#3 · Livro-caixa, turnos, movimentações e PII de clientes legíveis por qualquer funcionário <span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></h3>
+    <p class="finding-cat">Categoria 1 — Banco sem tranca (isolamento / leitura sem escopo)</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>supabase/migrations/0025_cash_ledger_audit_pin.sql:73-74</code><br><code>supabase/schema.sql:276</code><br><code>supabase/migrations/0022_permission_aware_rls.sql:43-44, 60-61, 66-67</code><br><code>supabase/migrations/0038_losses_courtesies_printers_drivers.sql:95-96, 102-103</code></td></tr>
+      <tr><th>Por que é explorável</th><td>A UI esconde Livro-Caixa (livro_caixa.acessar), Caixas (caixas.acessar) e os enderecos de entrega atras de permissoes que cozinha/estoque/garcom nao tem. Mas o SELECT dessas tabelas no Postgres so exige authenticated. Um select * from cash_ledger / cash_shifts / cash_movements / orders feito pelo supabase-js de qualquer sessao de funcionario devolve tudo:<br>- livro-caixa completo (cada venda, adiantamento, sangria, despesa, com motivo e autor);<br>- diferenca de fechamento de todos os turnos;<br>- nome, telefone e endereco residencial de todos os clientes de delivery — exposicao de dados pessoais (LGPD).<br>O risco cresce se um terminal de baixo privilegio (tablet da cozinha) for comprometido. audit_log e financial_entries ja foram feitos permission-aware nas mesmas migrations — o padrao era conhecido, so nao foi aplicado de forma consistente.<br>Observacao relacionada: secure-login nao verifica profiles.active; um funcionario desativado ainda recebe tokens e mantem esse mesmo SELECT amplo (as escritas via has_any_permission ja checam active).</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code">-- 0025:73  cash_ledger (livro-caixa append-only: TODA transacao com valor/forma/motivo)
+create policy cash_ledger_select on public.cash_ledger
+  for select using (auth.role() = 'authenticated');
+
+-- schema.sql:276  cash_shifts (fundo, vendas por forma, diferenca de fechamento, notas)
+create policy &quot;authenticated_all_cash_shifts&quot; ... using (auth.role() = 'authenticated');
+-- 0022:66  authenticated_select_cash_shifts     -&gt; idem
+-- 0022:60  authenticated_select_cash_movements  -&gt; sangria/reforco, valores, responsavel
+-- 0022:43  authenticated_select_orders          -&gt; orders.customer = {name, phone, address}
+-- 0038:95/102 loss_records / courtesy_records   -&gt; idem (auth.role())
+
+-- Contraste (mesma migration 0025/0026 fez certo):
+-- 0025:114  audit_log_select        using has_any_permission(['auditoria.acessar'])
+-- 0026:81   financial_entries_select using has_any_permission(['financeiro_dre.acessar'])</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">Tornar os SELECT permission-aware, como ja foi feito para audit_log/financial_entries:
+  cash_ledger     -&gt; using has_any_permission(array['livro_caixa.acessar','caixas.acessar'])
+  cash_shifts     -&gt; using has_any_permission(array['caixas.acessar'])
+  cash_movements  -&gt; using has_any_permission(array['caixas.acessar'])
+  loss_records / courtesy_records -&gt; using has_any_permission(array['estoque.acessar', ...])
+Para orders: expor a coluna customer (PII) so a quem tem vendas.acessar / entregas.acessar (view ou mascaramento).
+Fazer secure-login recusar login de conta active = false.</pre>
+  </section><section class="finding">
+    <h3>#4 · RPCs create_order_and_credit_cash e close_comanda_and_pay não verificam permissão de venda do chamador <span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></h3>
+    <p class="finding-cat">Categoria 2 — Permissão definida no navegador</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>supabase/migrations/0027_cash_rpc_cutover.sql:169-183, 416-428, 1065-1069</code></td></tr>
+      <tr><th>Por que é explorável</th><td>Ambas rodam como dona da funcao (ignoram RLS) e estao liberadas a authenticated. Nao checam se o chamador tem pdv.finalizar_venda / mesas.fechar_comanda. Um funcionario cozinha ou estoque — que a UI nunca deixa vender — pode chamar supabase.rpc('create_order_and_credit_cash', {...}) e:<br>- criar pedidos arbitrarios (com preco recalculado no servidor, entao nao e fraude de preco, mas e registro de venda falso);<br>- injetar valores em cash_shifts.sales_cash/card/pix... e no cash_ledger do turno aberto, sujando a conferencia de caixa.<br>A validacao de preco/estoque de 0017/0023 mitiga o pior caso (venda de R$500 por R$5), mas a ausencia do guard de permissao que todas as RPCs vizinhas tem e uma inconsistencia exploravel — inclusive para poluicao de dados e negacao de conferencia.</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code">-- 0027: todas as outras RPCs de caixa comecam com um guard de permissao...
+open_cash_shift    -&gt; if not has_any_permission(array['caixas.abrir'])        then raise ...
+add_cash_movement  -&gt; if not has_any_permission(array['caixas.movimentacao']) then raise ...
+close_cash_shift   -&gt; if not has_any_permission(array['caixas.fechar'])       then raise ...
+credit_partial_payment / reverse_partial_payment / reverse_paid_order / record_cash_expense -&gt; idem
+
+-- ...mas estas duas NAO tem guard nenhum, e sao security definer:
+create or replace function public.create_order_and_credit_cash(...) ... security definer
+create or replace function public.close_comanda_and_pay(...)       ... security definer
+grant execute on function public.create_order_and_credit_cash(...) to authenticated, anon;  -- 1065
+grant execute on function public.close_comanda_and_pay(...)        to authenticated;         -- 1068</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">Adicionar, no inicio de ambas (para o ramo nao-anonimo):
+  if auth.role() &lt;&gt; 'anon' and not public.has_any_permission(array[
+       'pdv.finalizar_venda','mesas.fechar_comanda','online_menu.finalizar_pedido']) then
+    raise exception 'Sem permissao para registrar venda.';
+  end if;
+Manter o ramo anon (cardapio publico) como esta — ja e fortemente validado.</pre>
+  </section><h3 style="color:#2563EB">Baixa (1)</h3><section class="finding">
+    <h3>#5 · Bucket product-images: escrita e exclusão sem escopo de dono nem permissão <span class="chip" style="background:#2563EB1a;color:#2563EB;border-color:#2563EB55">Baixa</span></h3>
+    <p class="finding-cat">Categoria 2 — Permissão definida no navegador</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>src/lib/storage.ts:54-64</code><br><code>DEV_DB_SETUP.md:bloco SQL do bucket</code></td></tr>
+      <tr><th>Por que é explorável</th><td>Qualquer funcionario autenticado pode sobrescrever ou apagar todos os objetos do bucket: fotos de produto, logo da empresa e capa do cardapio online (company_profile.logo_url / cover_url, que aparecem na pagina publica /pedir). Resultado: defacement do cardapio publico e perda de midia, feito por conta de baixo privilegio. A UI so oferece gestao de imagem a quem tem produtos.editar / empresa.editar_midia. O bucket e publico para leitura (por design), entao o dano e de integridade/disponibilidade.</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code">create policy &quot;product_images_authenticated_write&quot; on storage.objects
+  for insert to authenticated with check (bucket_id = 'product-images');
+create policy &quot;product_images_authenticated_update&quot; on storage.objects
+  for update to authenticated using (bucket_id = 'product-images');
+create policy &quot;product_images_authenticated_delete&quot; on storage.objects
+  for delete to authenticated using (bucket_id = 'product-images');
+-- sem owner = auth.uid(), sem has_any_permission(...)</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">Escopar update/delete por dono (owner = auth.uid()) e/ou por permissao.
+Para a midia institucional (logo/capa), usar prefixo proprio (empresa/) e exigir empresa.editar_midia;
+para produtos/, exigir produtos.editar ou produtos.criar. O INSERT amplo pode continuar.</pre>
+  </section><h3 style="color:#6B7280">Informativa (1)</h3><section class="finding">
+    <h3>#6 · Diretório supabase/.temp/ versionado (metadados de projeto e string de conexão do pooler) <span class="chip" style="background:#6B72801a;color:#6B7280;border-color:#6B728055">Informativa</span></h3>
+    <p class="finding-cat">Categoria 4 — Chaves expostas / arquivos sensíveis</p>
+    <table class="kv">
+      <tr><th>Arquivo:linha</th><td><code>supabase/.temp/pooler-url:1</code><br><code>supabase/.temp/linked-project.json:1</code><br><code>.gitignore:9</code></td></tr>
+      <tr><th>Por que é explorável</th><td>Nao ha segredo real aqui: a pooler-url traz so usuario e host (sem senha), o project ref ja vai embutido em VITE_SUPABASE_URL no bundle, e as versoes de componentes sao publicas. Mesmo assim, expoe organizacao, nome do projeto de dev e a topologia do banco sem necessidade, e indica que o .gitignore nao esta sendo respeitado para esse caminho (risco de, no futuro, entrar ali um arquivo que de fato seja sensivel). Classificado como informativo.</td></tr>
+    </table>
+    <div class="code-label">Evidência</div>
+    <pre class="code"># git ls-files inclui:
+supabase/.temp/pooler-url         -&gt; postgresql://postgres.vxgkslytnofxtkhjpkxb@aws-0-us-west-2.pooler.supabase.com:5432/postgres
+supabase/.temp/linked-project.json -&gt; {&quot;ref&quot;:&quot;vxgkslytnofxtkhjpkxb&quot;,&quot;name&quot;:&quot;ampliechef_dev&quot;,&quot;organization_id&quot;:&quot;ikrbfkaluvaemxzlrhbi&quot;,...}
+supabase/.temp/project-ref, gotrue-version, postgres-version, storage-version, ...
+# .gitignore tem &quot;.temp/&quot; (linha 9), mas os arquivos foram adicionados antes da regra e continuam rastreados</pre>
+    <div class="code-label">Correção sugerida</div>
+    <pre class="code fix">git rm -r --cached supabase/.temp &amp;&amp; git commit.
+Confirmar que .gitignore cobre supabase/.temp/ (a regra .temp/ ja cobre; o problema e so o index/historico).
+Revisar historico: git log --all -- supabase/.temp para garantir que nunca houve um .temp com access-token.</pre>
+  </section>
+
+<h2>Tabela de achados por categoria</h2>
+<h3>Categoria 1 — Banco sem tranca (isolamento / leitura sem escopo)</h3>
+  <table class="grid"><thead><tr><th style="width:78px">Severidade</th><th style="width:38%">Arquivo:linha</th><th>Descrição</th></tr></thead><tbody>
+  <tr><td><span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></td><td><code>supabase/migrations/0025_cash_ledger_audit_pin.sql:73-74</code><br><code>supabase/schema.sql:276</code><br><code>supabase/migrations/0022_permission_aware_rls.sql:43-44, 60-61, 66-67</code><br><code>supabase/migrations/0038_losses_courtesies_printers_drivers.sql:95-96, 102-103</code></td><td><b>#3</b> Livro-caixa, turnos, movimentações e PII de clientes legíveis por qualquer funcionário</td></tr>
+  </tbody></table><h3>Categoria 2 — Permissão definida no navegador</h3>
+  <table class="grid"><thead><tr><th style="width:78px">Severidade</th><th style="width:38%">Arquivo:linha</th><th>Descrição</th></tr></thead><tbody>
+  <tr><td><span class="chip" style="background:#B91C1C1a;color:#B91C1C;border-color:#B91C1C55">Crítica</span></td><td><code>supabase/migrations/0018_public_online_ordering.sql:71-72</code><br><code>supabase/migrations/0026_service_fee_couvert_discount_finance.sql:14-21</code><br><code>src/context/AppContext.tsx:512-517</code></td><td><b>#1</b> Tabela company_profile pode ser reescrita por qualquer funcionário autenticado</td></tr><tr><td><span class="chip" style="background:#EA580C1a;color:#EA580C;border-color:#EA580C55">Alta</span></td><td><code>supabase/migrations/0022_permission_aware_rls.sql:46-55</code><br><code>src/context/AppContext.tsx:1083-1108</code></td><td><b>#2</b> UPDATE irrestrito em orders permite adulterar pagamento, valores e dados do cliente</td></tr><tr><td><span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></td><td><code>supabase/migrations/0027_cash_rpc_cutover.sql:169-183, 416-428, 1065-1069</code></td><td><b>#4</b> RPCs create_order_and_credit_cash e close_comanda_and_pay não verificam permissão de venda do chamador</td></tr><tr><td><span class="chip" style="background:#2563EB1a;color:#2563EB;border-color:#2563EB55">Baixa</span></td><td><code>src/lib/storage.ts:54-64</code><br><code>DEV_DB_SETUP.md:bloco SQL do bucket</code></td><td><b>#5</b> Bucket product-images: escrita e exclusão sem escopo de dono nem permissão</td></tr>
+  </tbody></table><h3>Categoria 3 — IDOR</h3>
+  <table class="grid"><thead><tr><th style="width:78px">Severidade</th><th style="width:38%">Arquivo:linha</th><th>Descrição</th></tr></thead><tbody>
+  <tr><td><span class="chip" style="background:#EA580C1a;color:#EA580C;border-color:#EA580C55">Alta</span></td><td><code>supabase/migrations/0022_permission_aware_rls.sql:46-55</code><br><code>src/context/AppContext.tsx:1083-1108</code></td><td><b>#2</b> UPDATE irrestrito em orders permite adulterar pagamento, valores e dados do cliente</td></tr>
+  </tbody></table><h3>Categoria 4 — Chaves expostas / arquivos sensíveis</h3>
+  <table class="grid"><thead><tr><th style="width:78px">Severidade</th><th style="width:38%">Arquivo:linha</th><th>Descrição</th></tr></thead><tbody>
+  <tr><td><span class="chip" style="background:#6B72801a;color:#6B7280;border-color:#6B728055">Informativa</span></td><td><code>supabase/.temp/pooler-url:1</code><br><code>supabase/.temp/linked-project.json:1</code><br><code>.gitignore:9</code></td><td><b>#6</b> Diretório supabase/.temp/ versionado (metadados de projeto e string de conexão do pooler)</td></tr>
+  </tbody></table><h3>Categoria 5 — Inputs sem tratamento (XSS)</h3><p class="muted">Sem achados nesta categoria — o frontend não possui sinks de HTML/JS dinâmico (verificado).</p>
+
+<h2>Recomendações priorizadas</h2>
+<table class="grid"><thead><tr><th style="width:44px">Prio</th><th style="width:70px">Sev.</th><th style="width:30%">Ação</th><th>Detalhe</th></tr></thead><tbody>
+<tr><td class="rec-p">P1</td><td><span class="chip" style="background:#B91C1C1a;color:#B91C1C;border-color:#B91C1C55">Crítica</span></td><td><b>Fechar a escrita de company_profile</b></td><td>Policy permission-aware + trigger de coluna + isolar campos financeiros (discount_limits, blind_conference_threshold, pix_key, bank_info, fiscal_info) em RPC admin-only com auditoria. (Achado 1)</td></tr><tr><td class="rec-p">P1</td><td><span class="chip" style="background:#EA580C1a;color:#EA580C;border-color:#EA580C55">Alta</span></td><td><b>Restringir UPDATE de orders</b></td><td>Limitar a policy às colunas de status de preparo; mover pagamento/valores/fiscal/cliente para RPC security definer com permissão; trigger BEFORE UPDATE nas colunas financeiras. (Achado 2)</td></tr><tr><td class="rec-p">P2</td><td><span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></td><td><b>Tornar os SELECT financeiros permission-aware</b></td><td>cash_ledger, cash_shifts, cash_movements, loss_records, courtesy_records; mascarar orders.customer (PII/LGPD); secure-login recusar active = false. (Achado 3)</td></tr><tr><td class="rec-p">P2</td><td><span class="chip" style="background:#D977061a;color:#D97706;border-color:#D9770655">Média</span></td><td><b>Adicionar guard de permissão nas RPCs de venda</b></td><td>create_order_and_credit_cash e close_comanda_and_pay: exigir pdv.finalizar_venda / mesas.fechar_comanda no ramo não-anônimo. (Achado 4)</td></tr><tr><td class="rec-p">P3</td><td><span class="chip" style="background:#2563EB1a;color:#2563EB;border-color:#2563EB55">Baixa</span></td><td><b>Escopar as policies do bucket product-images</b></td><td>update/delete por owner = auth.uid() e/ou por permissão; separar prefixo empresa/ (institucional) de produtos/. (Achado 5)</td></tr><tr><td class="rec-p">P3</td><td><span class="chip" style="background:#6B72801a;color:#6B7280;border-color:#6B728055">Informativa</span></td><td><b>Despoluir o versionamento</b></td><td>git rm -r --cached supabase/.temp; auditar histórico por qualquer .temp/token já commitado. (Achado 6)</td></tr><tr><td class="rec-p">P3</td><td><span class="chip" style="background:#6B72801a;color:#6B7280;border-color:#6B728055">Informativa</span></td><td><b>Endurecimento contínuo</b></td><td>Revisar CORS * das Edge Functions para uma allowlist de origens; verificação de startup que rejeite SUPABASE_SERVICE_ROLE_KEY ausente/placeholder; considerar rotação periódica da anon key como higiene.</td></tr>
+</tbody></table>
+
+<h2>Issues para o GitHub</h2>
+  <p class="muted">Um bloco por achado, pronto para copiar e colar. Achados triviais do mesmo tema estão agrupados.</p>
+  <pre class="issue">--- ISSUE 1 ---
+
+## [Segurança] Tabela company_profile pode ser reescrita por qualquer funcionário autenticado
+
+**Labels:** security, critica
+**Classificação:** Crítica · Categoria 2 (Permissão definida no navegador)
+
+### Problema e por que é explorável
+A unica policy de UPDATE de company_profile exige apenas auth.role() = 'authenticated' — qualquer usuario logado (garcom, cozinha, estoque) passa. Nao ha trigger de protecao de coluna (ao contrario de profiles, que tem prevent_self_privilege_escalation). A migration 0022 tornou dezenas de tabelas permission-aware, mas company_profile ficou de fora e nunca foi corrigida (verificado ate a 0045). discount_limits nao tem sequer CHECK constraint.
+
+Impacto encadeado — a linha guarda parametros que o servidor confia:
+- discount_limits e lida por discount_limit_percent() para autorizar desconto acima do teto (0027:307-316). Um caixa faz update company_profile set discount_limits='{&quot;caixa&quot;:100}' e passa a dar 100% de desconto sem PIN de gerente.
+- blind_conference_threshold define quando a diferenca de fechamento de caixa exige justificativa (0027:599). Eleva-la esconde furto de caixa.
+- pix_key e bank_info aparecem no cardapio publico (/pedir). Troca-las redireciona o pagamento dos clientes.
+- buffet_prices (preco por kg) alimenta o preco de venda dos itens por quilo no PDV.
+- min_order_value / delivery_fee afetam todo pedido online.
+
+Exploravel direto pelo console do navegador com a sessao de qualquer funcionario — nao depende da UI.
+
+### Evidência
+- `supabase/migrations/0018_public_online_ordering.sql:71-72`
+- `supabase/migrations/0026_service_fee_couvert_discount_finance.sql:14-21`
+- `src/context/AppContext.tsx:512-517`
+
+```
+-- 0018_public_online_ordering.sql:71
+create policy &quot;authenticated_update_company_profile&quot; on company_profile for update
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- 0026: colunas de negocio que passam a morar nessa mesma linha, sem CHECK de autor:
+--   discount_limits jsonb default '{&quot;caixa&quot;:5,&quot;gerente&quot;:20,&quot;financeiro&quot;:10,&quot;admin&quot;:100}'
+--   blind_conference_threshold, service_fee_percent, couvert_value
+--   buffet_prices, pix_key, bank_info, fiscal_info, min_order_value, delivery_fee
+
+// src/context/AppContext.tsx:514  (UI gateada por 'empresa.editar_perfil' / 'empresa.editar_precos_buffet')
+supabase.from('company_profile').update(toRow(profile)).eq('id', true)
+```
+
+### Impacto
+Caixa/garçom/cozinha altera teto de desconto, limiar de conferência de caixa, chave PIX do cardápio público e preço por kg — fraude financeira e desvio de pagamento de clientes.
+
+### Sugestão de correção
+Substituir a policy por uma permission-aware:
+  create policy company_profile_update on public.company_profile for update
+    using (public.has_any_permission(array['empresa.editar_perfil','empresa.editar_midia','empresa.editar_precos_buffet']))
+    with check (public.has_any_permission(array['empresa.editar_perfil','empresa.editar_midia','empresa.editar_precos_buffet']));
+
+Isolar os campos financeiros sensiveis (discount_limits, blind_conference_threshold, pix_key,
+bank_info, fiscal_info) numa RPC security definer so-admin, com linha em audit_log.
+Adicionar CHECK em discount_limits (cada valor entre 0 e 100).
+
+### Critérios de aceite
+- [ ] Funcionário sem empresa.editar_perfil recebe erro de RLS ao tentar update company_profile via supabase-js
+- [ ] discount_limits, blind_conference_threshold, pix_key, bank_info só alteráveis por admin (ou RPC dedicada)
+- [ ] Toda alteração de company_profile gera linha em audit_log com actor_id
+- [ ] CHECK constraint valida cada valor de discount_limits no intervalo 0-100
+- [ ] Teste de regressão: caixa tenta desconto 100% após adulterar discount_limits -&gt; bloqueado
+
+--- FIM ISSUE 1 ---</pre>
+<pre class="issue">--- ISSUE 2 ---
+
+## [Segurança] UPDATE irrestrito em orders permite adulterar pagamento, valores e dados do cliente
+
+**Labels:** security, alta
+**Classificação:** Alta · Categoria 2 (Permissão definida no navegador) + Categoria 3 (IDOR)
+
+### Problema e por que é explorável
+online_menu.acessar e concedida a garcom, caixa e gerente; kitchen.avancar_status a cozinha. Qualquer um desses papeis pode fazer, direto pelo supabase-js:
+  update orders set payment_status='pagamento_aprovado', order_status='concluido' where id='&lt;qualquer&gt;'
+  update orders set total=1, discount=0, nfce_key='...', customer='{...}' where id='&lt;qualquer&gt;'
+
+Isso contorna toda a camada RPC endurecida (0017/0023/0027), que so protege a criacao e o estorno. O estorno legitimo (reverse_paid_order) exige caixas.estornar_venda + PIN de gerente; aqui um garcom marca payment_status='pagamento_estornado' num pedido pago sem nada disso, ou quita um pedido de entrega ainda nao pago, ou reescreve o total de pedidos historicos para encobrir diferenca de caixa. Relatorios e conferencia leem orders diretamente.
+
+### Evidência
+- `supabase/migrations/0022_permission_aware_rls.sql:46-55`
+- `src/context/AppContext.tsx:1083-1108`
+
+```
+-- 0022_permission_aware_rls.sql:46
+create policy permission_update_orders on public.orders
+  for update
+  using (public.has_any_permission(array[
+    'kitchen.avancar_status', 'entregas.despachar', 'vendas.emitir_nfce',
+    'vendas.acessar', 'online_menu.acessar'
+  ]))
+  with check (public.has_any_permission(array[ ...as mesmas... ]));
+-- sem restricao de coluna, sem restricao de estado, sem checar autoria (waiter_name)
+-- 'orders' so tem trigger BEFORE INSERT (0036, order_number). Nada protege o UPDATE.
+```
+
+### Impacto
+Funcionário de baixo privilégio marca pedidos como pagos/estornados e reescreve totais e dados fiscais de qualquer pedido — perda financeira e adulteração de nota.
+
+### Sugestão de correção
+Restringir a policy de UPDATE ao minimo do fluxo de cozinha/expedicao e mover o resto para RPC:
+- Manter UPDATE direto apenas de order_status / prepared_at / delivered_at / delivery_driver_name,
+  idealmente via RPC advance_order_status(p_id, p_status) que valida a transicao de estado.
+- payment_status, payment_method, total, subtotal, discount, fiscal_issued, nfce_key, customer,
+  split_payments, shift_id: nunca por UPDATE direto do cliente — so RPC security definer com
+  checagem de permissao especifica.
+- Trigger BEFORE UPDATE em orders que rejeita alteracao das colunas financeiras quando auth.uid()
+  nao tem vendas.acessar (cinto e suspensorio).
+
+### Critérios de aceite
+- [ ] Garçom não consegue alterar payment_status/total/nfce_key de nenhum pedido via supabase-js
+- [ ] Avançar status de preparo continua funcionando para cozinha/expedição
+- [ ] Marcar pedido como pago/estornado exige RPC dedicada com permissão + (no estorno) PIN de gerente
+- [ ] Trigger BEFORE UPDATE cobre as colunas financeiras de orders
+- [ ] Teste: cozinha tenta update orders set total=1 -&gt; erro
+
+--- FIM ISSUE 2 ---</pre>
+<pre class="issue">--- ISSUE 3 ---
+
+## [Segurança] Livro-caixa, turnos, movimentações e PII de clientes legíveis por qualquer funcionário
+
+**Labels:** security, media
+**Classificação:** Média · Categoria 1 (Banco sem tranca (isolamento / leitura sem escopo))
+
+### Problema e por que é explorável
+A UI esconde Livro-Caixa (livro_caixa.acessar), Caixas (caixas.acessar) e os enderecos de entrega atras de permissoes que cozinha/estoque/garcom nao tem. Mas o SELECT dessas tabelas no Postgres so exige authenticated. Um select * from cash_ledger / cash_shifts / cash_movements / orders feito pelo supabase-js de qualquer sessao de funcionario devolve tudo:
+- livro-caixa completo (cada venda, adiantamento, sangria, despesa, com motivo e autor);
+- diferenca de fechamento de todos os turnos;
+- nome, telefone e endereco residencial de todos os clientes de delivery — exposicao de dados pessoais (LGPD).
+O risco cresce se um terminal de baixo privilegio (tablet da cozinha) for comprometido. audit_log e financial_entries ja foram feitos permission-aware nas mesmas migrations — o padrao era conhecido, so nao foi aplicado de forma consistente.
+Observacao relacionada: secure-login nao verifica profiles.active; um funcionario desativado ainda recebe tokens e mantem esse mesmo SELECT amplo (as escritas via has_any_permission ja checam active).
+
+### Evidência
+- `supabase/migrations/0025_cash_ledger_audit_pin.sql:73-74`
+- `supabase/schema.sql:276`
+- `supabase/migrations/0022_permission_aware_rls.sql:43-44, 60-61, 66-67`
+- `supabase/migrations/0038_losses_courtesies_printers_drivers.sql:95-96, 102-103`
+
+```
+-- 0025:73  cash_ledger (livro-caixa append-only: TODA transacao com valor/forma/motivo)
+create policy cash_ledger_select on public.cash_ledger
+  for select using (auth.role() = 'authenticated');
+
+-- schema.sql:276  cash_shifts (fundo, vendas por forma, diferenca de fechamento, notas)
+create policy &quot;authenticated_all_cash_shifts&quot; ... using (auth.role() = 'authenticated');
+-- 0022:66  authenticated_select_cash_shifts     -&gt; idem
+-- 0022:60  authenticated_select_cash_movements  -&gt; sangria/reforco, valores, responsavel
+-- 0022:43  authenticated_select_orders          -&gt; orders.customer = {name, phone, address}
+-- 0038:95/102 loss_records / courtesy_records   -&gt; idem (auth.role())
+
+-- Contraste (mesma migration 0025/0026 fez certo):
+-- 0025:114  audit_log_select        using has_any_permission(['auditoria.acessar'])
+-- 0026:81   financial_entries_select using has_any_permission(['financeiro_dre.acessar'])
+```
+
+### Impacto
+Qualquer conta de funcionário lê o livro-caixa inteiro, a diferença de todos os fechamentos e o endereço residencial de todos os clientes de delivery.
+
+### Sugestão de correção
+Tornar os SELECT permission-aware, como ja foi feito para audit_log/financial_entries:
+  cash_ledger     -&gt; using has_any_permission(array['livro_caixa.acessar','caixas.acessar'])
+  cash_shifts     -&gt; using has_any_permission(array['caixas.acessar'])
+  cash_movements  -&gt; using has_any_permission(array['caixas.acessar'])
+  loss_records / courtesy_records -&gt; using has_any_permission(array['estoque.acessar', ...])
+Para orders: expor a coluna customer (PII) so a quem tem vendas.acessar / entregas.acessar (view ou mascaramento).
+Fazer secure-login recusar login de conta active = false.
+
+### Critérios de aceite
+- [ ] Sessão de cozinha recebe 0 linhas em select * from cash_ledger / cash_shifts / cash_movements
+- [ ] Endereço/telefone do cliente em orders.customer só visível para papéis com vendas.acessar ou entregas.acessar
+- [ ] secure-login retorna 403 para usuário active = false
+- [ ] Telas Livro-Caixa e Caixas continuam funcionando para caixa/gerente/financeiro
+
+--- FIM ISSUE 3 ---</pre>
+<pre class="issue">--- ISSUE 4 ---
+
+## [Segurança] RPCs create_order_and_credit_cash e close_comanda_and_pay não verificam permissão de venda do chamador
+
+**Labels:** security, media
+**Classificação:** Média · Categoria 2 (Permissão definida no navegador)
+
+### Problema e por que é explorável
+Ambas rodam como dona da funcao (ignoram RLS) e estao liberadas a authenticated. Nao checam se o chamador tem pdv.finalizar_venda / mesas.fechar_comanda. Um funcionario cozinha ou estoque — que a UI nunca deixa vender — pode chamar supabase.rpc('create_order_and_credit_cash', {...}) e:
+- criar pedidos arbitrarios (com preco recalculado no servidor, entao nao e fraude de preco, mas e registro de venda falso);
+- injetar valores em cash_shifts.sales_cash/card/pix... e no cash_ledger do turno aberto, sujando a conferencia de caixa.
+A validacao de preco/estoque de 0017/0023 mitiga o pior caso (venda de R$500 por R$5), mas a ausencia do guard de permissao que todas as RPCs vizinhas tem e uma inconsistencia exploravel — inclusive para poluicao de dados e negacao de conferencia.
+
+### Evidência
+- `supabase/migrations/0027_cash_rpc_cutover.sql:169-183, 416-428, 1065-1069`
+
+```
+-- 0027: todas as outras RPCs de caixa comecam com um guard de permissao...
+open_cash_shift    -&gt; if not has_any_permission(array['caixas.abrir'])        then raise ...
+add_cash_movement  -&gt; if not has_any_permission(array['caixas.movimentacao']) then raise ...
+close_cash_shift   -&gt; if not has_any_permission(array['caixas.fechar'])       then raise ...
+credit_partial_payment / reverse_partial_payment / reverse_paid_order / record_cash_expense -&gt; idem
+
+-- ...mas estas duas NAO tem guard nenhum, e sao security definer:
+create or replace function public.create_order_and_credit_cash(...) ... security definer
+create or replace function public.close_comanda_and_pay(...)       ... security definer
+grant execute on function public.create_order_and_credit_cash(...) to authenticated, anon;  -- 1065
+grant execute on function public.close_comanda_and_pay(...)        to authenticated;         -- 1068
+```
+
+### Impacto
+Cozinha/estoque registra vendas falsas e injeta valores no turno de caixa aberto, quebrando a conferência.
+
+### Sugestão de correção
+Adicionar, no inicio de ambas (para o ramo nao-anonimo):
+  if auth.role() &lt;&gt; 'anon' and not public.has_any_permission(array[
+       'pdv.finalizar_venda','mesas.fechar_comanda','online_menu.finalizar_pedido']) then
+    raise exception 'Sem permissao para registrar venda.';
+  end if;
+Manter o ramo anon (cardapio publico) como esta — ja e fortemente validado.
+
+### Critérios de aceite
+- [ ] Sessão cozinha/estoque recebe exceção &quot;Sem permissão&quot; ao chamar create_order_and_credit_cash
+- [ ] PDV (caixa) e fechamento de comanda (garçom/caixa) seguem funcionando
+- [ ] Pedido público anônimo em /pedir continua funcionando
+- [ ] Cobertura de teste para o guard nas duas RPCs
+
+--- FIM ISSUE 4 ---</pre>
+<pre class="issue">--- ISSUE 5 ---
+
+## [Segurança] Bucket product-images: escrita e exclusão sem escopo de dono nem permissão
+
+**Labels:** security, baixa
+**Classificação:** Baixa · Categoria 2 (Permissão definida no navegador)
+
+### Problema e por que é explorável
+Qualquer funcionario autenticado pode sobrescrever ou apagar todos os objetos do bucket: fotos de produto, logo da empresa e capa do cardapio online (company_profile.logo_url / cover_url, que aparecem na pagina publica /pedir). Resultado: defacement do cardapio publico e perda de midia, feito por conta de baixo privilegio. A UI so oferece gestao de imagem a quem tem produtos.editar / empresa.editar_midia. O bucket e publico para leitura (por design), entao o dano e de integridade/disponibilidade.
+
+### Evidência
+- `src/lib/storage.ts:54-64`
+- `DEV_DB_SETUP.md:bloco SQL do bucket`
+
+```
+create policy &quot;product_images_authenticated_write&quot; on storage.objects
+  for insert to authenticated with check (bucket_id = 'product-images');
+create policy &quot;product_images_authenticated_update&quot; on storage.objects
+  for update to authenticated using (bucket_id = 'product-images');
+create policy &quot;product_images_authenticated_delete&quot; on storage.objects
+  for delete to authenticated using (bucket_id = 'product-images');
+-- sem owner = auth.uid(), sem has_any_permission(...)
+```
+
+### Impacto
+Defacement do cardápio público e perda de todas as imagens de produto por qualquer conta autenticada.
+
+### Sugestão de correção
+Escopar update/delete por dono (owner = auth.uid()) e/ou por permissao.
+Para a midia institucional (logo/capa), usar prefixo proprio (empresa/) e exigir empresa.editar_midia;
+para produtos/, exigir produtos.editar ou produtos.criar. O INSERT amplo pode continuar.
+
+### Critérios de aceite
+- [ ] Funcionário sem produtos.editar não consegue deletar objeto em produtos/
+- [ ] Funcionário sem empresa.editar_midia não consegue sobrescrever empresa/logo.* ou empresa/cover.*
+- [ ] Upload de imagem de produto pela tela de Produtos continua funcionando
+
+--- FIM ISSUE 5 ---</pre>
+<pre class="issue">--- ISSUE 6 ---
+
+## [Segurança] Diretório supabase/.temp/ versionado (metadados de projeto e string de conexão do pooler)
+
+**Labels:** security, informativa
+**Classificação:** Informativa · Categoria 4 (Chaves expostas / arquivos sensíveis)
+
+### Problema e por que é explorável
+Nao ha segredo real aqui: a pooler-url traz so usuario e host (sem senha), o project ref ja vai embutido em VITE_SUPABASE_URL no bundle, e as versoes de componentes sao publicas. Mesmo assim, expoe organizacao, nome do projeto de dev e a topologia do banco sem necessidade, e indica que o .gitignore nao esta sendo respeitado para esse caminho (risco de, no futuro, entrar ali um arquivo que de fato seja sensivel). Classificado como informativo.
+
+### Evidência
+- `supabase/.temp/pooler-url:1`
+- `supabase/.temp/linked-project.json:1`
+- `.gitignore:9`
+
+```
+# git ls-files inclui:
+supabase/.temp/pooler-url         -&gt; postgresql://postgres.vxgkslytnofxtkhjpkxb@aws-0-us-west-2.pooler.supabase.com:5432/postgres
+supabase/.temp/linked-project.json -&gt; {&quot;ref&quot;:&quot;vxgkslytnofxtkhjpkxb&quot;,&quot;name&quot;:&quot;ampliechef_dev&quot;,&quot;organization_id&quot;:&quot;ikrbfkaluvaemxzlrhbi&quot;,...}
+supabase/.temp/project-ref, gotrue-version, postgres-version, storage-version, ...
+# .gitignore tem &quot;.temp/&quot; (linha 9), mas os arquivos foram adicionados antes da regra e continuam rastreados
+```
+
+### Impacto
+Baixo — expõe organização, nome do projeto de dev e topologia do banco; sinaliza .gitignore não aplicado nesse caminho.
+
+### Sugestão de correção
+git rm -r --cached supabase/.temp &amp;&amp; git commit.
+Confirmar que .gitignore cobre supabase/.temp/ (a regra .temp/ ja cobre; o problema e so o index/historico).
+Revisar historico: git log --all -- supabase/.temp para garantir que nunca houve um .temp com access-token.
+
+### Critérios de aceite
+- [ ] git ls-files | grep supabase/.temp não retorna nada
+- [ ] supabase/.temp/ continua ignorado pelo git localmente
+- [ ] Nenhum outro arquivo de credencial (.env, tokens) aparece em git ls-files
+
+--- FIM ISSUE 6 ---</pre>
+
+</body></html>

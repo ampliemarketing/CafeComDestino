@@ -20,6 +20,7 @@ export const GroupManagement: React.FC = () => {
     saveTableSector,
     deleteTableSector,
     addToast,
+    confirmDialog,
     currentUser
   } = useApp();
   const canManage = hasPermission(currentUser, 'grupos.gerenciar');
@@ -93,28 +94,25 @@ export const GroupManagement: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleDeleteProductCategory = (cat: Category) => {
+  const handleDeleteProductCategory = async (cat: Category) => {
     const usageCount = products.filter((p) => p.categoryId === cat.id).length;
     const usageWarning = usageCount > 0 ? ` ${usageCount} produto(s) cadastrado(s) nesse grupo ficarão sem categoria.` : '';
-    if (confirm(`Excluir o grupo de produto "${cat.name}"?${usageWarning}`)) {
-      deleteCategory(cat.id);
-    }
+    const ok = await confirmDialog({ title: 'Excluir grupo de produto', message: `Excluir o grupo de produto "${cat.name}"?${usageWarning}` });
+    if (ok) deleteCategory(cat.id);
   };
 
-  const handleDeleteIngredientCategory = (cat: IngredientCategory) => {
+  const handleDeleteIngredientCategory = async (cat: IngredientCategory) => {
     const usageCount = ingredients.filter((i) => i.category === cat.id).length;
     const usageWarning = usageCount > 0 ? ` ${usageCount} insumo(s) cadastrado(s) nesse grupo ficarão sem categoria.` : '';
-    if (confirm(`Excluir o grupo de insumo "${cat.name}"?${usageWarning}`)) {
-      deleteIngredientCategory(cat.id);
-    }
+    const ok = await confirmDialog({ title: 'Excluir grupo de insumo', message: `Excluir o grupo de insumo "${cat.name}"?${usageWarning}` });
+    if (ok) deleteIngredientCategory(cat.id);
   };
 
-  const handleDeleteTableSector = (sector: TableSector) => {
+  const handleDeleteTableSector = async (sector: TableSector) => {
     const usageCount = tables.filter((t) => t.sector === sector.name).length;
     const usageWarning = usageCount > 0 ? ` ${usageCount} mesa(s) cadastrada(s) nessa área continuarão existindo, só deixam de aparecer nesse filtro.` : '';
-    if (confirm(`Excluir a área "${sector.name}"?${usageWarning}`)) {
-      deleteTableSector(sector.id);
-    }
+    const ok = await confirmDialog({ title: 'Excluir área', message: `Excluir a área "${sector.name}"?${usageWarning}` });
+    if (ok) deleteTableSector(sector.id);
   };
 
   return (
