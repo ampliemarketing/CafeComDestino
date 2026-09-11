@@ -60,7 +60,6 @@ export const TableManagement: React.FC = () => {
   const [guestCount, setGuestCount] = useState(2);
   const [personName, setPersonName] = useState('');
 
-  // New Table Modal
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState<number>(1);
   const [newTableSector, setNewTableSector] = useState<string>('');
@@ -74,12 +73,10 @@ export const TableManagement: React.FC = () => {
   const [pendingCharge, setPendingCharge] = useState<null | 'serviceFee' | 'couvert'>(null);
   const [pendingReversal, setPendingReversal] = useState<null | { id: string; amount: number; customerName?: string }>(null);
 
-  // Final Pay Modal
   const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
   const [finalDiscount, setFinalDiscount] = useState<number>(0);
 
-  // Delete Table Confirmation Modal
   const [tableToDelete, setTableToDelete] = useState<DiningTable | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
@@ -142,7 +139,6 @@ export const TableManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -157,7 +153,6 @@ export const TableManagement: React.FC = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Sector Tabs */}
           <div className="flex gap-1.5 bg-stone-800 p-1.5 rounded-xl border border-stone-700 text-xs font-semibold overflow-x-auto">
             {['todos', ...tableSectors.map((s) => s.name)].map((sec) => (
               <button
@@ -196,7 +191,6 @@ export const TableManagement: React.FC = () => {
 
       {(!currentActiveTable || currentActiveTable.status === 'livre') && (
         <>
-      {/* Table Search */}
       <div className="bg-white p-3.5 rounded-2xl border border-stone-200">
         <div className="relative">
           <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
@@ -211,7 +205,6 @@ export const TableManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid of Tables */}
       {filteredTables.length === 0 ? (
         <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">
           Nenhuma mesa encontrada{tableSearchQuery ? ` para "${tableSearchQuery}"` : ''}.
@@ -227,7 +220,15 @@ export const TableManagement: React.FC = () => {
             0
           );
           const tableSubtotal = tb.comandas.reduce((sum, c) => sum + c.subtotal, 0);
-          const remainingBalance = Math.max(0, tableSubtotal - tableAdvances);
+          // Taxa de serviço/couvert entram no saldo pois "tableAdvances" acima é o
+          // valor CHEIO do adiantamento (pode incluir parcela de taxa/couvert) —
+          // sem somar aqui, o saldo restante ficaria subestimado (mesmo bug da
+          // PartialPaymentModal). Ver comandaServiceFee/comandaCouvert.
+          const tableSubtotalComTaxa = tb.comandas.reduce(
+            (sum, c) => sum + c.subtotal + comandaServiceFee(c, companyProfile) + comandaCouvert(c, companyProfile),
+            0
+          );
+          const remainingBalance = Math.max(0, tableSubtotalComTaxa - tableAdvances);
           const hasAnyItems = tb.comandas.some((c) => c.items.length > 0);
 
           return (
@@ -275,7 +276,6 @@ export const TableManagement: React.FC = () => {
                     {tb.comandas.length} comanda{tb.comandas.length > 1 ? 's' : ''}: {tb.comandas.map((c) => c.personName).join(', ')}
                   </p>
 
-                  {/* Financial indicators */}
                   {tableAdvances > 0 && (
                     <div className="flex items-center justify-between text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">
                       <span>Adiantado:</span>
@@ -311,7 +311,6 @@ export const TableManagement: React.FC = () => {
         </>
       )}
 
-      {/* Comandas list of the selected table */}
       {currentActiveTable && currentActiveTable.status !== 'livre' && (
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-md space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
@@ -364,10 +363,8 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Active Comanda Consumption & Detail Drawer */}
       {currentActiveTable && currentComanda && (
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-md space-y-5">
-          {/* Header Actions */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -383,7 +380,6 @@ export const TableManagement: React.FC = () => {
               </p>
             </div>
 
-            {/* Quick Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
               {can('mesas.transferir') && (
               <button
@@ -437,7 +433,6 @@ export const TableManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Financial Totals Summary Bar */}
           {(() => {
             const activeAdvances = (currentComanda.advancePayments || []).filter((p) => p.status === 'ativo');
             const totalAdvances = activeAdvances.reduce((sum, p) => sum + p.amount, 0);
@@ -548,7 +543,6 @@ export const TableManagement: React.FC = () => {
             );
           })()}
 
-          {/* Items Consumed */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">
@@ -627,7 +621,6 @@ export const TableManagement: React.FC = () => {
             )}
           </div>
 
-          {/* List of Partial Payments Completed */}
           {currentComanda.advancePayments && currentComanda.advancePayments.length > 0 && (
             <div className="border-t pt-4 space-y-3">
               <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider flex items-center gap-1.5">
@@ -688,7 +681,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: New Table */}
       {isNewTableModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -752,7 +744,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Delete Table Confirmation */}
       {tableToDelete && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -853,7 +844,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Final Comanda Closure */}
       {isFinalPayModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -914,7 +904,6 @@ export const TableManagement: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Discount */}
                   {can('mesas.desconto') && (
                   <div>
                     <label className="font-semibold text-stone-700 block mb-1">Desconto Extra (R$)</label>
@@ -930,7 +919,6 @@ export const TableManagement: React.FC = () => {
                   </div>
                   )}
 
-                  {/* Payment method for remaining */}
                   {finalAmountToCollect > 0 ? (
                     <div>
                       <label className="font-bold text-stone-700 block mb-1">Forma de Pagamento do Saldo Restante</label>
@@ -991,7 +979,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Transfer Comanda */}
       {isTransferModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200 text-xs">
@@ -1037,7 +1024,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Partial Payment Modal Component */}
       {isPartialModalOpen && currentActiveTable && currentComanda && (
         <PartialPaymentModal
           isOpen={isPartialModalOpen}
@@ -1047,7 +1033,6 @@ export const TableManagement: React.FC = () => {
         />
       )}
 
-      {/* Courtesy Modal Component */}
       {isCourtesyModalOpen && (
         <CourtesyModal
           isOpen={isCourtesyModalOpen}
@@ -1058,7 +1043,6 @@ export const TableManagement: React.FC = () => {
         />
       )}
 
-      {/* Thermal Ticket Modal */}
       {isPrintModalOpen && currentActiveTable && currentComanda && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}
@@ -1080,7 +1064,6 @@ export const TableManagement: React.FC = () => {
         />
       )}
 
-      {/* Confirmar estorno de adiantamento */}
       {pendingReversal && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -1105,7 +1088,6 @@ export const TableManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Confirmar remoção de taxa de serviço / couvert */}
       {pendingCharge && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 shadow-2xl border border-stone-200">

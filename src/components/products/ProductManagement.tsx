@@ -23,7 +23,6 @@ export const ProductManagement: React.FC = () => {
   const { products, categories, saleUnits, taxGroups, saveProduct, deleteProduct, saveCategory, saveSaleUnit, addToast, confirmDialog, currentUser } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
-  // Abas do modal de produto
   const [modalTab, setModalTab] = useState<'geral' | 'fiscal'>('geral');
   const [showFiscalErrors, setShowFiscalErrors] = useState(false);
 
@@ -31,7 +30,6 @@ export const ProductManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'inativos' | 'todos'>('ativos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Product Form Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -52,7 +50,6 @@ export const ProductManagement: React.FC = () => {
     }
   };
 
-  // Category Modal (create or edit)
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -66,7 +63,6 @@ export const ProductManagement: React.FC = () => {
     setIsCategoryModalOpen(true);
   };
 
-  // New Sale Unit Modal
   const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitAbbreviation, setNewUnitAbbreviation] = useState('');
@@ -211,7 +207,6 @@ export const ProductManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -236,7 +231,6 @@ export const ProductManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Filter bar */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative flex-1 w-full">
@@ -289,7 +283,6 @@ export const ProductManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Products Table */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
           <table className="w-full text-xs text-left">
@@ -368,7 +361,6 @@ export const ProductManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Edit/Create Product Modal */}
       {isModalOpen && editingProduct && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
@@ -379,7 +371,6 @@ export const ProductManagement: React.FC = () => {
               </button>
             </div>
 
-            {/* Abas */}
             <div className="flex gap-2 text-xs font-bold">
               <button
                 type="button"
@@ -567,7 +558,6 @@ export const ProductManagement: React.FC = () => {
 
             </div>
 
-            {/* Aba Fiscal */}
             {modalTab === 'fiscal' && (
               <div className="space-y-5 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -654,7 +644,6 @@ export const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* New Category Modal */}
       {isCategoryModalOpen && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -715,7 +704,6 @@ export const ProductManagement: React.FC = () => {
         </div>
       )}
 
-      {/* New Sale Unit Modal */}
       {isUnitModalOpen && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">

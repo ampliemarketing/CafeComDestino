@@ -131,7 +131,6 @@ export const SupplierManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6 min-h-screen">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -156,7 +155,6 @@ export const SupplierManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Search & Status Filter */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -198,7 +196,6 @@ export const SupplierManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* List */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
           <table className="w-full text-xs text-left">
@@ -295,7 +292,6 @@ export const SupplierManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL: Create/Edit Supplier */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
@@ -454,7 +450,6 @@ export const SupplierManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Confirmar Exclusão */}
       {deletingSupplier && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-stone-200">

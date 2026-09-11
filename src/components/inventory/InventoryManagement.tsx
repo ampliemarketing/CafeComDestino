@@ -52,7 +52,6 @@ export const InventoryManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stock' | 'losses' | 'courtesies'>('stock');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Ingredient Create/Edit Modal
   const [isIngredientModalOpen, setIsIngredientModalOpen] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<Partial<Ingredient> | null>(null);
 
@@ -64,7 +63,6 @@ export const InventoryManagement: React.FC = () => {
   const [stockEntryQty, setStockEntryQty] = useState<number>(10);
   const [stockEntryUnitCost, setStockEntryUnitCost] = useState<number>(0);
 
-  // New Comprehensive Loss Modal
   const [isLossModalOpen, setIsLossModalOpen] = useState(false);
   const [lossItemType, setLossItemType] = useState<'ingredient' | 'product'>('ingredient');
   const [selectedItemId, setSelectedItemId] = useState<string>('');
@@ -74,7 +72,6 @@ export const InventoryManagement: React.FC = () => {
   const [sectorName, setSectorName] = useState<string>('Cozinha');
   const [lossNotes, setLossNotes] = useState<string>('');
 
-  // Courtesy Modal from Inventory
   const [isCourtesyModalOpen, setIsCourtesyModalOpen] = useState(false);
   const [courtesyProductId, setCourtesyProductId] = useState<string>('');
   const [courtesyQty, setCourtesyQty] = useState<number>(1);
@@ -83,7 +80,6 @@ export const InventoryManagement: React.FC = () => {
   const [courtesyAuthorizer, setCourtesyAuthorizer] = useState<string>(currentUser.name);
   const [courtesyNotes, setCourtesyNotes] = useState<string>('');
 
-  // Filtered ingredients
   const filteredIngredients = ingredients.filter((ing) =>
     ing.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -120,7 +116,6 @@ export const InventoryManagement: React.FC = () => {
     if (ok) deleteIngredient(ing.id);
   };
 
-  // Filtered products
   const filteredProducts = products.filter((p) => {
     const category = categories.find((c) => c.id === p.categoryId);
     const showsInStock = category ? category.showsInStock !== false : true;
@@ -176,7 +171,6 @@ export const InventoryManagement: React.FC = () => {
     setIsStockEntryModalOpen(false);
   };
 
-  // Financial KPIs
   const totalIngredientValue = ingredients.reduce((acc, ing) => acc + ing.stockQuantity * ing.avgCostUnit, 0);
   const totalProductStockValue = products
     .filter((p) => p.trackStock)
@@ -185,11 +179,9 @@ export const InventoryManagement: React.FC = () => {
   const lowStockIngredientsCount = ingredients.filter((ing) => ing.stockQuantity <= ing.minStock).length;
   const lowStockProductsCount = products.filter((p) => p.trackStock && p.stockQuantity <= (p.minStock || 5)).length;
 
-  // Total Losses KPI
   const totalLossesValue = lossRecords.reduce((acc, l) => acc + l.costValue, 0);
   const totalLossesCount = lossRecords.reduce((acc, l) => acc + l.quantity, 0);
 
-  // Total Courtesies KPI
   const totalCourtesyRetailValue = courtesyRecords.reduce((acc, c) => acc + c.totalRetailValue, 0);
   const totalCourtesyCostValue = courtesyRecords.reduce((acc, c) => acc + c.totalCostValue, 0);
   const totalCourtesyCount = courtesyRecords.reduce((acc, c) => acc + c.quantity, 0);
@@ -286,7 +278,6 @@ export const InventoryManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -300,7 +291,6 @@ export const InventoryManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Top KPI Badge */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="bg-stone-800 px-3 py-1.5 rounded-xl border border-stone-700 text-xs">
             <span className="text-stone-400">Total em Insumos: </span>
@@ -313,7 +303,6 @@ export const InventoryManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Tabs Navigation */}
       <div className="flex gap-2 bg-stone-100 p-1.5 rounded-2xl border border-stone-200 text-xs font-bold">
         <button
           onClick={() => setActiveTab('stock')}
@@ -346,10 +335,8 @@ export const InventoryManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: STOCK MANAGEMENT */}
       {activeTab === 'stock' && (
         <div className="space-y-4">
-          {/* Low Stock Alert */}
           {(lowStockIngredientsCount > 0 || lowStockProductsCount > 0) && (
             <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex items-center justify-between text-amber-950 shadow-sm">
               <div className="flex items-center gap-3">
@@ -364,7 +351,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
           )}
 
-          {/* Controls Bar */}
           <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -425,7 +411,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Ingredients Table */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-xs text-left">
@@ -494,7 +479,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Products Table */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-stone-50">
               <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
@@ -578,10 +562,8 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: LOSS REPORT & REGISTRATION */}
       {activeTab === 'losses' && (
         <div className="space-y-5">
-          {/* Loss KPI Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex items-center justify-between">
               <div>
@@ -619,7 +601,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Loss Records History Table */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-stone-50 flex items-center justify-between">
               <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
@@ -682,10 +663,8 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: COURTESY REPORT & REGISTRATION */}
       {activeTab === 'courtesies' && (
         <div className="space-y-5">
-          {/* Courtesy KPI Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex items-center justify-between">
               <div>
@@ -726,7 +705,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Courtesy Records History Table */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-stone-50 flex items-center justify-between">
               <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
@@ -786,7 +764,6 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Ingredient Create/Edit */}
       {isIngredientModalOpen && editingIngredient && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs max-h-[90vh] overflow-y-auto">
@@ -901,7 +878,6 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Unified Stock Entry (insumos + produtos) */}
       {isStockEntryModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs">
@@ -1015,7 +991,6 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Comprehensive Loss Registration */}
       {isLossModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs">
@@ -1030,7 +1005,6 @@ export const InventoryManagement: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {/* Type Toggle */}
               <div className="flex bg-stone-100 p-1 rounded-xl">
                 <button
                   type="button"
@@ -1054,7 +1028,6 @@ export const InventoryManagement: React.FC = () => {
                 </button>
               </div>
 
-              {/* Item selection */}
               <div>
                 <label className="font-bold text-stone-700 block mb-1">
                   Selecione o {lossItemType === 'ingredient' ? 'Insumo' : 'Produto'}
@@ -1078,7 +1051,6 @@ export const InventoryManagement: React.FC = () => {
                 </select>
               </div>
 
-              {/* Quantity & Reason */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-stone-700 block mb-1">Quantidade Perdida</label>
@@ -1111,7 +1083,6 @@ export const InventoryManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Employee & Sector */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-stone-700 block mb-1">Responsável / Funcionário</label>
@@ -1163,7 +1134,6 @@ export const InventoryManagement: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: Courtesy from Inventory */}
       {isCourtesyModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200 text-xs">

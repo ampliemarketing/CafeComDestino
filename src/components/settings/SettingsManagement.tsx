@@ -67,27 +67,24 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
     }
   }, [initialTab]);
 
-  // Company Profile Form State
   const [nameInput, setNameInput] = useState(companyProfile.name);
   const [tradeNameInput, setTradeNameInput] = useState(companyProfile.tradeName);
   const [phoneInput, setPhoneInput] = useState(companyProfile.phone);
   const [addressInput, setAddressInput] = useState(companyProfile.address.street + ', ' + companyProfile.address.number);
   const [primaryColorInput, setPrimaryColorInput] = useState(companyProfile.primaryColor || '#92400e');
 
-  // Media / Cardápio Online State
   const [logoUrlInput, setLogoUrlInput] = useState(companyProfile.logoUrl || '');
   const [coverUrlInput, setCoverUrlInput] = useState(companyProfile.coverUrl || '');
 
-  // Buffet / Quilo State
   const [lunchPriceInput, setLunchPriceInput] = useState<number>(companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00);
   const [breakfastPriceInput, setBreakfastPriceInput] = useState<number>(companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99);
   const [tareInput, setTareInput] = useState<number>(companyProfile.buffetPrices?.plateTareGrams ?? 200);
+  const [lunchEnabledInput, setLunchEnabledInput] = useState<boolean>(companyProfile.buffetPrices?.lunchEnabled !== false);
+  const [breakfastEnabledInput, setBreakfastEnabledInput] = useState<boolean>(companyProfile.buffetPrices?.breakfastEnabled !== false);
 
-  // Cardápio Online / Entrega State
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<number>(companyProfile.deliveryFee ?? 0);
   const [minOrderValueInput, setMinOrderValueInput] = useState<number>(companyProfile.minOrderValue ?? 0);
 
-  // Taxa de serviço / couvert / conferência de caixa / teto de desconto
   const [serviceFeeEnabledInput, setServiceFeeEnabledInput] = useState<boolean>(companyProfile.serviceFeeEnabled ?? false);
   const [serviceFeePercentInput, setServiceFeePercentInput] = useState<number>(companyProfile.serviceFeePercent ?? 0);
   const [couvertEnabledInput, setCouvertEnabledInput] = useState<boolean>(companyProfile.couvertEnabled ?? false);
@@ -136,7 +133,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -151,7 +147,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-4">
         <div className="flex gap-2 border-b pb-3 text-xs font-bold">
           <button
@@ -180,7 +175,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           </button>
         </div>
 
-        {/* Profile Tab */}
         {activeTab === 'profile' && (
           <div className="max-w-2xl space-y-6 text-xs">
             <div>
@@ -251,7 +245,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </fieldset>
             </div>
 
-            {/* Fotos de Perfil e Banner de Capa do Cardápio Online */}
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-4">
               <div className="flex items-center justify-between border-b border-stone-200 pb-2">
                 <div className="flex items-center gap-2">
@@ -266,7 +259,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </div>
 
               <fieldset disabled={!canEditCompanyMedia} className="space-y-4 disabled:opacity-60">
-              {/* Logo / Foto de Perfil */}
               <div className="space-y-2">
                 <label className="font-bold text-stone-800 block">1. Foto de Perfil / Logomarca da Empresa:</label>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white p-3 rounded-xl border border-stone-200">
@@ -315,7 +307,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                 </div>
               </div>
 
-              {/* Banner de Capa */}
               <div className="space-y-2">
                 <label className="font-bold text-stone-800 block">2. Banner de Fundo / Capa do Cardápio:</label>
                 <div className="bg-white p-3 rounded-xl border border-stone-200 space-y-3">
@@ -361,7 +352,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </fieldset>
             </div>
 
-            {/* Valores de Comida por Quilo (Buffet / Balança) */}
             <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-amber-200 pb-2">
                 <div className="flex items-center gap-2">
@@ -377,7 +367,18 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
 
               <fieldset disabled={!canEditBuffetPrices} className="grid grid-cols-1 sm:grid-cols-3 gap-3 disabled:opacity-60">
                 <div>
-                  <label className="font-semibold text-stone-800 block mb-1">Almoço por Quilo (R$/kg)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-stone-800">Almoço por Quilo (R$/kg)</label>
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-amber-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={lunchEnabledInput}
+                        onChange={(e) => setLunchEnabledInput(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-amber-800"
+                      />
+                      Habilitado
+                    </label>
+                  </div>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 font-bold text-stone-500">R$</span>
                     <input
@@ -388,11 +389,24 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       className="w-full border border-amber-300 bg-white rounded-xl p-2.5 pl-9 font-bold text-amber-900"
                     />
                   </div>
-                  <p className="text-[10px] text-stone-500 mt-1">Preço padrão: R$ 80,00</p>
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    {lunchEnabledInput ? 'Preço padrão: R$ 80,00' : 'Desabilitado: some do app do garçom e do PDV'}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="font-semibold text-stone-800 block mb-1">Café da Manhã por Quilo (R$/kg)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-stone-800">Café da Manhã por Quilo (R$/kg)</label>
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-amber-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={breakfastEnabledInput}
+                        onChange={(e) => setBreakfastEnabledInput(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-amber-800"
+                      />
+                      Habilitado
+                    </label>
+                  </div>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 font-bold text-stone-500">R$</span>
                     <input
@@ -403,7 +417,9 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       className="w-full border border-amber-300 bg-white rounded-xl p-2.5 pl-9 font-bold text-amber-900"
                     />
                   </div>
-                  <p className="text-[10px] text-stone-500 mt-1">Preço padrão: R$ 54,99</p>
+                  <p className="text-[10px] text-stone-500 mt-1">
+                    {breakfastEnabledInput ? 'Preço padrão: R$ 54,99' : 'Desabilitado: some do app do garçom e do PDV'}
+                  </p>
                 </div>
 
                 <div>
@@ -423,7 +439,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </fieldset>
             </div>
 
-            {/* Configurações de Entrega (Cardápio Online) */}
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-stone-200 pb-2">
                 <div className="flex items-center gap-2">
@@ -469,7 +484,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
               </fieldset>
             </div>
 
-            {/* Taxa de serviço, couvert e regras de caixa */}
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-3">
               <div className="flex items-center gap-2 border-b border-stone-200 pb-2">
                 <div className="p-1.5 bg-amber-800 text-white rounded-lg"><Building2 className="w-4 h-4" /></div>
@@ -549,6 +563,8 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     lunchPricePerKg: lunchPriceInput,
                     breakfastPricePerKg: breakfastPriceInput,
                     plateTareGrams: tareInput,
+                    lunchEnabled: lunchEnabledInput,
+                    breakfastEnabled: breakfastEnabledInput,
                   },
                   deliveryFee: deliveryFeeInput,
                   minOrderValue: minOrderValueInput,
@@ -588,7 +604,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           </div>
         )}
 
-        {/* Users Tab */}
         {activeTab === 'users' && (
           <div className="space-y-4 text-xs">
             <div className="flex justify-between items-center border-b pb-2">
@@ -647,7 +662,6 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           />
         )}
 
-        {/* Printers Tab */}
         {activeTab === 'printers' && (
           <div className="max-w-xl space-y-4 text-xs">
             <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Impressão de Comprovantes e Comandas</h3>

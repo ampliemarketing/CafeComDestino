@@ -62,7 +62,6 @@ export const KitchenKDS: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto min-h-screen bg-[#F6F1EA]">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-700 text-white font-bold flex items-center justify-center shadow">
@@ -89,14 +88,12 @@ export const KitchenKDS: React.FC = () => {
         </div>
       </div>
 
-      {/* KDS Columns Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
         {columns.map((col) => {
           const colOrders = orders.filter((o) => o.orderStatus === col.status);
 
           return (
             <div key={col.status} className="bg-stone-200/80 p-3 rounded-2xl border border-stone-300 space-y-3 min-h-[600px]">
-              {/* Column Header */}
               <div className={`p-3 rounded-xl border font-bold text-xs flex items-center justify-between ${col.color}`}>
                 <span>{col.title}</span>
                 <span className="bg-stone-900 text-white text-[11px] px-2 py-0.5 rounded-full font-bold">
@@ -104,13 +101,12 @@ export const KitchenKDS: React.FC = () => {
                 </span>
               </div>
 
-              {/* Order Cards List */}
               <div className="space-y-3">
                 {colOrders.length === 0 ? (
                   <p className="text-stone-400 text-xs py-8 text-center font-medium">Nenhum pedido nesta etapa</p>
                 ) : (
                   colOrders.map((ord) => {
-                    const isDelayed = ord.orderStatus === 'em_preparo'; // Highlight delayed prep
+                    const isDelayed = ord.orderStatus === 'em_preparo';
                     const isPinned = pinnedIds.has(ord.id);
 
                     return (
@@ -164,7 +160,6 @@ export const KitchenKDS: React.FC = () => {
                         >
                           <div className="overflow-hidden">
                             <div className="px-4 pb-4 pt-3 border-t space-y-3">
-                              {/* Order Items List */}
                               <div className="space-y-2 text-xs">
                                 {ord.items.map((item, idx) => (
                                   <div key={idx} className="bg-stone-50 p-2 rounded-xl border border-stone-200 space-y-1">
@@ -189,7 +184,6 @@ export const KitchenKDS: React.FC = () => {
                                 </p>
                               )}
 
-                              {/* Kitchen Action Buttons */}
                               <div className="pt-2 border-t flex flex-col gap-1.5">
                                 {canAdvance && (
                                   ord.orderStatus === 'pronto' && ord.serviceType === 'entrega' ? (

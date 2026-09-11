@@ -199,7 +199,6 @@ const AppContent: React.FC = () => {
       <ConnectionBanner />
       <SupportButton />
 
-      {/* Mobile Drawer Menu */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/80 backdrop-blur-sm md:hidden flex justify-end">
           <div className="w-4/5 max-w-xs bg-stone-900 h-full p-4 flex flex-col justify-between overflow-y-auto border-l border-stone-800 text-stone-100">

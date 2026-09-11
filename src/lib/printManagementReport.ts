@@ -22,14 +22,23 @@ export interface ReportReasonRow {
   value: number;
 }
 
+export interface ReportDailyRow {
+  date: string;
+  revenue: number;
+  count: number;
+}
+
 export interface ManagementReportData {
   generatedAt: string;
+  period?: string;
   sales: {
     totalRevenue: number;
     totalCount: number;
     averageTicket: number;
     byChannel: ReportChannelRow[];
+    byPaymentMethod?: ReportChannelRow[];
     topProducts: ReportProductRow[];
+    daily?: ReportDailyRow[];
   };
   losses: {
     totalCost: number;
@@ -75,6 +84,22 @@ export function buildManagementReportHtml(d: ManagementReportData, company: Comp
     'Sem itens vendidos registrados.',
   );
 
+  const paymentMethodRows = d.sales.byPaymentMethod
+    ? table(
+        ['Forma de Pagamento', 'Faturamento'],
+        d.sales.byPaymentMethod.map((m) => [esc(m.name), brl(m.value)]),
+        'Sem vendas registradas.',
+      )
+    : '';
+
+  const dailyRows = d.sales.daily
+    ? table(
+        ['Data', 'Pedidos', 'Faturamento'],
+        d.sales.daily.map((r) => [esc(r.date), String(r.count), brl(r.revenue)]),
+        'Sem vendas registradas.',
+      )
+    : '';
+
   const lossRows = table(
     ['Motivo', 'Custo (R$)'],
     d.losses.byReason.map((r) => [esc(r.name), brl(r.value)]),
@@ -115,6 +140,7 @@ export function buildManagementReportHtml(d: ManagementReportData, company: Comp
       <div style="text-align:right">
         <h1>Relatório Gerencial</h1>
         <p class="muted">Gerado em ${esc(d.generatedAt)}</p>
+        ${d.period ? `<p class="muted">Período: ${esc(d.period)}</p>` : ''}
       </div>
     </div>
 
@@ -125,8 +151,12 @@ export function buildManagementReportHtml(d: ManagementReportData, company: Comp
         <div class="kpi"><div class="label">Total de Pedidos</div><div class="value">${d.sales.totalCount}</div></div>
         <div class="kpi"><div class="label">Ticket Médio</div><div class="value">${brl(d.sales.averageTicket)}</div></div>
       </div>
+      <p class="muted" style="margin:0 0 4px">Por canal de atendimento</p>
       ${salesRows}
-      <div style="margin-top:10px">${productRows}</div>
+      ${paymentMethodRows ? `<p class="muted" style="margin:10px 0 4px">Por forma de pagamento</p>${paymentMethodRows}` : ''}
+      <p class="muted" style="margin:10px 0 4px">Produtos mais vendidos</p>
+      ${productRows}
+      ${dailyRows ? `<p class="muted" style="margin:10px 0 4px">Faturamento por dia</p>${dailyRows}` : ''}
     </section>
 
     <section>

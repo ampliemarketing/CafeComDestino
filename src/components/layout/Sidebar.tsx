@@ -85,7 +85,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
     >
       <div className="py-3 px-2 overflow-y-auto flex-1 custom-scrollbar">
         {menuSections.map((section, idx) => {
-          // Filter items based on the user's permissions
           const allowedItems = section.items.filter((item) =>
             hasPermission(currentUser, SCREEN_ACCESS_PERMISSION[item.id])
           );
@@ -125,7 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => 
           );
         })}
 
-        {/* Collapse Button — logo abaixo do último item do menu (Usuários & Permissões) */}
         <div className="p-2 border-t border-stone-800">
           <button
             onClick={() => setCollapsed(!collapsed)}

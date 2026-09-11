@@ -117,7 +117,6 @@ export const DashboardView: React.FC = () => {
     return !Number.isNaN(t) && t >= periodStart && t < periodEnd;
   };
 
-  // ---- Recortes por período ----
   const periodOrders = useMemo(() => orders.filter((o) => inPeriod(o.createdAtISO)), [orders, hasTimestamps, periodStart, periodEnd]);
   const completedOrders = periodOrders.filter((o) => o.orderStatus === 'concluido');
   const canceledOrders = periodOrders.filter((o) => o.orderStatus === 'cancelado');
@@ -129,7 +128,6 @@ export const DashboardView: React.FC = () => {
   const pendingPaymentOrders = orders.filter((o) => o.paymentStatus === 'aguardando_pagamento');
   const openTablesCount = tables.filter((t) => t.status !== 'livre').length;
 
-  // ---- Faturamento do período ----
   const totalPeriodRevenue = completedOrders.reduce((sum, o) => sum + o.total, 0);
   const totalOrdersCount = completedOrders.length;
   const avgTicket = totalOrdersCount > 0 ? totalPeriodRevenue / totalOrdersCount : 0;
@@ -146,7 +144,6 @@ export const DashboardView: React.FC = () => {
       .reduce((sum, o) => sum + o.total, 0);
   }, [orders, hasTimestamps, monthStart]);
 
-  // ---- Conferência: faturamento registrado x valor dos itens vendidos ----
   const grossItemsValue = completedOrders.reduce(
     (sum, o) => sum + o.items.reduce((a, it) => a + it.unitPrice * it.quantity, 0),
     0
@@ -161,7 +158,6 @@ export const DashboardView: React.FC = () => {
   const revenueDiff = totalPeriodRevenue - expectedRevenue;
   const revenueMatches = Math.abs(revenueDiff) < 0.01;
 
-  // ---- Série temporal (por hora em dia único, por dia em períodos maiores) ----
   const groupByHour = period === 'hoje' || period === 'ontem';
   const salesTimeSeries = useMemo(() => {
     const buckets = completedOrders.reduce<Record<string, { label: string; sortKey: number; total: number; orders: number }>>((acc, o) => {
@@ -188,7 +184,6 @@ export const DashboardView: React.FC = () => {
       .map(({ label, total, orders }) => ({ hour: label, total: Math.round(total * 100) / 100, orders }));
   }, [completedOrders, groupByHour]);
 
-  // ---- Formas de pagamento (rateia pagamentos múltiplos por método) ----
   const paymentBreakdownData = useMemo(() => {
     const totals = completedOrders.reduce<Record<string, number>>((acc, o) => {
       if (o.splitPayments && o.splitPayments.length > 0) {
@@ -210,7 +205,6 @@ export const DashboardView: React.FC = () => {
     }));
   }, [completedOrders]);
 
-  // ---- Produtos mais vendidos (somente com venda no período) ----
   const soldQtyByProduct = completedOrders.reduce<Record<string, number>>((acc, o) => {
     o.items.forEach((it) => {
       acc[it.productId] = (acc[it.productId] || 0) + it.quantity;
@@ -238,7 +232,6 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Page Header & Period Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
         <div>
           <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
@@ -252,7 +245,6 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
 
-        {/* Period Filter Buttons */}
         <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl border border-stone-200 text-xs font-medium">
           <Filter className="w-3.5 h-3.5 text-stone-500 ml-2 mr-1" />
           {(['hoje', 'ontem', 'semana', 'mes', 'ano'] as const).map((p) => (
@@ -269,9 +261,7 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Top Main Financial KPi Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Period Revenue */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">{revenueCardTitle}</span>
@@ -287,7 +277,6 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
 
-        {/* Monthly Revenue (month-to-date, independent) */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Faturamento do Mês</span>
@@ -299,7 +288,6 @@ export const DashboardView: React.FC = () => {
           <p className="text-xs text-stone-500 mt-2">Mês corrente ({monthLabel}), até hoje</p>
         </div>
 
-        {/* Total Orders & Ticket */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Qtd Pedidos</span>
@@ -311,7 +299,6 @@ export const DashboardView: React.FC = () => {
           <p className="text-xs text-stone-500 mt-2">Ticket Médio: <strong className="text-stone-800">{brl(avgTicket)}</strong></p>
         </div>
 
-        {/* Open Tables & Active Salão */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Mesas Ocupadas</span>
@@ -330,7 +317,6 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Revenue Reconciliation Card */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -389,7 +375,6 @@ export const DashboardView: React.FC = () => {
         )}
       </div>
 
-      {/* Operational Realtime Workflow Status Strip */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
         <h3 className="font-bold text-sm text-stone-900 mb-3 flex items-center gap-2">
           <Flame className="w-4 h-4 text-amber-600" />
@@ -464,7 +449,6 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Gráficos (recharts) — chunk separado, carregado sob demanda */}
       <Suspense
         fallback={
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -481,9 +465,7 @@ export const DashboardView: React.FC = () => {
         />
       </Suspense>
 
-      {/* Bottom Row: Top Products, Low Stock Alerts, Inventory Losses */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Top Selling Products */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-stone-900 text-sm">Produtos Mais Vendidos ({periodLabel})</h3>
@@ -518,7 +500,6 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Low Stock Alerts */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-stone-900 text-sm flex items-center gap-1.5 text-amber-800">
@@ -551,7 +532,6 @@ export const DashboardView: React.FC = () => {
           )}
         </div>
 
-        {/* Registered Losses & Waste */}
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">

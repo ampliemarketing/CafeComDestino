@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { hasPermission, SCREEN_ACCESS_PERMISSION } from '../../lib/permissions';
 import {
   UtensilsCrossed,
   Store,
@@ -10,7 +11,8 @@ import {
   Monitor,
   Smartphone,
   Power,
-  LogOut
+  LogOut,
+  PackageX
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -20,6 +22,8 @@ export const Navbar: React.FC = () => {
     currentUser,
     logout,
     orders,
+    ingredients,
+    products,
     setActiveView,
     activeView,
     addToast
@@ -38,9 +42,14 @@ export const Navbar: React.FC = () => {
 
   const pendingOrdersCount = orders.filter((o) => o.orderStatus === 'novo' || o.orderStatus === 'em_preparo').length;
 
+  const canViewStockAlerts = hasPermission(currentUser, SCREEN_ACCESS_PERMISSION['inventory']);
+  const lowStockIngredients = ingredients.filter((i) => i.stockQuantity <= i.minStock);
+  const lowStockProducts = products.filter((p) => p.trackStock && p.stockQuantity <= (p.minStock || 5));
+  const lowStockCount = canViewStockAlerts ? lowStockIngredients.length + lowStockProducts.length : 0;
+  const totalAlertsCount = pendingOrdersCount + lowStockCount;
+
   return (
     <header className="bg-stone-900 text-stone-100 border-b border-stone-800 sticky top-0 z-40 px-4 py-2.5 flex items-center justify-between shadow-md">
-      {/* Brand & Store Status */}
       <div className="flex items-center gap-3">
         <div 
           onClick={() => setActiveView('dashboard')} 
@@ -62,7 +71,6 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Store Open/Closed Toggle */}
         <div className="hidden md:flex items-center gap-2 pl-4 border-l border-stone-800">
           <button
             onClick={toggleStoreStatus}
@@ -78,7 +86,6 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Center Quick View Launchers */}
       <div className="hidden lg:flex items-center gap-1.5 bg-stone-800/80 p-1 rounded-xl border border-stone-700/60 text-xs">
         <button
           onClick={() => setActiveView('waiter')}
@@ -119,9 +126,7 @@ export const Navbar: React.FC = () => {
         </button>
       </div>
 
-      {/* Right Controls: Role Switcher & User Profile */}
       <div className="flex items-center gap-2.5">
-        {/* Notifications Popover */}
         <div className="relative">
           <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
@@ -129,15 +134,15 @@ export const Navbar: React.FC = () => {
             title="Notificações"
           >
             <Bell className="w-4 h-4" />
-            {pendingOrdersCount > 0 && (
+            {totalAlertsCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-amber-500 text-stone-950 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
-                {pendingOrdersCount}
+                {totalAlertsCount}
               </span>
             )}
           </button>
 
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-stone-800 text-stone-100 rounded-xl shadow-2xl border border-stone-700 p-3 z-50 text-xs">
+            <div className="absolute right-0 mt-2 w-80 bg-stone-800 text-stone-100 rounded-xl shadow-2xl border border-stone-700 p-3 z-50 text-xs max-h-[26rem] overflow-y-auto">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-700">
                 <span className="font-semibold text-stone-200">Alertas Operacionais</span>
                 <span className="text-[10px] bg-amber-900/50 text-amber-300 px-1.5 py-0.5 rounded">
@@ -145,6 +150,9 @@ export const Navbar: React.FC = () => {
                 </span>
               </div>
               <div className="space-y-2 max-h-48 overflow-y-auto">
+                {orders.length === 0 && (
+                  <p className="text-[11px] text-stone-500 italic px-1">Nenhum pedido em andamento.</p>
+                )}
                 {orders.slice(0, 4).map((o) => (
                   <div key={o.id} className="p-2 rounded-lg bg-stone-900/80 border border-stone-700/60 flex items-center justify-between">
                     <div>
@@ -157,11 +165,63 @@ export const Navbar: React.FC = () => {
                   </div>
                 ))}
               </div>
+
+              {canViewStockAlerts && (
+                <>
+                  <div className="flex items-center justify-between pb-2 mb-2 mt-3 pt-2 border-t border-b border-stone-700">
+                    <span className="font-semibold text-stone-200 flex items-center gap-1.5">
+                      <PackageX className="w-3.5 h-3.5 text-rose-400" />
+                      Estoque Baixo / Zerado
+                    </span>
+                    <span className="text-[10px] bg-rose-900/50 text-rose-300 px-1.5 py-0.5 rounded">
+                      {lowStockCount} item(ns)
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {lowStockCount === 0 && (
+                      <p className="text-[11px] text-stone-500 italic px-1">Nenhum item abaixo do estoque mínimo.</p>
+                    )}
+                    {lowStockIngredients.map((i) => (
+                      <button
+                        key={`ing-${i.id}`}
+                        onClick={() => { setIsNotificationsOpen(false); setActiveView('inventory'); }}
+                        className="w-full text-left p-2 rounded-lg bg-stone-900/80 border border-rose-800/40 flex items-center justify-between hover:bg-stone-900 transition"
+                      >
+                        <div>
+                          <p className="font-semibold text-stone-200">{i.name}</p>
+                          <p className="text-[10px] text-stone-400">Insumo • Mínimo: {i.minStock} {i.unit}</p>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          i.stockQuantity < 0 ? 'bg-rose-600 text-white' : 'bg-rose-900/60 text-rose-200'
+                        }`}>
+                          {i.stockQuantity} {i.unit}
+                        </span>
+                      </button>
+                    ))}
+                    {lowStockProducts.map((p) => (
+                      <button
+                        key={`prod-${p.id}`}
+                        onClick={() => { setIsNotificationsOpen(false); setActiveView('inventory'); }}
+                        className="w-full text-left p-2 rounded-lg bg-stone-900/80 border border-rose-800/40 flex items-center justify-between hover:bg-stone-900 transition"
+                      >
+                        <div>
+                          <p className="font-semibold text-stone-200">{p.name}</p>
+                          <p className="text-[10px] text-stone-400">Produto • Mínimo: {p.minStock} {p.unit}</p>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          p.stockQuantity < 0 ? 'bg-rose-600 text-white' : 'bg-rose-900/60 text-rose-200'
+                        }`}>
+                          {p.stockQuantity} {p.unit}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* Logged-in User */}
         <div className="relative">
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}

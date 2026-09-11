@@ -5,9 +5,6 @@
 
 import type { FiscalData, Product, TaxGroup } from '../types';
 
-// ---------------------------------------------------------------------------
-// Valor padrão / vazio
-// ---------------------------------------------------------------------------
 export const emptyFiscalData = (): FiscalData => ({
   origem: '0',
   ncm: '',
@@ -36,9 +33,6 @@ export const normalizeFiscalData = (f?: Partial<FiscalData> | null): FiscalData 
   ...(f || {}),
 });
 
-// ---------------------------------------------------------------------------
-// Listas de códigos
-// ---------------------------------------------------------------------------
 export const ORIGEM_OPTIONS: { value: string; label: string }[] = [
   { value: '0', label: '0 - Nacional (exceto 3, 4, 5 e 8)' },
   { value: '1', label: '1 - Estrangeira - Importação direta (exceto 6)' },
@@ -152,7 +146,6 @@ export const fiscalFieldErrors = (f: FiscalData): FiscalFieldErrors => ({
   aliqCofins: f.aliqCofins == null || Number.isNaN(f.aliqCofins),
 });
 
-/** Retorna a lista de rótulos de campos obrigatórios que estão faltando. */
 export const fiscalMissingFields = (f: FiscalData): string[] => {
   const errs = fiscalFieldErrors(f);
   return (Object.keys(FISCAL_FIELD_LABELS) as (keyof FiscalFieldErrors)[])
@@ -162,9 +155,6 @@ export const fiscalMissingFields = (f: FiscalData): string[] => {
 
 export const isFiscalComplete = (f: FiscalData): boolean => fiscalMissingFields(f).length === 0;
 
-// ---------------------------------------------------------------------------
-// Resolução dos dados fiscais efetivos de um produto
-// ---------------------------------------------------------------------------
 /**
  * Dados fiscais que valem para o produto na hora de emitir a nota.
  * Se o produto está vinculado a um Grupo Tributário, o grupo manda — os dados

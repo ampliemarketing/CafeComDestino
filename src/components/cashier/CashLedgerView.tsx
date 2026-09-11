@@ -175,7 +175,6 @@ export const CashLedgerView: React.FC = () => {
         )}
       </div>
 
-      {/* Filtros */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <div className="flex items-center gap-1.5 text-xs font-bold text-stone-500 uppercase tracking-wider">
           <Filter className="w-3.5 h-3.5" /> Filtros
@@ -233,7 +232,6 @@ export const CashLedgerView: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* Resumo */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
               <div className="flex items-center gap-1.5 text-emerald-700"><ArrowUpCircle className="w-4 h-4" /><span className="text-[10px] font-bold uppercase">Entradas</span></div>
@@ -250,7 +248,6 @@ export const CashLedgerView: React.FC = () => {
             </div>
           </div>
 
-          {/* Tabela */}
           <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto max-h-[560px]">
               <table className="w-full text-xs text-left">

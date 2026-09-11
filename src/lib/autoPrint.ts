@@ -41,7 +41,6 @@ export const markOrderPrinted = (id: string): void => {
     const ids = [...loadPrintedOrderIds(), id];
     localStorage.setItem(PRINTED_KEY, JSON.stringify(ids.slice(-MAX_PRINTED)));
   } catch {
-    /* ignore */
   }
 };
 

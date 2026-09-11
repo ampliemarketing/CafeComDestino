@@ -36,7 +36,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
   const [customerName, setCustomerName] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
-  // Authorization state
   const [authorizerId, setAuthorizerId] = useState<string>(
     users.find((u) => u.role === 'admin' || u.role === 'gerente')?.id || users[0]?.id || ''
   );
@@ -90,7 +89,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-md w-full my-auto shadow-2xl border border-stone-200 overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-stone-900 text-white p-4 flex items-center justify-between border-b border-stone-800">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-800 text-amber-200 flex items-center justify-center font-bold">
@@ -108,9 +106,7 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
         <div className="p-5 space-y-4 text-xs">
-          {/* Product selection */}
           <div>
             <label className="font-bold text-stone-700 block mb-1">Selecione o Produto</label>
             <select
@@ -126,7 +122,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             </select>
           </div>
 
-          {/* Quantity & Reason */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="font-bold text-stone-700 block mb-1">Quantidade</label>
@@ -158,7 +153,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             </div>
           </div>
 
-          {/* Cost vs Retail Value Box */}
           {selectedProduct && (
             <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 flex items-center justify-between">
               <div>
@@ -172,7 +166,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             </div>
           )}
 
-          {/* Customer & Notes */}
           <div>
             <label className="font-semibold text-stone-700 block mb-1">Nome do Cliente (Opcional)</label>
             <input
@@ -197,7 +190,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
             />
           </div>
 
-          {/* Supervisor Authorization Box */}
           <div className="border-t pt-3 space-y-2 bg-stone-50 p-3 rounded-xl border border-stone-200">
             <div className="flex items-center gap-1.5 font-bold text-stone-800 text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-700" />
@@ -248,7 +240,6 @@ export const CourtesyModal: React.FC<CourtesyModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="bg-stone-50 p-4 border-t flex justify-end gap-2">
           <button
             onClick={onClose}

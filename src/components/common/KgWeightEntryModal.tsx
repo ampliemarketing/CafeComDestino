@@ -28,15 +28,12 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
   const [selectedType, setSelectedType] = useState<'lunch' | 'breakfast'>(initialType);
   const [entryMode, setEntryMode] = useState<'weight' | 'value'>('weight');
 
-  // Config values
   const defaultLunchPrice = companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00;
   const defaultBreakfastPrice = companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99;
   const defaultTare = companyProfile.buffetPrices?.plateTareGrams ?? 200;
 
-  // Custom price override
   const [customPricePerKg, setCustomPricePerKg] = useState<number | null>(null);
 
-  // Weight & Value states
   const [grossWeightGrams, setGrossWeightGrams] = useState<number>(650);
   const [deductTare, setDeductTare] = useState<boolean>(true);
   const [directValue, setDirectValue] = useState<number>(20.00);
@@ -55,7 +52,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
       ? defaultLunchPrice
       : defaultBreakfastPrice;
 
-  // Calculate weight & total
   let netWeightGrams = 0;
   let netWeightKg = 0;
   let totalPrice = 0;
@@ -98,7 +94,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
       <div className="bg-white rounded-3xl shadow-2xl border border-stone-200 w-full max-w-md overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-stone-900 text-stone-100 p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-800 text-amber-300 flex items-center justify-center font-bold shadow">
@@ -117,9 +112,7 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-5 space-y-5 text-xs overflow-y-auto max-h-[80vh]">
-          {/* Buffet Type Selector */}
           <div>
             <label className="font-bold text-stone-700 block mb-2">1. Selecione o Tipo de Buffet:</label>
             <div className="grid grid-cols-2 gap-2">
@@ -163,7 +156,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
             </div>
           </div>
 
-          {/* Entry Mode Tabs */}
           <div className="flex bg-stone-100 p-1 rounded-2xl border border-stone-200 font-semibold">
             <button
               type="button"
@@ -188,7 +180,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
             </button>
           </div>
 
-          {/* Mode 1: Weight Input */}
           {entryMode === 'weight' && (
             <div className="space-y-3 bg-stone-50 p-4 rounded-2xl border border-stone-200">
               <div className="flex items-center justify-between">
@@ -211,7 +202,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
                 <span className="absolute right-4 top-4 font-bold text-stone-400">g</span>
               </div>
 
-              {/* Quick Weight Chips */}
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {[250, 350, 450, 500, 650, 800].map((w) => (
                   <button
@@ -225,7 +215,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
                 ))}
               </div>
 
-              {/* Tare Toggle */}
               <div
                 onClick={() => setDeductTare(!deductTare)}
                 className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${
@@ -245,7 +234,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
             </div>
           )}
 
-          {/* Mode 2: Direct Value Input */}
           {entryMode === 'value' && (
             <div className="space-y-3 bg-stone-50 p-4 rounded-2xl border border-stone-200">
               <label className="font-bold text-stone-800 block">Valor Desejado em Reais (R$):</label>
@@ -263,7 +251,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
                 />
               </div>
 
-              {/* Quick Value Chips */}
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {[10, 15, 20, 25, 30, 40].map((val) => (
                   <button
@@ -279,7 +266,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
             </div>
           )}
 
-          {/* Summary Readout Card */}
           <div className="bg-gradient-to-br from-amber-900 to-stone-900 text-stone-100 p-4 rounded-2xl shadow-md space-y-2">
             <div className="flex items-center justify-between border-b border-amber-800/60 pb-2">
               <span className="text-[11px] text-amber-300 font-semibold uppercase tracking-wider">
@@ -309,7 +295,6 @@ export const KgWeightEntryModal: React.FC<KgWeightEntryModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="p-4 bg-stone-50 border-t border-stone-200 flex gap-2">
           <button
             type="button"

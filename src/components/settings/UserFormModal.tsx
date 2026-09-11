@@ -35,7 +35,7 @@ const SCREEN_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 };
 
 interface UserFormModalProps {
-  user?: User; // presente = modo edição
+  user?: User;
   onClose: () => void;
 }
 
