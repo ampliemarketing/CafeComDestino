@@ -42,6 +42,8 @@ export interface CompanyProfileData {
     city: string;
     state: string;
     zipCode: string;
+    /** Código IBGE do município (7 dígitos) — obrigatório no XML da NFC-e (cMun). */
+    codMunicipioIbge?: string;
   };
   operatingHours: string;
   avgPrepTimeMinutes: number;
@@ -68,6 +70,9 @@ export interface CompanyProfileData {
     certExpirationDate: string;
     nfceSeries: number;
     nfceNextNumber: number;
+    /** ID do CSC (Código de Segurança do Contribuinte) da SEFAZ — ex.: "000001".
+     *  O CSC em si é secret da Edge Function; aqui guardamos só o identificador. */
+    cscId?: string;
   };
   // Taxa de serviço / couvert / conferência de caixa (migration 0026)
   serviceFeePercent: number;
@@ -293,6 +298,8 @@ export interface Order {
   customer: {
     name: string;
     phone: string;
+    /** CPF/CNPJ do cliente "na nota" (opcional na NFC-e; só dígitos). */
+    taxId?: string;
     /** Opt-in do cliente (checkout do /pedir) para receber status via WhatsApp. */
     wantsWhatsappUpdates?: boolean;
     /** Token aleatório (UUID) para a página pública de acompanhamento /acompanhar?t=. */
@@ -332,6 +339,32 @@ export interface Order {
   advancePaid?: number; // total já quitado por adiantamento(s), abatido no fechamento
   discountReason?: string;
   discountAuthorizedBy?: string;
+}
+
+/**
+ * Documento fiscal (NFC-e) de um pedido, emitido pela emissora externa Brasil
+ * NFe. Uma linha por pedido (ver migration 0050 / Edge Function `emit-nfce`).
+ * O frontend só lê — quem escreve é a Edge Function (service role).
+ */
+export interface FiscalInvoice {
+  id: string;
+  orderId: string;
+  modelo: number;               // 65 = NFC-e, 55 = NF-e
+  serie?: number;
+  numero?: number;
+  ambiente: number;             // 2 = homologação, 1 = produção
+  status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro';
+  chave?: string;               // chave de acesso Sefaz (44 dígitos)
+  protocolo?: string;
+  xml?: string;                 // XML autorizado
+  danfeBase64?: string;         // DANFCE (PDF) em base64
+  rejeicaoCodigo?: string;
+  rejeicaoMotivo?: string;
+  cancelamentoMotivo?: string;
+  providerResponse?: unknown;
+  emittedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FinancialEntry {

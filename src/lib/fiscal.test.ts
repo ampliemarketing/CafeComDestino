@@ -6,8 +6,11 @@ import {
   fiscalMissingFields,
   isFiscalComplete,
   resolveProductFiscal,
+  prorateDiscount,
+  sefazPaymentEntries,
+  PAYMENT_METHOD_SEFAZ,
 } from './fiscal';
-import type { FiscalData, TaxGroup } from '../types';
+import type { FiscalData, Order, TaxGroup } from '../types';
 
 const validFiscal = (): FiscalData => ({
   ...emptyFiscalData(),
@@ -102,5 +105,59 @@ describe('resolveProductFiscal', () => {
   it('cai no fiscal do produto se o grupo vinculado não existe mais', () => {
     const r = resolveProductFiscal({ taxGroupId: 'sumiu', fiscal: validFiscal() }, [group]);
     expect(r.ncm).toBe('2202.10.00');
+  });
+});
+
+describe('prorateDiscount', () => {
+  it('rateia proporcional ao valor bruto do item', () => {
+    const items = [
+      { unitPrice: 10, quantity: 1 }, // 10  -> 1/4
+      { unitPrice: 10, quantity: 3 }, // 30  -> 3/4
+    ];
+    expect(prorateDiscount(items, 4)).toEqual([1, 3]);
+  });
+
+  it('joga a sobra de arredondamento no último item e fecha o total', () => {
+    const items = [
+      { unitPrice: 3.33, quantity: 1 },
+      { unitPrice: 3.33, quantity: 1 },
+      { unitPrice: 3.34, quantity: 1 },
+    ];
+    const out = prorateDiscount(items, 1);
+    expect(Number(out.reduce((s, v) => s + v, 0).toFixed(2))).toBe(1);
+  });
+
+  it('retorna zeros quando não há desconto ou não há itens', () => {
+    expect(prorateDiscount([{ unitPrice: 10, quantity: 1 }], 0)).toEqual([0]);
+    expect(prorateDiscount([], 5)).toEqual([]);
+  });
+});
+
+describe('sefazPaymentEntries / PAYMENT_METHOD_SEFAZ', () => {
+  it('mapeia as formas internas para os códigos tPag da Sefaz', () => {
+    expect(PAYMENT_METHOD_SEFAZ.dinheiro).toBe('01');
+    expect(PAYMENT_METHOD_SEFAZ.cartao_credito).toBe('03');
+    expect(PAYMENT_METHOD_SEFAZ.cartao_debito).toBe('04');
+    expect(PAYMENT_METHOD_SEFAZ.pix).toBe('17');
+  });
+
+  it('uma linha única com o total quando não há splitPayments', () => {
+    const order = { paymentMethod: 'cartao_debito', total: 48, splitPayments: undefined } as unknown as Order;
+    expect(sefazPaymentEntries(order)).toEqual([{ forma: '04', rotulo: 'Cartão de débito', valor: 48 }]);
+  });
+
+  it('uma linha por forma quando o pagamento é dividido', () => {
+    const order = {
+      paymentMethod: 'multiplo',
+      total: 50,
+      splitPayments: [
+        { method: 'pix', amount: 20 },
+        { method: 'dinheiro', amount: 30 },
+      ],
+    } as unknown as Order;
+    expect(sefazPaymentEntries(order)).toEqual([
+      { forma: '17', rotulo: 'PIX', valor: 20 },
+      { forma: '01', rotulo: 'Dinheiro', valor: 30 },
+    ]);
   });
 });

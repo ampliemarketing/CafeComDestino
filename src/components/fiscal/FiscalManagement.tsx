@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { PaymentMethod, OrderChannel, TaxGroup } from '../../types';
+import { PaymentMethod, OrderChannel, TaxGroup, FiscalInvoice } from '../../types';
 import {
   FileText,
   Search,
   Download,
   ShieldCheck,
+  ShieldAlert,
   Layers,
   Plus,
   Edit2,
   Trash2,
   X,
+  FileCode2,
+  Send,
+  RefreshCw,
 } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, maskCNPJ, isValidCNPJ } from '../../lib/validation';
@@ -21,9 +25,48 @@ export const FiscalManagement: React.FC = () => {
   const {
     orders, companyProfile, setCompanyProfile, addToast, currentUser,
     taxGroups, products, saveTaxGroup, deleteTaxGroup, confirmDialog,
+    fiscalInvoices, issueNfce,
   } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
   const canEditFiscal = can('fiscal.editar_dados_empresa');
+  const canEmit = can('vendas.emitir_nfce') || can('fiscal.editar_dados_empresa');
+
+  const [emittingId, setEmittingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'todas' | FiscalInvoice['status']>('todas');
+
+  const handleEmit = async (orderId: string) => {
+    setEmittingId(orderId);
+    try {
+      await issueNfce(orderId);
+    } finally {
+      setEmittingId(null);
+    }
+  };
+
+  // base64 (do provedor) -> download de arquivo real
+  const downloadBase64 = (base64: string, filename: string, mime: string) => {
+    try {
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      addToast('error', 'Falha ao baixar', 'Arquivo fiscal inválido ou corrompido.');
+    }
+  };
+
+  const STATUS_META: Record<FiscalInvoice['status'], { label: string; cls: string }> = {
+    processando: { label: 'PROCESSANDO', cls: 'bg-sky-100 text-sky-800' },
+    autorizada: { label: 'AUTORIZADA', cls: 'bg-emerald-100 text-emerald-800' },
+    rejeitada: { label: 'REJEITADA', cls: 'bg-rose-100 text-rose-800' },
+    cancelada: { label: 'CANCELADA', cls: 'bg-stone-200 text-stone-600' },
+    erro: { label: 'ERRO', cls: 'bg-amber-100 text-amber-800' },
+  };
 
   const [activeTab, setActiveTab] = useState<'notes' | 'config' | 'grupos'>('notes');
 
@@ -79,6 +122,23 @@ export const FiscalManagement: React.FC = () => {
   const [cnpjInput, setCnpjInput] = useState(companyProfile.cnpj);
   const [ieInput, setIeInput] = useState(companyProfile.ie);
   const [razaoSocialInput, setRazaoSocialInput] = useState(companyProfile.name);
+  const [ambienteInput, setAmbienteInput] = useState<'homologation' | 'production'>(
+    companyProfile.fiscalInfo?.environment || 'homologation',
+  );
+  const [cscIdInput, setCscIdInput] = useState(companyProfile.fiscalInfo?.cscId || '');
+  const [ibgeInput, setIbgeInput] = useState(companyProfile.address?.codMunicipioIbge || '');
+  const [nfceSerieInput, setNfceSerieInput] = useState(String(companyProfile.fiscalInfo?.nfceSeries ?? 1));
+
+  // Ressincroniza o formulário quando o perfil chega/é atualizado do servidor.
+  useEffect(() => {
+    setCnpjInput(companyProfile.cnpj);
+    setIeInput(companyProfile.ie);
+    setRazaoSocialInput(companyProfile.name);
+    setAmbienteInput(companyProfile.fiscalInfo?.environment || 'homologation');
+    setCscIdInput(companyProfile.fiscalInfo?.cscId || '');
+    setIbgeInput(companyProfile.address?.codMunicipioIbge || '');
+    setNfceSerieInput(String(companyProfile.fiscalInfo?.nfceSeries ?? 1));
+  }, [companyProfile]);
 
   const paymentLabels: Record<PaymentMethod, string> = {
     pix: 'Pix',
@@ -101,19 +161,36 @@ export const FiscalManagement: React.FC = () => {
 
   const query = searchQuery.trim().toLowerCase();
 
-  const fiscalOrders = orders.filter((o) => o.fiscalIssued);
+  const orderById = React.useMemo(() => {
+    const m = new Map<string, (typeof orders)[number]>();
+    orders.forEach((o) => m.set(o.id, o));
+    return m;
+  }, [orders]);
 
-  const filteredFiscalOrders = fiscalOrders
-    .filter((o) => paymentFilter === 'todas' || o.paymentMethod === paymentFilter)
-    .filter((o) => channelFilter === 'todos' || o.channel === channelFilter)
-    .filter((o) => {
+  const invoiceRows = [...fiscalInvoices]
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    .map((inv) => ({ inv, order: orderById.get(inv.orderId) }));
+
+  const filteredInvoiceRows = invoiceRows
+    .filter(({ inv }) => statusFilter === 'todas' || inv.status === statusFilter)
+    .filter(({ order }) => paymentFilter === 'todas' || order?.paymentMethod === paymentFilter)
+    .filter(({ order }) => channelFilter === 'todos' || order?.channel === channelFilter)
+    .filter(({ inv, order }) => {
       if (!query) return true;
       return (
-        (o.nfceKey || '').toLowerCase().includes(query) ||
-        o.customer.name.toLowerCase().includes(query) ||
-        String(o.orderNumber).includes(query)
+        (inv.chave || '').toLowerCase().includes(query) ||
+        (order?.customer.name || '').toLowerCase().includes(query) ||
+        String(order?.orderNumber ?? '').includes(query)
       );
     });
+
+  // Pedidos concluídos ainda sem NFC-e autorizada / em processamento.
+  const invoicedOrderIds = new Set(
+    fiscalInvoices.filter((i) => i.status === 'autorizada' || i.status === 'processando').map((i) => i.orderId),
+  );
+  const pendingOrders = orders
+    .filter((o) => !o.fiscalIssued && !invoicedOrderIds.has(o.id))
+    .slice(0, 50);
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 min-h-screen">
@@ -132,10 +209,17 @@ export const FiscalManagement: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Certificado A1: VÁLIDO (Sefaz Homologada)</span>
-          </div>
+          {companyProfile.fiscalInfo?.environment === 'production' ? (
+            <div className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              <span>SEFAZ: PRODUÇÃO</span>
+            </div>
+          ) : (
+            <div className="bg-amber-950 text-amber-400 border border-amber-800 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4" />
+              <span>SEFAZ: HOMOLOGAÇÃO (teste)</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -148,7 +232,7 @@ export const FiscalManagement: React.FC = () => {
               activeTab === 'notes' ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-700'
             }`}
           >
-            Notas Fiscais Emitidas ({fiscalOrders.length})
+            Notas Fiscais ({fiscalInvoices.length})
           </button>
           <button
             onClick={() => setActiveTab('config')}
@@ -206,7 +290,43 @@ export const FiscalManagement: React.FC = () => {
                   <option key={ch} value={ch}>{channelLabels[ch]}</option>
                 ))}
               </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="border rounded-xl px-3 py-2 text-xs font-semibold text-stone-700 bg-white"
+              >
+                <option value="todas">Todos os status</option>
+                <option value="autorizada">Autorizada</option>
+                <option value="rejeitada">Rejeitada</option>
+                <option value="erro">Erro</option>
+                <option value="processando">Processando</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
             </div>
+
+            {/* Pedidos concluídos ainda sem NFC-e */}
+            {canEmit && pendingOrders.length > 0 && (
+              <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
+                <p className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">
+                  Pedidos sem NFC-e ({pendingOrders.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {pendingOrders.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => handleEmit(o.id)}
+                      disabled={emittingId === o.id}
+                      className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-900 text-[11px] font-bold px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50"
+                      title={`Emitir NFC-e do pedido #${o.orderNumber} — R$ ${o.total.toFixed(2)}`}
+                    >
+                      <Send className="w-3 h-3" />
+                      #{o.orderNumber} • R$ {o.total.toFixed(2)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
               <table className="w-full text-xs text-left">
@@ -216,35 +336,68 @@ export const FiscalManagement: React.FC = () => {
                     <th className="p-3">Data/Hora</th>
                     <th className="p-3">Chave de Acesso Sefaz</th>
                     <th className="p-3">Destinatário</th>
+                    <th className="p-3 text-center">Status</th>
                     <th className="p-3 text-right">Valor Total</th>
-                    <th className="p-3 text-center">Downloads</th>
+                    <th className="p-3 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredFiscalOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-stone-50">
-                      <td className="p-3 font-bold font-mono text-stone-900">001 / #{o.orderNumber}</td>
-                      <td className="p-3 text-stone-600">{o.createdAt}</td>
-                      <td className="p-3 font-mono text-[10px] text-stone-700">{o.nfceKey || <span className="text-stone-400 italic font-sans">— sem chave —</span>}</td>
-                      <td className="p-3 font-semibold text-stone-800">{o.customer.name}</td>
-                      <td className="p-3 text-right font-bold text-amber-800">R$ {o.total.toFixed(2)}</td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => addToast('info', 'Download XML', 'Arquivo .xml gerado e baixado.')}
-                            disabled={!can('fiscal.baixar_xml')}
-                            className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Baixar XML"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredFiscalOrders.length === 0 && (
+                  {filteredInvoiceRows.map(({ inv, order }) => {
+                    const meta = STATUS_META[inv.status];
+                    return (
+                      <tr key={inv.id} className="hover:bg-stone-50">
+                        <td className="p-3 font-bold font-mono text-stone-900">
+                          {(inv.serie ?? '—')} / {inv.numero ? `#${inv.numero}` : `#${order?.orderNumber ?? '?'}`}
+                        </td>
+                        <td className="p-3 text-stone-600">
+                          {inv.createdAt ? new Date(inv.createdAt).toLocaleString('pt-BR') : '—'}
+                        </td>
+                        <td className="p-3 font-mono text-[10px] text-stone-700">
+                          {inv.chave || <span className="text-stone-400 italic font-sans">{inv.rejeicaoMotivo ? inv.rejeicaoMotivo.slice(0, 60) : '— sem chave —'}</span>}
+                        </td>
+                        <td className="p-3 font-semibold text-stone-800">{order?.customer.name || '—'}</td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${meta.cls}`} title={inv.rejeicaoMotivo || ''}>
+                            {meta.label}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-bold text-amber-800">R$ {(order?.total ?? 0).toFixed(2)}</td>
+                        <td className="p-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => inv.xml && downloadBase64(btoa(unescape(encodeURIComponent(inv.xml))), `nfce-${inv.chave || inv.id}.xml`, 'application/xml')}
+                              disabled={!inv.xml || !can('fiscal.baixar_xml')}
+                              className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Baixar XML"
+                            >
+                              <FileCode2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => inv.danfeBase64 && downloadBase64(inv.danfeBase64, `danfce-${inv.chave || inv.id}.pdf`, 'application/pdf')}
+                              disabled={!inv.danfeBase64}
+                              className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Baixar DANFCE (PDF)"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            {canEmit && (inv.status === 'rejeitada' || inv.status === 'erro') && order && (
+                              <button
+                                onClick={() => handleEmit(inv.orderId)}
+                                disabled={emittingId === inv.orderId}
+                                className="p-1.5 text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg disabled:opacity-40"
+                                title="Reenviar à SEFAZ"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${emittingId === inv.orderId ? 'animate-spin' : ''}`} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredInvoiceRows.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-stone-400">
+                      <td colSpan={7} className="p-6 text-center text-stone-400">
                         Nenhuma nota encontrada com os filtros atuais.
                       </td>
                     </tr>
@@ -304,7 +457,64 @@ export const FiscalManagement: React.FC = () => {
                   <option value="lucro_real">Lucro Real</option>
                 </select>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Ambiente SEFAZ</label>
+                  <select
+                    value={ambienteInput}
+                    onChange={(e) => setAmbienteInput(e.target.value as 'homologation' | 'production')}
+                    className="w-full border rounded-xl p-2.5 font-semibold text-stone-800"
+                  >
+                    <option value="homologation">Homologação (teste)</option>
+                    <option value="production">Produção</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Série da NFC-e</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={3}
+                    value={nfceSerieInput}
+                    onChange={(e) => setNfceSerieInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    className="w-full border rounded-xl p-2.5 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">ID do CSC (token SEFAZ)</label>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    placeholder="000001"
+                    value={cscIdInput}
+                    onChange={(e) => setCscIdInput(e.target.value.replace(/\s/g, '').slice(0, 10))}
+                    className="w-full border rounded-xl p-2.5 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Código IBGE do município</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={7}
+                    placeholder="3550308"
+                    value={ibgeInput}
+                    onChange={(e) => setIbgeInput(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                    className="w-full border rounded-xl p-2.5 font-mono"
+                  />
+                </div>
+              </div>
             </fieldset>
+
+            <p className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-xl p-3 leading-relaxed">
+              O <b>valor do CSC</b>, o <b>Token/UserToken da Brasil NFe</b> e o <b>certificado digital A1</b> ficam
+              guardados como <i>secrets</i> no servidor (Edge Function <code>emit-nfce</code>) — nunca no navegador.
+              Aqui só se configura o identificador do CSC e os dados públicos do emitente.
+            </p>
 
             {can('fiscal.editar_dados_empresa') && (
             <button
@@ -317,11 +527,22 @@ export const FiscalManagement: React.FC = () => {
                   addToast('error', 'CNPJ inválido', 'Verifique os dígitos do CNPJ.');
                   return;
                 }
+                if (ibgeInput && ibgeInput.length !== 7) {
+                  addToast('error', 'Código IBGE inválido', 'O código do município tem 7 dígitos.');
+                  return;
+                }
                 setCompanyProfile({
                   ...companyProfile,
                   name: razaoSocialInput.trim(),
                   cnpj: cnpjInput.trim(),
                   ie: ieInput.trim(),
+                  address: { ...companyProfile.address, codMunicipioIbge: ibgeInput || undefined },
+                  fiscalInfo: {
+                    ...companyProfile.fiscalInfo,
+                    environment: ambienteInput,
+                    cscId: cscIdInput || undefined,
+                    nfceSeries: Number(nfceSerieInput) || 1,
+                  },
                 });
                 addToast('success', 'Dados fiscais salvos');
               }}

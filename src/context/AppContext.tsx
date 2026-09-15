@@ -34,7 +34,8 @@ import {
   AuditLog,
   TableItem,
   OrderItem,
-  PaymentMethod
+  PaymentMethod,
+  FiscalInvoice
 } from '../types';
 
 import {
@@ -139,6 +140,27 @@ const mapOrderRow = (row: any): Order => {
     updatedAt: formatTime(row.updated_at),
   };
 };
+
+const mapFiscalInvoiceRow = (row: any): FiscalInvoice => ({
+  id: row.id,
+  orderId: row.order_id,
+  modelo: row.modelo,
+  serie: row.serie ?? undefined,
+  numero: row.numero ?? undefined,
+  ambiente: row.ambiente,
+  status: row.status,
+  chave: row.chave ?? undefined,
+  protocolo: row.protocolo ?? undefined,
+  xml: row.xml ?? undefined,
+  danfeBase64: row.danfe_base64 ?? undefined,
+  rejeicaoCodigo: row.rejeicao_codigo ?? undefined,
+  rejeicaoMotivo: row.rejeicao_motivo ?? undefined,
+  cancelamentoMotivo: row.cancelamento_motivo ?? undefined,
+  providerResponse: row.provider_response ?? undefined,
+  emittedBy: row.emitted_by ?? undefined,
+  createdAt: row.created_at ?? undefined,
+  updatedAt: row.updated_at ?? undefined,
+});
 
 function computeTableStatus(comandas: Comanda[]): TableStatus {
   return comandas.length === 0 ? 'livre' : 'ocupada';
@@ -412,6 +434,9 @@ interface AppContextType {
     comandaId?: string;
   }) => Promise<void>;
 
+  fiscalInvoices: FiscalInvoice[];
+  /** Emite a NFC-e do pedido via Edge Function `emit-nfce`. Resolve com a
+   *  chave de acesso quando autorizada, ou string vazia em qualquer falha. */
   issueNfce: (orderId: string) => Promise<string>;
 }
 
@@ -568,6 +593,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Últimos 1000 pedidos: cobre com folga dashboard, vendas e caixa do dia a dia.
   // Relatórios que precisem de janelas maiores devem fazer query própria com filtro de data.
   const [orders] = useSupabaseCollection<Order>('orders', session, mapOrderRow, 'id', 'created_at', 1000, refreshNonce);
+  // Documentos fiscais (NFC-e) — 1 por pedido; acompanha a autorização via realtime.
+  const [fiscalInvoices] = useSupabaseCollection<FiscalInvoice>('fiscal_invoices', session, mapFiscalInvoiceRow, 'id', 'created_at', 1000, refreshNonce);
 
   const [users, setUsers] = useState<User[]>([]);
   const refreshUsers = () => {
@@ -1070,8 +1097,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       waiterName: comanda.waiterName || currentUser.name,
-      fiscalIssued: true,
-      nfceKey: '352607' + Math.floor(100000000000000 + Math.random() * 900000000000000),
+      // NFC-e é emitida à parte (botão "Emitir NFC-e" em Vendas / Módulo Fiscal),
+      // via Edge Function `emit-nfce`. O pedido nasce sem documento fiscal.
+      fiscalIssued: false,
     };
 
     const { error } = await supabase.rpc('close_comanda_and_pay', {
@@ -1249,8 +1277,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderStatus: 'concluido',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      fiscalIssued: true,
-      nfceKey: '352607' + Math.floor(100000000000000 + Math.random() * 900000000000000),
+      // NFC-e emitida à parte (botão "Emitir NFC-e"), via Edge Function `emit-nfce`.
+      fiscalIssued: false,
     };
 
     const { error } = await supabase.rpc('create_order_and_credit_cash', {
@@ -1270,7 +1298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     newOrder.orderNumber = await fetchServerOrderNumber(newOrder.id, newOrder.orderNumber);
 
-    addToast('success', 'Venda realizada com sucesso', `Total R$ ${total.toFixed(2)} - NFC-e gerada`);
+    addToast('success', 'Venda realizada com sucesso', `Total R$ ${total.toFixed(2)}`);
     logAudit('Venda Direta PDV', 'Frente de Caixa', `Pedido #${newOrder.orderNumber} - R$ ${total.toFixed(2)}`);
 
     return newOrder;
@@ -1620,14 +1648,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Registro de Cortesia', 'Operacional', `${data.quantity}x ${prod.name} - Motivo: ${data.reason} - Aut: ${data.authorizedBy}`);
   };
 
-  // ---- Fiscal emission simulation ----
+  // ---- Emissão de NFC-e (Brasil NFe, via Edge Function `emit-nfce`) ----
+  // O Token/UserToken da emissora e a senha do certificado A1 vivem só como
+  // secret da Edge Function — nunca no bundle público. A função grava o
+  // resultado em `fiscal_invoices` (realtime) e, se autorizada, marca o pedido.
   const issueNfce = async (orderId: string): Promise<string> => {
-    const key = '352607' + Math.floor(100000000000000 + Math.random() * 900000000000000);
-    const { error } = await supabase.from('orders').update({ fiscal_issued: true, nfce_key: key }).eq('id', orderId);
-    if (error) { addToast('error', 'Erro ao emitir NFC-e', error.message); return ''; }
-    addToast('success', 'NFC-e Emitida', `Chave: ${key.substring(0, 15)}...`);
-    logAudit('Emissão NFC-e', 'Fiscal', `Pedido #${orderId} - Chave ${key}`);
-    return key;
+    const order = orders.find((o) => o.id === orderId);
+    addToast('info', 'Emitindo NFC-e...', `Pedido #${order?.orderNumber ?? orderId} enviado à SEFAZ.`);
+
+    const { data, error } = await supabase.functions.invoke('emit-nfce', { body: { orderId } });
+
+    if (error) {
+      addToast('error', 'Falha ao emitir NFC-e', error.message || 'Erro ao chamar o serviço fiscal.');
+      logAudit('Emissão NFC-e (falha)', 'Fiscal', `Pedido #${orderId} - ${error.message || 'erro de rede'}`);
+      return '';
+    }
+
+    if (data?.notConfigured) {
+      addToast('warning', 'Integração fiscal não configurada', 'Configure as credenciais da Brasil NFe no servidor antes de emitir.');
+      return '';
+    }
+    if (data?.processing) {
+      addToast('info', 'NFC-e em processamento', 'Já existe uma emissão em andamento para este pedido.');
+      return '';
+    }
+    if (!data?.ok) {
+      addToast('error', 'NFC-e rejeitada pela SEFAZ', data?.motivo || data?.error || 'Verifique os dados fiscais dos itens.');
+      logAudit('Emissão NFC-e (rejeitada)', 'Fiscal', `Pedido #${orderId} - ${data?.motivo || data?.error || 'sem motivo'}`);
+      return '';
+    }
+
+    if (data.alreadyIssued) {
+      addToast('info', 'NFC-e já emitida', `Chave: ${String(data.chave || '').slice(0, 15)}...`);
+      return data.chave || '';
+    }
+
+    addToast('success', 'NFC-e autorizada', `Chave: ${String(data.chave || '').slice(0, 15)}...`);
+    logAudit('Emissão NFC-e', 'Fiscal', `Pedido #${orderId} - Chave ${data.chave} - Protocolo ${data.protocolo ?? '-'}`);
+    return data.chave || '';
   };
 
   if (!sessionChecked || (session && authLoading)) {
@@ -1726,6 +1784,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordProductStockEntry,
         recordLoss,
         recordCourtesy,
+        fiscalInvoices,
         issueNfce,
       }}
     >

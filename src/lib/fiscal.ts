@@ -3,7 +3,7 @@
 // as listas de códigos (origem, CST/CSOSN, CST PIS/COFINS, CFOP) e as regras de
 // "quais campos são obrigatórios" antes de mandar o item pro emissor de NF.
 
-import type { FiscalData, Product, TaxGroup } from '../types';
+import type { FiscalData, Order, PaymentMethod, Product, TaxGroup } from '../types';
 
 // ---------------------------------------------------------------------------
 // Valor padrão / vazio
@@ -179,4 +179,92 @@ export const resolveProductFiscal = (
     if (group) return normalizeFiscalData(group.fiscal);
   }
   return normalizeFiscalData(product.fiscal);
+};
+
+// ---------------------------------------------------------------------------
+// Pagamento → código da forma de pagamento na NFC-e (tabela tPag da Sefaz)
+// ---------------------------------------------------------------------------
+/**
+ * Mapeia a `PaymentMethod` interna para o código `tPag` que vai no grupo
+ * <pag><detPag> da NFC-e. Não depende de nenhuma integração de pagamento — a
+ * nota só *declara* como o cliente pagou (maquininha avulsa, PIX manual, etc.).
+ * 01 Dinheiro · 03 Cartão de crédito · 04 Cartão de débito · 15 Boleto ·
+ * 17 PIX · 11 Vale-refeição (PAT) · 99 Outros.
+ */
+export const PAYMENT_METHOD_SEFAZ: Record<PaymentMethod, string> = {
+  dinheiro: '01',
+  cartao_credito: '03',
+  cartao_debito: '04',
+  pix: '17',
+  boleto: '15',
+  vale_refeicao: '11',
+  multiplo: '99',
+};
+
+export interface SefazPaymentEntry {
+  /** Código tPag da Sefaz. */
+  forma: string;
+  /** Rótulo legível (para telas/erros). */
+  rotulo: string;
+  valor: number;
+}
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
+  pix: 'PIX',
+  boleto: 'Boleto',
+  vale_refeicao: 'Vale-refeição',
+  multiplo: 'Múltiplo',
+};
+
+/**
+ * Linhas de pagamento da NFC-e a partir do pedido. Usa `splitPayments` quando
+ * existe (uma linha por forma); senão, uma linha única com o total do pedido.
+ * A soma tem que fechar com o total da nota (a Sefaz rejeita se não bater).
+ */
+export const sefazPaymentEntries = (
+  order: Pick<Order, 'paymentMethod' | 'splitPayments' | 'total'>,
+): SefazPaymentEntry[] => {
+  const split = order.splitPayments?.filter((p) => p && p.amount > 0) ?? [];
+  if (split.length > 0) {
+    return split.map((p) => ({
+      forma: PAYMENT_METHOD_SEFAZ[p.method] ?? '99',
+      rotulo: PAYMENT_LABELS[p.method] ?? 'Outros',
+      valor: Number(p.amount.toFixed(2)),
+    }));
+  }
+  return [
+    {
+      forma: PAYMENT_METHOD_SEFAZ[order.paymentMethod] ?? '99',
+      rotulo: PAYMENT_LABELS[order.paymentMethod] ?? 'Outros',
+      valor: Number(order.total.toFixed(2)),
+    },
+  ];
+};
+
+// ---------------------------------------------------------------------------
+// Rateio de desconto do pedido pelos itens
+// ---------------------------------------------------------------------------
+/**
+ * O pedido guarda `discount` só no total; a NFC-e precisa do desconto (vDesc)
+ * item a item. Rateia proporcionalmente ao valor bruto de cada item e joga a
+ * sobra de arredondamento no último item, de forma que a soma feche exatamente
+ * com `totalDiscount`.
+ */
+export const prorateDiscount = (
+  items: { unitPrice: number; quantity: number }[],
+  totalDiscount: number,
+): number[] => {
+  const n = items.length;
+  if (n === 0 || totalDiscount <= 0) return new Array(n).fill(0);
+  const gross = items.map((it) => it.unitPrice * it.quantity);
+  const grossTotal = gross.reduce((s, v) => s + v, 0);
+  if (grossTotal <= 0) return new Array(n).fill(0);
+
+  const out = gross.map((g) => Math.round(((g / grossTotal) * totalDiscount) * 100) / 100);
+  const diff = Number((totalDiscount - out.reduce((s, v) => s + v, 0)).toFixed(2));
+  out[n - 1] = Number((out[n - 1] + diff).toFixed(2));
+  return out;
 };
