@@ -322,13 +322,11 @@ interface AppContextType {
   toasts: Toast[];
   connectionOnline: boolean;
 
-  // Navigation
   activeView: string;
   setActiveView: (view: string) => void;
   selectedCashShiftId: string | null;
   setSelectedCashShiftId: (id: string | null) => void;
 
-  // Toast
   addToast: (type: Toast['type'], title: string, message?: string) => void;
   removeToast: (id: string) => void;
 
@@ -338,7 +336,6 @@ interface AppContextType {
   alertDialog: (options: { title: string; message: string }) => Promise<void>;
   resolveConfirm: (value: boolean) => void;
 
-  // Actions
   logAudit: (action: string, moduleName: string, details?: string) => void;
   logout: () => Promise<void>;
   createTable: (number: number, sector: DiningTable['sector'], capacity: number) => Promise<void>;
@@ -443,7 +440,6 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ---- Auth ----
   const [session, setSession] = useState<Session | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -578,7 +574,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [selectedCashShiftId, setSelectedCashShiftId] = useState<string | null>(null);
 
-  // ---- Core data (Supabase) ----
   const [categories] = useSupabaseCollection<Category>('categories', session, mapCategory, 'id');
   const [ingredientCategories] = useSupabaseCollection<IngredientCategory>('ingredient_categories', session, mapIngredientCategory, 'id');
   const [suppliers] = useSupabaseCollection<Supplier>('suppliers', session, mapSupplier, 'id');
@@ -694,10 +689,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // O livro-caixa (cash_ledger) NÃO é carregado aqui — a tela Livro-Caixa faz
   // a própria query sob demanda (botão Buscar), pra não puxar tudo ao abrir.
 
-  // ---- Lançamentos financeiros (financial_entries) ----
   const [financialEntries] = useSupabaseCollection<FinancialEntry>('financial_entries', session, mapFinancialEntryRow, 'id', 'created_at', 500);
 
-  // ---- Auditoria persistida (audit_log) — só carrega para quem tem acesso ----
   useEffect(() => {
     if (!session || !hasPermission(currentUser, 'auditoria.acessar')) return;
     let cancelled = false;
@@ -714,7 +707,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { cancelled = true; supabase.removeChannel(channel); };
   }, [session?.user?.id, currentUser?.id]);
 
-  // ---- Toasts & audit ----
   const addToast = (type: Toast['type'], title: string, message?: string) => {
     const newToast: Toast = {
       id: 'toast-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
@@ -787,7 +779,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // ---- Table Management Actions ----
   const createTable = async (number: number, sector: DiningTable['sector'], capacity: number) => {
     const newTable: DiningTable = {
       id: 'tb-' + Date.now(),
@@ -1168,7 +1159,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Estorno de Adiantamento', 'Caixa / Atendimento', `Adiantamento ${paymentId} - Motivo: ${reason.trim()}`);
   };
 
-  // ---- Kitchen & Delivery Order Flow ----
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     const order = orders.find((o) => o.id === orderId);
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1242,7 +1232,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newOrder;
   };
 
-  // ---- Direct PDV Express Sale ----
   const createPdvSale = async (
     items: OrderItem[],
     paymentMethod: PaymentMethod,
@@ -1304,7 +1293,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newOrder;
   };
 
-  // ---- Cash Register Controls ----
   const openCashShift = async (initialFloat: number): Promise<string | null> => {
     if (!currentUser) return null;
     // Toda a escrita em cash_shifts é via RPC security definer (migration 0027/0028):
@@ -1386,7 +1374,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // ---- Category CRUD ----
   const saveCategory = async (category: Category) => {
     const { error } = await supabase.from('categories').upsert(toRow(category));
     if (error) { addToast('error', 'Erro ao salvar categoria', error.message); return; }
@@ -1401,7 +1388,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Exclusão de Categoria', 'Produtos', `ID da categoria: ${categoryId}`);
   };
 
-  // ---- Ingredient Category (Grupos de Insumos) CRUD ----
   const saveIngredientCategory = async (category: IngredientCategory) => {
     const { error } = await supabase.from('ingredient_categories').upsert(toRow(category));
     if (error) { addToast('error', 'Erro ao salvar grupo de insumo', error.message); return; }
@@ -1416,7 +1402,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Exclusão de Grupo de Insumo', 'Estoque', `ID do grupo: ${categoryId}`);
   };
 
-  // ---- Supplier (Fornecedores) CRUD ----
   const saveSupplier = async (supplier: Supplier) => {
     const { error } = await supabase.from('suppliers').upsert(toRow(supplier));
     if (error) { addToast('error', 'Erro ao salvar fornecedor', error.message); return; }
@@ -1431,7 +1416,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Exclusão de Fornecedor', 'Fornecedores', `ID do fornecedor: ${supplierId}`);
   };
 
-  // ---- Table Sector (Áreas do Restaurante) CRUD ----
   const saveTableSector = async (sector: TableSector) => {
     const { error } = await supabase.from('table_sectors').upsert(toRow(sector));
     if (error) { addToast('error', 'Erro ao salvar área', error.message); return; }
@@ -1453,7 +1437,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Cadastro de Unidade de Venda', 'Produtos', `Unidade: ${saleUnit.name} (${saleUnit.abbreviation})`);
   };
 
-  // ---- Grupos Tributários ----
   const saveTaxGroup = async (group: TaxGroup) => {
     const { error } = await supabase.from('tax_groups').upsert(toRow(group));
     if (error) { addToast('error', 'Erro ao salvar grupo tributário', error.message); return; }
@@ -1475,7 +1458,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   };
 
-  // ---- Product CRUD ----
   const saveProduct = async (product: Product) => {
     const { error } = await supabase.from('products').upsert(toRow(product));
     if (error) { addToast('error', 'Erro ao salvar produto', error.message); return; }
@@ -1490,7 +1472,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Exclusão de Produto', 'Produtos', `ID do produto: ${productId}`);
   };
 
-  // ---- Stock CRUD ----
   const saveIngredient = async (ingredient: Ingredient) => {
     const { error } = await supabase.from('ingredients').upsert(toRow(ingredient));
     if (error) { addToast('error', 'Erro ao salvar insumo', error.message); return; }

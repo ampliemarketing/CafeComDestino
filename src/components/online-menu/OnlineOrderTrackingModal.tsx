@@ -44,9 +44,7 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
 
   if (!isOpen) return null;
 
-  // Filter orders created online or matching placedOrderIds / phone / search
   const onlineOrders = orders.filter((o) => {
-    // Is in user's saved IDs or match phone/number search
     const isSaved = placedOrderIds.includes(o.id);
     const matchesSearch = searchQuery.trim() !== '' && (
       o.orderNumber.toString().includes(searchQuery.trim()) ||
@@ -61,7 +59,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
   const activeOrder = orders.find((o) => o.id === selectedOrderId) ||
     (selectedOrderId ? null : (onlineOrders.length > 0 ? onlineOrders[0] : null));
 
-  // Status mapping helper
   const getStatusStepIndex = (status: OrderStatus): number => {
     switch (status) {
       case 'novo':
@@ -100,7 +97,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 animate-fadeIn">
       <div className="bg-white rounded-3xl shadow-2xl border border-stone-200 w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
-        {/* Modal Header */}
         <div className="bg-stone-900 text-stone-100 p-4 sm:p-5 flex items-center justify-between border-b border-stone-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-800 text-amber-300 flex items-center justify-center font-bold shadow-md">
@@ -124,7 +120,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
           </button>
         </div>
 
-        {/* Search & Order Selector Bar */}
         <div className="bg-stone-100 p-3 border-b border-stone-200 space-y-2 shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
@@ -138,7 +133,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
             />
           </div>
 
-          {/* Quick List Chips of Recent Orders */}
           {onlineOrders.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
               <span className="text-[10px] text-stone-500 font-bold uppercase shrink-0">Seus Pedidos:</span>
@@ -165,7 +159,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
           )}
         </div>
 
-        {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-xs">
           {!activeOrder ? (
             <div className="text-center py-12 space-y-3">
@@ -179,7 +172,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
             </div>
           ) : (
             <>
-              {/* Order Top Banner */}
               <div className="bg-gradient-to-r from-stone-900 to-amber-950 text-white p-4 rounded-2xl shadow-md space-y-2 border border-amber-900/40">
                 <div className="flex items-center justify-between">
                   <div>
@@ -212,7 +204,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                 </div>
               </div>
 
-              {/* LIVE STEP TIMELINE PROGRESS */}
               <div className="bg-stone-50 p-4 sm:p-5 rounded-2xl border border-stone-200 space-y-4">
                 <div className="flex items-center justify-between">
                   <h5 className="font-bold text-stone-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
@@ -236,9 +227,7 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* Visual Stepper */}
                     <div className="grid grid-cols-4 gap-2 text-center relative pt-2">
-                      {/* Stepper Bar Background */}
                       <div className="absolute top-5 left-8 right-8 h-1 bg-stone-200 -z-0" />
                       <div
                         className="absolute top-5 left-8 h-1 bg-emerald-600 transition-all duration-500 -z-0"
@@ -254,7 +243,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                         }}
                       />
 
-                      {/* Step 1 */}
                       <div className="relative z-10 flex flex-col items-center space-y-1">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition ${
@@ -274,7 +262,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                         </span>
                       </div>
 
-                      {/* Step 2 */}
                       <div className="relative z-10 flex flex-col items-center space-y-1">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition ${
@@ -294,7 +281,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                         </span>
                       </div>
 
-                      {/* Step 3 */}
                       <div className="relative z-10 flex flex-col items-center space-y-1">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition ${
@@ -314,7 +300,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                         </span>
                       </div>
 
-                      {/* Step 4 */}
                       <div className="relative z-10 flex flex-col items-center space-y-1">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition ${
@@ -335,7 +320,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                       </div>
                     </div>
 
-                    {/* Active Step Box Explanation */}
                     <div className="bg-white p-3.5 rounded-xl border border-stone-200 space-y-1 text-center shadow-sm">
                       {currentStep === 1 && (
                         <div>
@@ -382,7 +366,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                 )}
               </div>
 
-              {/* Pix Payment QR Code & Copia e Cola (If Pix) */}
               {activeOrder.paymentMethod === 'pix' && activeOrder.paymentStatus !== 'pagamento_aprovado' && (
                 <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl space-y-2">
                   <div className="flex items-center gap-2 text-emerald-950 font-bold text-xs">
@@ -405,7 +388,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                 </div>
               )}
 
-              {/* Order Items Summary */}
               <div className="space-y-3">
                 <h5 className="font-bold text-stone-800 text-xs uppercase tracking-wider">
                   Itens do Pedido ({activeOrder.items.length}):
@@ -438,7 +420,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                 </div>
               </div>
 
-              {/* Customer & Address Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-stone-50 p-3.5 rounded-2xl border border-stone-200 space-y-1">
                   <p className="font-bold text-stone-800 text-[11px] uppercase tracking-wider">
@@ -463,7 +444,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
                 </div>
               </div>
 
-              {/* Contact Restaurant WhatsApp Action */}
               <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
                 <a
                   href={getWhatsAppLink(activeOrder)}
@@ -513,7 +493,6 @@ export const OnlineOrderTrackingModal: React.FC<OnlineOrderTrackingModalProps> =
           )}
         </div>
 
-        {/* Modal Footer */}
         <div className="p-4 bg-stone-50 border-t border-stone-200 flex justify-between items-center">
           <span className="text-[11px] text-stone-500">
             {companyProfile.tradeName} • Cardápio Online & Pedidos Mobile

@@ -65,7 +65,6 @@ const esc = (s: unknown) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-/** Converte um pedido do sistema no formato de cupom. */
 export function orderToReceiptData(o: Order, type: ReceiptData['type']): ReceiptData {
   const addr = o.customer?.address;
   const deliveryAddress = addr

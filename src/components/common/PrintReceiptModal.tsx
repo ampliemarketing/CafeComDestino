@@ -49,7 +49,6 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
         {/* Simulated Thermal Ticket Preview */}
         <div className="p-6 overflow-y-auto max-h-[70vh]">
           <div className="bg-white p-6 shadow-md border border-stone-300 font-mono text-xs text-stone-900 mx-auto max-w-[280px]">
-            {/* Header */}
             <div className="text-center pb-3 border-b border-dashed border-stone-400">
               <p className="font-bold text-sm tracking-wider uppercase">{companyProfile.tradeName}</p>
               <p className="text-[10px] text-stone-600">CNPJ: {companyProfile.cnpj}</p>
@@ -57,12 +56,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               <p className="text-[10px] text-stone-600">Tel: {companyProfile.phone}</p>
             </div>
 
-            {/* Ticket Type */}
             <div className="text-center py-2 my-2 bg-stone-100 border-y border-stone-300 font-bold uppercase">
               {RECEIPT_TYPE_LABEL[receiptData.type]}
             </div>
 
-            {/* Meta */}
             <div className="space-y-1 pb-3 border-b border-dashed border-stone-400">
               {receiptData.orderNumber && <p>PEDIDO #: <span className="font-bold">{receiptData.orderNumber}</span></p>}
               {receiptData.tableNumber && <p>MESA #: <span className="font-bold text-sm">{receiptData.tableNumber}</span></p>}
@@ -73,7 +70,6 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               <p>DATA: {new Date().toLocaleString('pt-BR')}</p>
             </div>
 
-            {/* Items */}
             <div className="py-3 border-b border-dashed border-stone-400 space-y-2">
               <div className="flex justify-between font-bold border-b pb-1 text-[10px]">
                 <span>QTD ITEM</span>
@@ -95,7 +91,6 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
               ))}
             </div>
 
-            {/* Totals */}
             <div className="py-3 border-b border-dashed border-stone-400 space-y-1">
               <div className="flex justify-between">
                 <span>SUBTOTAL:</span>

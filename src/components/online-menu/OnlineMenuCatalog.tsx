@@ -57,13 +57,11 @@ export const OnlineMenuCatalog: React.FC = () => {
     }
   }, [categories, hasManuallySelectedCategory, selectedCategory]);
 
-  // Product Detail Modal State
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [productQty, setProductQty] = useState(1);
   const [selectedAdditions, setSelectedAdditions] = useState<ProductAddition[]>([]);
   const [productNotes, setProductNotes] = useState('');
 
-  // Cart State
   const [cart, setCart] = useState<Array<{
     product: Product;
     quantity: number;
@@ -73,12 +71,10 @@ export const OnlineMenuCatalog: React.FC = () => {
   }>>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  // Checkout State
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'customer' | 'payment' | 'tracking'>('cart');
   const [serviceType, setServiceType] = useState<'entrega' | 'retirada' | 'consumo_local'>('entrega');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
 
-  // Customer Form
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [street, setStreet] = useState('');
@@ -87,7 +83,6 @@ export const OnlineMenuCatalog: React.FC = () => {
   const [complement, setComplement] = useState('');
   const [reference, setReference] = useState('');
 
-  // Placed Orders Memory & Tracking Modal
   const [placedOrderIds, setPlacedOrderIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('ampliechef_online_placed_order_ids');
@@ -103,12 +98,10 @@ export const OnlineMenuCatalog: React.FC = () => {
   const [activePlacedOrder, setActivePlacedOrder] = useState<Order | null>(null);
   const [isPixCopied, setIsPixCopied] = useState(false);
 
-  // Active orders for floating tracker bar
   const myPlacedOrders = orders.filter((o) => placedOrderIds.includes(o.id));
   const activeOrdersCount = myPlacedOrders.filter((o) => o.orderStatus !== 'concluido' && o.orderStatus !== 'cancelado').length;
   const latestActiveOrder = myPlacedOrders.find((o) => o.orderStatus !== 'concluido' && o.orderStatus !== 'cancelado');
 
-  // Filter products
   const isSearching = searchQuery.trim().length > 0;
   const filteredProducts = products.filter((p) => {
     const matchesCat = isSearching || !selectedCategory || p.categoryId === selectedCategory;
@@ -216,7 +209,6 @@ export const OnlineMenuCatalog: React.FC = () => {
       notes: `Pedido Online Tuna Pagamentos - ${serviceType.toUpperCase()}`,
     });
 
-    // Save order ID to local storage for tracking
     const updatedPlacedIds = Array.from(new Set([placed.id, ...placedOrderIds]));
     setPlacedOrderIds(updatedPlacedIds);
     try {
@@ -229,7 +221,6 @@ export const OnlineMenuCatalog: React.FC = () => {
     setCart([]);
     setCheckoutStep('cart');
 
-    // Open tracking modal directly
     setTrackingModalOrderId(placed.id);
     setIsTrackingModalOpen(true);
   };
@@ -238,7 +229,6 @@ export const OnlineMenuCatalog: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F1EA] text-stone-900 pb-6">
-      {/* Restaurant Header Banner */}
       <div className="relative h-48 sm:h-64 lg:h-72 w-full bg-stone-900 overflow-hidden">
         <img
           src={companyProfile.coverUrl}
@@ -279,7 +269,6 @@ export const OnlineMenuCatalog: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {/* Meus Pedidos & Acompanhamento Button */}
             <button
               onClick={() => {
                 setTrackingModalOrderId(latestActiveOrder ? latestActiveOrder.id : (placedOrderIds[0] || null));
@@ -296,7 +285,6 @@ export const OnlineMenuCatalog: React.FC = () => {
               )}
             </button>
 
-            {/* Cart Button */}
             <button
               onClick={() => setIsCartOpen(true)}
               className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2 border border-amber-600/50 transition"
@@ -310,9 +298,7 @@ export const OnlineMenuCatalog: React.FC = () => {
       </div>
 
       <div className="max-w-[1180px] mx-auto lg:px-4">
-        {/* Menu column */}
         <div className="flex-1 min-w-0">
-          {/* Sticky search + categories */}
           <div className="sticky top-0 z-20 bg-[#F6F1EA] px-4 lg:px-0 py-3 border-b border-stone-200/70">
             <div className="relative max-w-md mb-2.5">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -381,7 +367,6 @@ export const OnlineMenuCatalog: React.FC = () => {
               ))}
             </div>
 
-            {/* Min-order progress trigger */}
             {cartSubtotal > 0 && companyProfile.minOrderValue > 0 && (
               <div className={`rounded-2xl border p-4 transition-colors ${minOrderMet ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-stone-200'}`}>
                 <div className="flex items-center justify-between text-[11px] font-bold text-stone-600 mb-2">
@@ -406,15 +391,12 @@ export const OnlineMenuCatalog: React.FC = () => {
           </div>
         </div>
 
-        {/* Cart backdrop */}
         {isCartOpen && (
           <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-40" onClick={() => setIsCartOpen(false)} />
         )}
 
-        {/* Cart panel: overlay drawer, opened via the cart button (any screen size) */}
         <div className={`fixed inset-0 z-50 ${isCartOpen ? 'flex' : 'hidden'} justify-end`}>
           <div className="bg-white max-w-md w-full h-full shadow-2xl flex flex-col overflow-hidden">
-            {/* Drawer Header */}
             <div className="bg-stone-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-amber-400" />
@@ -447,7 +429,6 @@ export const OnlineMenuCatalog: React.FC = () => {
               </div>
             )}
 
-            {/* Drawer Body - Flow Steps */}
             <div className="p-5 flex-1 overflow-y-auto space-y-5">
               {checkoutStep === 'cart' && (
                 <>
@@ -673,7 +654,6 @@ export const OnlineMenuCatalog: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Status Steps */}
                   <div className="space-y-2 text-left pt-2 border-t">
                     <p className="font-bold text-stone-800">Acompanhamento:</p>
                     <div className="space-y-2 pl-2 border-l-2 border-amber-600">
@@ -695,7 +675,6 @@ export const OnlineMenuCatalog: React.FC = () => {
               )}
             </div>
 
-            {/* Drawer Footer Actions */}
             {checkoutStep !== 'tracking' && (
               <div className="p-4 bg-stone-50 border-t border-stone-200 space-y-3 shrink-0">
                 <div className="space-y-1 text-xs">
@@ -772,7 +751,6 @@ export const OnlineMenuCatalog: React.FC = () => {
         </div>
       </div>
 
-      {/* Product Customizer Modal */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-stone-200">
@@ -795,7 +773,6 @@ export const OnlineMenuCatalog: React.FC = () => {
                 </p>
               </div>
 
-              {/* Additions list */}
               {selectedProduct.additions && selectedProduct.additions.length > 0 && (
                 <div className="space-y-2 pt-2 border-t">
                   <span className="font-semibold text-xs text-stone-700 block uppercase tracking-wider">
@@ -821,7 +798,6 @@ export const OnlineMenuCatalog: React.FC = () => {
                 </div>
               )}
 
-              {/* Custom Observations */}
               <div className="space-y-1 pt-2 border-t">
                 <span className="font-semibold text-xs text-stone-700 block">Observações do pedido</span>
                 <textarea
@@ -835,7 +811,6 @@ export const OnlineMenuCatalog: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Bottom Actions */}
             <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between gap-4">
               <div className="flex items-center border border-stone-300 bg-white rounded-xl">
                 <button
@@ -872,7 +847,6 @@ export const OnlineMenuCatalog: React.FC = () => {
         </div>
       )}
 
-      {/* Persistent Floating Active Order Notification Bar */}
       {latestActiveOrder && (
         <div className="lg:hidden fixed bottom-4 left-4 right-4 max-w-lg mx-auto z-40 bg-stone-900 text-white p-3.5 rounded-2xl shadow-2xl border border-amber-600/50 flex items-center justify-between gap-3 animate-slide-up">
           <div className="flex items-center gap-3 min-w-0">
@@ -907,7 +881,6 @@ export const OnlineMenuCatalog: React.FC = () => {
         </div>
       )}
 
-      {/* Real-time Order Tracking Modal */}
       <OnlineOrderTrackingModal
         isOpen={isTrackingModalOpen}
         onClose={() => setIsTrackingModalOpen(false)}

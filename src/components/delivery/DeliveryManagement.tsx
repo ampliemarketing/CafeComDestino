@@ -30,7 +30,6 @@ export const DeliveryManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -50,7 +49,6 @@ export const DeliveryManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Search */}
       <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3.5 py-2.5 shadow-sm">
         <Search className="w-4 h-4 text-stone-400 shrink-0" />
         <input
@@ -63,7 +61,6 @@ export const DeliveryManagement: React.FC = () => {
         />
       </div>
 
-      {/* Orders List */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-4 space-y-4">
         <h3 className="font-bold text-stone-900 text-sm">Fila de Pedidos para Delivery</h3>
 

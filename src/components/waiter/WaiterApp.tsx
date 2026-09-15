@@ -57,14 +57,18 @@ export const WaiterApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'map' | 'order' | 'comanda'>('map');
   const [tableSearchQuery, setTableSearchQuery] = useState('');
 
-  // KG Weight Modal State
   const [isKgModalOpen, setIsKgModalOpen] = useState(false);
   const [selectedKgType, setSelectedKgType] = useState<'lunch' | 'breakfast'>('lunch');
 
   const lunchPrice = companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00;
   const breakfastPrice = companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99;
+  const lunchEnabled = companyProfile.buffetPrices?.lunchEnabled !== false;
+  const breakfastEnabled = companyProfile.buffetPrices?.breakfastEnabled !== false;
 
-  // New table modal
+  const isKgProduct = (p: Product) => p.unit === 'KG' || p.name.toLowerCase().includes('por quilo') || p.id.includes('kg');
+  const isKgProductAllowed = (p: Product) =>
+    !isKgProduct(p) || (p.name.toLowerCase().includes('café') ? breakfastEnabled : lunchEnabled);
+
   const [isNewTableModalOpen, setIsNewTableModalOpen] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState<number>(1);
   const [newTableSector, setNewTableSector] = useState<string>('');
@@ -75,7 +79,6 @@ export const WaiterApp: React.FC = () => {
   const [tableForNewComanda, setTableForNewComanda] = useState<DiningTable | null>(null);
   const [comandaNamesInput, setComandaNamesInput] = useState<string[]>(['']);
 
-  // Order Launch State
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -83,20 +86,15 @@ export const WaiterApp: React.FC = () => {
   const [selectedAdditions, setSelectedAdditions] = useState<ProductAddition[]>([]);
   const [customNotes, setCustomNotes] = useState('');
 
-  // Partial payment modal
   const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
 
-  // Transfer comanda modal
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferTargetTableId, setTransferTargetTableId] = useState('');
 
-  // Pre-bill print modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  // Confirmação de remoção de taxa de serviço / couvert
   const [pendingCharge, setPendingCharge] = useState<null | 'serviceFee' | 'couvert'>(null);
 
-  // Final payment (close comanda) modal
   const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
   const [isFinalSplitPayment, setIsFinalSplitPayment] = useState(false);
@@ -105,7 +103,6 @@ export const WaiterApp: React.FC = () => {
     { method: 'dinheiro', amount: '0' },
   ]);
 
-  // Fiscal receipt printed right after a comanda is closed & paid
   const [isFinalReceiptModalOpen, setIsFinalReceiptModalOpen] = useState(false);
   const [lastFinalizedOrder, setLastFinalizedOrder] = useState<Order | null>(null);
 
@@ -220,7 +217,6 @@ export const WaiterApp: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F6F1EA] text-stone-900 pb-20 p-3 sm:p-5 max-w-4xl mx-auto space-y-4">
-      {/* Waiter Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-4 rounded-2xl shadow-md border border-stone-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-800 text-white font-bold flex items-center justify-center text-sm shadow">
@@ -249,7 +245,6 @@ export const WaiterApp: React.FC = () => {
         </button>
       </div>
 
-      {/* Main Table Map View */}
       {activeTab === 'map' && (
         <div className="space-y-4">
           <div className="bg-white p-3.5 rounded-2xl border border-stone-200 space-y-3">
@@ -296,7 +291,6 @@ export const WaiterApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Tables Cards Grid */}
           {filteredTables.length === 0 ? (
             <div className="bg-white p-8 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">
               Nenhuma mesa encontrada para "{tableSearchQuery}".
@@ -352,7 +346,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Order Launch View for Selected Comanda */}
       {activeTab === 'order' && currentActiveTable && currentComanda && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-stone-200 flex items-center justify-between">
@@ -373,8 +366,7 @@ export const WaiterApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Quilo Launch for Waiter */}
-          {can('mesas.lancar_item') && (
+          {can('mesas.lancar_item') && (lunchEnabled || breakfastEnabled) && (
           <div className="bg-gradient-to-r from-amber-900 to-stone-900 text-white p-3 rounded-2xl shadow-sm border border-amber-800 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -383,7 +375,8 @@ export const WaiterApp: React.FC = () => {
               </div>
               <span className="text-[10px] text-amber-300 font-mono">Balança Buffet</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`grid gap-2 ${lunchEnabled && breakfastEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {lunchEnabled && (
               <button
                 type="button"
                 onClick={() => { setSelectedKgType('lunch'); setIsKgModalOpen(true); }}
@@ -398,7 +391,9 @@ export const WaiterApp: React.FC = () => {
                 </div>
                 <span className="text-[10px] bg-amber-800 px-2 py-0.5 rounded font-bold">Lançar</span>
               </button>
+              )}
 
+              {breakfastEnabled && (
               <button
                 type="button"
                 onClick={() => { setSelectedKgType('breakfast'); setIsKgModalOpen(true); }}
@@ -413,11 +408,11 @@ export const WaiterApp: React.FC = () => {
                 </div>
                 <span className="text-[10px] bg-amber-800 px-2 py-0.5 rounded font-bold">Lançar</span>
               </button>
+              )}
             </div>
           </div>
           )}
 
-          {/* Search & Categories */}
           <div className="space-y-2">
             <div className="relative">
               <Search className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
@@ -454,10 +449,10 @@ export const WaiterApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Fast Product Pick Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto">
             {products
               .filter((p) => (selectedCategory === 'all' || p.categoryId === selectedCategory) && p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              .filter(isKgProductAllowed)
               .map((p) => (
                 <div
                   key={p.id}
@@ -488,7 +483,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Product Options Modal before sending to kitchen */}
       {selectedProduct && currentActiveTable && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -502,7 +496,6 @@ export const WaiterApp: React.FC = () => {
               </button>
             </div>
 
-            {/* Quantity */}
             <div className="flex items-center justify-between bg-stone-50 p-2.5 rounded-xl border">
               <span className="text-xs font-bold text-stone-700">Quantidade:</span>
               <div className="flex items-center gap-3">
@@ -548,7 +541,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Active Comanda & Actions View */}
       {activeTab === 'comanda' && currentActiveTable && currentComanda && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3">
@@ -604,7 +596,6 @@ export const WaiterApp: React.FC = () => {
             )}
           </div>
 
-          {/* Comanda Items List */}
           <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
             <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Consumo da Comanda</h4>
             {currentComanda.items.length === 0 ? (
@@ -758,7 +749,6 @@ export const WaiterApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Comanda Operational Actions */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {can('mesas.pagamento_parcial') && (
             <button
@@ -811,7 +801,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* New Table Modal */}
       {isNewTableModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -875,7 +864,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* New Comanda Modal */}
       {isNewComandaModalOpen && tableForNewComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -940,7 +928,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Partial Payment Modal */}
       {isPartialModalOpen && currentActiveTable && currentComanda && (
         <PartialPaymentModal
           isOpen={isPartialModalOpen}
@@ -950,7 +937,6 @@ export const WaiterApp: React.FC = () => {
         />
       )}
 
-      {/* Final Payment Modal (Encerrar & Receber) */}
       {isFinalPayModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -1132,7 +1118,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Transfer Comanda Modal */}
       {isTransferModalOpen && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">
@@ -1177,7 +1162,6 @@ export const WaiterApp: React.FC = () => {
         </div>
       )}
 
-      {/* Pre-bill Thermal Ticket Modal */}
       {isPrintModalOpen && currentActiveTable && currentComanda && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}
@@ -1199,7 +1183,6 @@ export const WaiterApp: React.FC = () => {
         />
       )}
 
-      {/* Fiscal Receipt Modal (printed right after closing & paying a comanda) */}
       {isFinalReceiptModalOpen && lastFinalizedOrder && (
         <PrintReceiptModal
           isOpen={isFinalReceiptModalOpen}
@@ -1226,7 +1209,6 @@ export const WaiterApp: React.FC = () => {
         />
       )}
 
-      {/* Kg Weight Entry Modal */}
       <KgWeightEntryModal
         isOpen={isKgModalOpen}
         onClose={() => setIsKgModalOpen(false)}
@@ -1234,7 +1216,6 @@ export const WaiterApp: React.FC = () => {
         initialType={selectedKgType}
       />
 
-      {/* Confirmar remoção de taxa de serviço / couvert */}
       {pendingCharge && currentActiveTable && currentComanda && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xs w-full p-5 space-y-4 shadow-2xl border border-stone-200">

@@ -152,7 +152,6 @@ export const PublicOrderTracking: React.FC = () => {
       </header>
 
       <main className="max-w-[560px] mx-auto px-5 -mt-4 space-y-4">
-        {/* Card de status atual */}
         <div className={`rounded-2xl border p-4 ${cancelled ? 'bg-[#fbeaea] border-[#e6b8b8]' : 'bg-white border-[#ece0cd]'}`}>
           <div className="flex items-start gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cancelled ? 'bg-[#5b2323] text-[#f3c9c9]' : 'bg-[#9c4a17] text-white'}`}>
@@ -173,7 +172,6 @@ export const PublicOrderTracking: React.FC = () => {
           </div>
         </div>
 
-        {/* Stepper vertical */}
         {!cancelled && (
           <div className="bg-white border border-[#ece0cd] rounded-2xl p-4">
             <ol className="space-y-0">
@@ -211,7 +209,6 @@ export const PublicOrderTracking: React.FC = () => {
           </div>
         )}
 
-        {/* Itens */}
         {t.items.length > 0 && (
           <div className="bg-white border border-[#ece0cd] rounded-2xl p-4">
             <h2 className="text-[12px] font-bold uppercase tracking-wider text-[#9c4a17] mb-2.5">Itens do pedido</h2>
@@ -232,7 +229,6 @@ export const PublicOrderTracking: React.FC = () => {
           </div>
         )}
 
-        {/* Rodapé de atualização */}
         <div className="flex items-center justify-between text-[12px] text-[#9d8b76] px-1">
           <span>
             {refreshing ? 'Atualizando…' : lastSync ? `Atualizado às ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}

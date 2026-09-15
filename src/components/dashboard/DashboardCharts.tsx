@@ -35,7 +35,6 @@ export const DashboardCharts: React.FC<Props> = ({
   paymentBreakdownData,
 }) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    {/* Sales Time Series Chart */}
     <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-stone-200 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -75,7 +74,6 @@ export const DashboardCharts: React.FC<Props> = ({
       </div>
     </div>
 
-    {/* Payment Methods Donut */}
     <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-between">
       <div>
         <h3 className="font-bold text-stone-900 text-sm mb-1">Formas de Pagamento</h3>

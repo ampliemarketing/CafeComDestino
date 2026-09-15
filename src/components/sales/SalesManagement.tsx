@@ -29,10 +29,8 @@ export const SalesManagement: React.FC = () => {
   const [selectedChannel, setSelectedChannel] = useState<string>('todos');
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
 
-  // Detail Modal
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // Print Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const filteredOrders = orders.filter((o) => {
@@ -47,7 +45,6 @@ export const SalesManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -62,7 +59,6 @@ export const SalesManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Search & Filters */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -100,7 +96,6 @@ export const SalesManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Orders Table */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
           <table className="w-full text-xs text-left">
@@ -182,7 +177,6 @@ export const SalesManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Order Detail Modal */}
       {selectedOrder && !isPrintModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200">
@@ -261,7 +255,6 @@ export const SalesManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Estorno de venda paga */}
       {reverseOrder && (
         <div className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-stone-200">
@@ -306,7 +299,6 @@ export const SalesManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Print Receipt Modal */}
       {isPrintModalOpen && selectedOrder && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}

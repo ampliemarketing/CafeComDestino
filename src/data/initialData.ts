@@ -41,6 +41,8 @@ export const initialCompanyProfile: CompanyProfileData = {
     lunchPricePerKg: 80.00,
     breakfastPricePerKg: 54.99,
     plateTareGrams: 200,
+    lunchEnabled: true,
+    breakfastEnabled: true,
   },
   servedNeighborhoods: ['Bela Vista', 'Jardins', 'Paraíso', 'Pinheiros', 'Itaim Bibi'],
   pixKey: '12.345.678/0001-90 (CNPJ)',

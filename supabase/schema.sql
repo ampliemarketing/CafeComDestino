@@ -316,7 +316,7 @@ begin
     select (elem->>'productId') as product_id, (elem->>'quantity')::numeric as quantity
     from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) as elem
   loop
-    update products set stock_quantity = greatest(0, stock_quantity - item.quantity)
+    update products set stock_quantity = stock_quantity - item.quantity
     where id = item.product_id and track_stock = true;
 
     select * into ts from technical_sheets where product_id = item.product_id;
@@ -325,7 +325,7 @@ begin
         select (u->>'ingredientId') as ingredient_id, (u->>'quantityUsed')::numeric as qty_used
         from jsonb_array_elements(ts.ingredients) as u
       loop
-        update ingredients set stock_quantity = greatest(0, stock_quantity - ing.qty_used * item.quantity)
+        update ingredients set stock_quantity = stock_quantity - ing.qty_used * item.quantity
         where id = ing.ingredient_id;
       end loop;
     end if;

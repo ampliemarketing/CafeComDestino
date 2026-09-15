@@ -70,7 +70,6 @@ export const FiscalManagement: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'notes' | 'config' | 'grupos'>('notes');
 
-  // Editor de Grupo Tributário
   const [editingGroup, setEditingGroup] = useState<TaxGroup | null>(null);
   const [showGroupErrors, setShowGroupErrors] = useState(false);
   const [groupNameError, setGroupNameError] = useState(false);
@@ -118,7 +117,6 @@ export const FiscalManagement: React.FC = () => {
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | 'todas'>('todas');
   const [channelFilter, setChannelFilter] = useState<OrderChannel | 'todos'>('todos');
 
-  // Config Form
   const [cnpjInput, setCnpjInput] = useState(companyProfile.cnpj);
   const [ieInput, setIeInput] = useState(companyProfile.ie);
   const [razaoSocialInput, setRazaoSocialInput] = useState(companyProfile.name);
@@ -194,7 +192,6 @@ export const FiscalManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 min-h-screen">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -223,7 +220,6 @@ export const FiscalManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-4">
         <div className="flex gap-2 border-b pb-3 text-xs font-bold">
           <button
@@ -253,7 +249,6 @@ export const FiscalManagement: React.FC = () => {
           </button>
         </div>
 
-        {/* Notes List Tab */}
         {activeTab === 'notes' && (
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row gap-2">
@@ -408,7 +403,6 @@ export const FiscalManagement: React.FC = () => {
           </div>
         )}
 
-        {/* Company Config Tab */}
         {activeTab === 'config' && (
           <div className="max-w-xl space-y-4 text-xs">
             <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Configuração Fiscal da Empresa</h3>
@@ -554,7 +548,6 @@ export const FiscalManagement: React.FC = () => {
           </div>
         )}
 
-        {/* Grupos Tributários Tab */}
         {activeTab === 'grupos' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -637,7 +630,6 @@ export const FiscalManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Editor de Grupo Tributário */}
       {editingGroup && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">

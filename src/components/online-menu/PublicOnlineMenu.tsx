@@ -31,11 +31,6 @@ import { LegalModal } from '../legal/LegalModal';
 // (perfil da empresa, categorias, produtos) e cria o pedido direto via RPC.
 // Acompanhamento do pedido depois de feito fica para uma próxima etapa —
 // a tela de confirmação abaixo é só um resumo estático do que foi pedido.
-//
-// Visual: header escuro com laranja de ação (design "Cardápio Digital"),
-// carrossel de destaques, busca + chips fixos e itens agrupados por
-// categoria com barra de carrinho flutuante. O carrinho em si (gaveta),
-// o modal do produto e o checkout são as mesmas etapas de antes.
 
 interface Message { type: 'success' | 'error'; text: string }
 
@@ -161,7 +156,6 @@ export const PublicOnlineMenu: React.FC = () => {
   // navega no cardápio, mas não consegue montar carrinho nem concluir pedido.
   const isStoreOpen = (companyProfile?.operatingHours ?? '') !== 'Fechado';
 
-  // Categorias visíveis, na ordem definida no cadastro.
   const menuCategories = categories
     .filter((c) => c.active !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -385,7 +379,6 @@ export const PublicOnlineMenu: React.FC = () => {
       )}
 
       <div className="max-w-[1240px] mx-auto pb-[110px]">
-        {/* Header da loja */}
         <header className="relative overflow-hidden bg-[linear-gradient(180deg,#241a12_0%,#100a06_100%)] text-[#f6efe4] px-[22px] pt-[26px] pb-[30px] rounded-b-[26px]">
           {companyProfile.coverUrl && (
             <img src={companyProfile.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
@@ -438,7 +431,6 @@ export const PublicOnlineMenu: React.FC = () => {
           </div>
         </header>
 
-        {/* Aviso de loja fechada */}
         {!isStoreOpen && (
           <div className="mx-[22px] mt-4 flex items-start gap-2 rounded-2xl border border-[#e6b8b8] bg-[#fbeaea] px-4 py-3 text-[13.5px] leading-[1.45] text-[#8a3b3b]">
             <Clock className="w-4 h-4 mt-0.5 shrink-0" />
@@ -449,7 +441,6 @@ export const PublicOnlineMenu: React.FC = () => {
           </div>
         )}
 
-        {/* Destaques da casa */}
         {!isSearching && featured.length > 0 && (
           <section className="px-[22px] pt-[26px] pb-1.5">
             <div className="flex items-baseline justify-between gap-3 mb-3.5">
@@ -490,7 +481,6 @@ export const PublicOnlineMenu: React.FC = () => {
           </section>
         )}
 
-        {/* Busca + filtros (sticky) */}
         <div className="sticky top-0 z-20 bg-[#f6efe4] px-[22px] pt-3.5 pb-3 border-b border-[#e4d7c2]">
           <div className="flex items-center gap-2.5 bg-white border border-[#e0d2ba] rounded-full px-[18px] py-3 shadow-[0_2px_8px_rgba(36,26,18,0.05)]">
             <Search className="w-4 h-4 text-[#a4907a] shrink-0" />
@@ -523,7 +513,6 @@ export const PublicOnlineMenu: React.FC = () => {
           </div>
         </div>
 
-        {/* Lista de itens agrupada por categoria */}
         <main className="px-[22px] pt-6">
           {groups.map((group) => (
             <section key={group.id} className="mb-[38px] animate-rise-in">
@@ -586,7 +575,6 @@ export const PublicOnlineMenu: React.FC = () => {
             </div>
           )}
 
-          {/* Progresso do pedido mínimo */}
           {cartSubtotal > 0 && minOrderValue > 0 && (
             <div className={`rounded-2xl border p-4 mb-6 transition-colors ${minOrderMet ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-[#ece0cd]'}`}>
               <div className="flex items-center justify-between text-[11px] font-bold text-[#7d6c58] mb-2">
@@ -610,7 +598,6 @@ export const PublicOnlineMenu: React.FC = () => {
           )}
         </main>
 
-        {/* Footer */}
         <footer className="border-t border-[#e4d7c2] mt-2.5 py-[34px] px-[22px] text-center text-[13px] leading-[1.9] text-[#8a7a67]">
           <p>
             <button
@@ -627,12 +614,10 @@ export const PublicOnlineMenu: React.FC = () => {
       </div>
 
       <div className="max-w-[1180px] mx-auto lg:px-4">
-        {/* Cart backdrop */}
         {isCartOpen && (
           <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-40" onClick={() => setIsCartOpen(false)} />
         )}
 
-        {/* Cart panel: overlay drawer, opened via the cart button (any screen size) */}
         <div className={`fixed inset-0 z-50 ${isCartOpen ? 'flex' : 'hidden'} justify-end`}>
           <div className="bg-white max-w-md w-full h-full shadow-2xl flex flex-col overflow-hidden">
             <div className="bg-stone-900 text-white p-4 flex items-center justify-between shrink-0">
@@ -645,7 +630,6 @@ export const PublicOnlineMenu: React.FC = () => {
               </button>
             </div>
 
-            {/* Stepper */}
             <div className="flex items-center px-4 py-3 gap-1.5 bg-white border-b border-stone-200 shrink-0 text-[10px]">
               {STEPS.map((step, idx) => (
                 <React.Fragment key={step.key}>
@@ -935,7 +919,6 @@ export const PublicOnlineMenu: React.FC = () => {
         </div>
       </div>
 
-      {/* Product Customizer Modal */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-stone-200">
@@ -1022,7 +1005,6 @@ export const PublicOnlineMenu: React.FC = () => {
         </div>
       )}
 
-      {/* Barra fixa do carrinho (aparece só com ≥1 item) */}
       {cartItemCount > 0 && !isCartOpen && !selectedProduct && (
         <div className="fixed inset-x-0 bottom-0 z-30 px-[18px] pb-3.5 pt-8 bg-[linear-gradient(180deg,rgba(246,239,228,0)_0%,#f6efe4_45%)]">
           <div className="max-w-[640px] mx-auto flex items-center gap-3.5 bg-[#241a12] text-[#f6efe4] rounded-full pl-[22px] pr-3.5 py-3 shadow-[0_14px_34px_rgba(36,26,18,0.32)] animate-slide-up">

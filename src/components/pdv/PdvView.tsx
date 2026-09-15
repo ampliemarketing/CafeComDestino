@@ -37,13 +37,11 @@ export const PdvView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeQuery, setBarcodeQuery] = useState('');
 
-  // Cart State
   const [cartItems, setCartItems] = useState<OrderItem[]>([]);
   const [discountInput, setDiscountInput] = useState<number>(0);
   const [customerNameInput, setCustomerNameInput] = useState<string>('Cliente Balcão');
   const [serviceType, setServiceType] = useState<'consumo_local' | 'retirada' | 'entrega'>('retirada');
 
-  // Payment Modal
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [cashTendered, setCashTendered] = useState<number>(0);
@@ -53,26 +51,29 @@ export const PdvView: React.FC = () => {
     { method: 'dinheiro', amount: '0' },
   ]);
 
-  // Print Receipt modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState<any>(null);
 
-  // KG Weight Modal State
   const [isKgModalOpen, setIsKgModalOpen] = useState(false);
   const [selectedKgType, setSelectedKgType] = useState<'lunch' | 'breakfast'>('lunch');
 
   const lunchPrice = companyProfile.buffetPrices?.lunchPricePerKg ?? 80.00;
   const breakfastPrice = companyProfile.buffetPrices?.breakfastPricePerKg ?? 54.99;
+  const lunchEnabled = companyProfile.buffetPrices?.lunchEnabled !== false;
+  const breakfastEnabled = companyProfile.buffetPrices?.breakfastEnabled !== false;
+
+  const isKgProduct = (p: Product) => p.unit === 'KG' || p.name.toLowerCase().includes('por quilo') || p.id.includes('kg');
+  const isKgProductAllowed = (p: Product) =>
+    !isKgProduct(p) || (p.name.toLowerCase().includes('café') ? breakfastEnabled : lunchEnabled);
 
   const filteredProducts = products.filter((p) => {
     const matchCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.barcode && p.barcode.includes(searchQuery));
-    return matchCat && matchSearch && p.available;
+    return matchCat && matchSearch && p.available && isKgProductAllowed(p);
   });
 
   const addToCart = (product: Product) => {
-    // If product is sold by KG or named 'por quilo', open weight modal
     if (product.unit === 'KG' || product.name.toLowerCase().includes('por quilo') || product.id.includes('kg')) {
       const isCafe = product.name.toLowerCase().includes('café');
       setSelectedKgType(isCafe ? 'breakfast' : 'lunch');
@@ -197,7 +198,6 @@ export const PdvView: React.FC = () => {
     setIsPaymentModalOpen(false);
     setIsPrintModalOpen(true);
 
-    // Reset PDV state
     setCartItems([]);
     setDiscountInput(0);
     setDiscountReasonInput('');
@@ -213,7 +213,6 @@ export const PdvView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-      {/* Top Banner */}
       <div className="bg-stone-900 text-stone-100 p-4 rounded-2xl shadow-md border border-stone-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -236,12 +235,9 @@ export const PdvView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main PDV Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left 7 Columns: Products Catalog Grid */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Quick Launch Cards: Comida Por Quilo (Buffet & Balança) */}
-          {can('pdv.lancar_item_kg') && (
+          {can('pdv.lancar_item_kg') && (lunchEnabled || breakfastEnabled) && (
           <div className="bg-gradient-to-r from-amber-900 to-amber-950 text-white p-3.5 rounded-2xl shadow-md border border-amber-800/80 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -255,7 +251,8 @@ export const PdvView: React.FC = () => {
               <span className="text-[10px] text-amber-300 font-mono">Autocalculado em R$ / kg</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className={`grid gap-2 ${lunchEnabled && breakfastEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {lunchEnabled && (
               <button
                 type="button"
                 onClick={() => {
@@ -275,7 +272,9 @@ export const PdvView: React.FC = () => {
                 </div>
                 <span className="text-xs bg-amber-800/80 px-2 py-1 rounded-lg font-bold text-amber-200">Lançar</span>
               </button>
+              )}
 
+              {breakfastEnabled && (
               <button
                 type="button"
                 onClick={() => {
@@ -295,11 +294,11 @@ export const PdvView: React.FC = () => {
                 </div>
                 <span className="text-xs bg-amber-800/80 px-2 py-1 rounded-lg font-bold text-amber-200">Lançar</span>
               </button>
+              )}
             </div>
           </div>
           )}
 
-          {/* Search & Barcode Input */}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -326,7 +325,6 @@ export const PdvView: React.FC = () => {
             </div>
           </div>
 
-          {/* Categories Horizontal */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
             <button
               onClick={() => setSelectedCategory('all')}
@@ -349,7 +347,6 @@ export const PdvView: React.FC = () => {
             ))}
           </div>
 
-          {/* Products Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[520px] overflow-y-auto">
             {filteredProducts.map((p) => (
               <div
@@ -376,7 +373,6 @@ export const PdvView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right 5 Columns: Active Order Terminal */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between pb-3 border-b">
@@ -390,7 +386,6 @@ export const PdvView: React.FC = () => {
               </button>
             </div>
 
-            {/* Customer & Service type selector */}
             <div className="grid grid-cols-2 gap-2 my-3">
               <input
                 type="text"
@@ -411,7 +406,6 @@ export const PdvView: React.FC = () => {
               </select>
             </div>
 
-            {/* Cart Items List */}
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {cartItems.length === 0 ? (
                 <p className="text-xs text-stone-400 py-12 text-center font-medium">
@@ -444,7 +438,6 @@ export const PdvView: React.FC = () => {
             </div>
           </div>
 
-          {/* Bottom Totals & Tender Action */}
           <div className="pt-4 border-t space-y-3">
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-stone-600">
@@ -502,7 +495,6 @@ export const PdvView: React.FC = () => {
         </div>
       </div>
 
-      {/* Payment Tendering Modal */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200">
@@ -518,7 +510,6 @@ export const PdvView: React.FC = () => {
               <p className="text-2xl font-bold text-amber-900">R$ {total.toFixed(2)}</p>
             </div>
 
-            {/* Payment Method Selector */}
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-stone-700 block">Forma de Pagamento</span>
@@ -646,7 +637,6 @@ export const PdvView: React.FC = () => {
         </div>
       )}
 
-      {/* Print Receipt Modal */}
       {isPrintModalOpen && lastCompletedSale && (
         <PrintReceiptModal
           isOpen={isPrintModalOpen}
@@ -667,7 +657,6 @@ export const PdvView: React.FC = () => {
         />
       )}
 
-      {/* Kg Weight Entry Modal */}
       <KgWeightEntryModal
         isOpen={isKgModalOpen}
         onClose={() => setIsKgModalOpen(false)}

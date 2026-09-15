@@ -53,6 +53,8 @@ export interface CompanyProfileData {
     lunchPricePerKg: number;
     breakfastPricePerKg: number;
     plateTareGrams: number;
+    lunchEnabled?: boolean;
+    breakfastEnabled?: boolean;
   };
   servedNeighborhoods: string[];
   pixKey: string;
@@ -147,7 +149,6 @@ export interface FiscalData {
   aliqIpi?: number;
   codEnquadramentoIpi?: string;
 
-  // Outros
   cBenef?: string;       // código de benefício fiscal (exigido em alguns estados)
   infAdicional?: string; // informação adicional / mensagem fiscal do item
 
@@ -388,7 +389,7 @@ export interface CashShift {
   openedAt: string;
   closedBy?: string;
   closedAt?: string;
-  initialFloat: number; // Valor inicial em caixa
+  initialFloat: number;
   status: 'aberto' | 'fechado';
   salesCash: number;
   salesCard: number; // legado: crédito+débito somados (turnos antes da separação)
@@ -410,7 +411,7 @@ export interface CashShift {
   notes?: string;
   salesServiceFee?: number; // taxa de serviço acumulada (migration 0026)
   salesCouvert?: number;
-  cashChangeGiven?: number; // troco entregue
+  cashChangeGiven?: number;
   cashExpenses?: number; // despesas pagas em dinheiro do caixa
   goodsOut?: number; // valor de menu da mercadoria vendida no turno (migration 0033)
 }

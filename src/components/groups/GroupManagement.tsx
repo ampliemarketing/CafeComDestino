@@ -117,7 +117,6 @@ export const GroupManagement: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow">
@@ -146,7 +145,6 @@ export const GroupManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Type Filter */}
       <div className="flex gap-2 bg-stone-100 p-1.5 rounded-2xl border border-stone-200 text-xs font-bold">
         <button
           onClick={() => setGroupType('ingredient')}
@@ -179,7 +177,6 @@ export const GroupManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* List */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
           <table className="w-full text-xs text-left">
@@ -317,7 +314,6 @@ export const GroupManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL: Create/Edit Group */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-stone-200">

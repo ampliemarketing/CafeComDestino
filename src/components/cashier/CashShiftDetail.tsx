@@ -60,14 +60,12 @@ export const CashShiftDetail: React.FC = () => {
   // couvert/taxa recebidos em dinheiro, o que gerava "diferença" fantasma.
   const [serverExpectedCash, setServerExpectedCash] = useState<number | null>(null);
 
-  // Nova Movimentação (entrada/saída)
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const [movType, setMovType] = useState<'reforco' | 'sangria'>('sangria');
   const [movName, setMovName] = useState<string>('');
   const [movAmount, setMovAmount] = useState<string>('');
   const [movReason, setMovReason] = useState<string>('');
 
-  // Conferência / fechamento
   const [isClosing, setIsClosing] = useState(false);
   const [conferredCash, setConferredCash] = useState(0);
   const [conferredCredit, setConferredCredit] = useState(0);
@@ -253,7 +251,6 @@ export const CashShiftDetail: React.FC = () => {
         )}
       </div>
 
-      {/* Header Banner */}
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-start justify-between gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-amber-800 text-white font-bold flex items-center justify-center shadow shrink-0">
@@ -312,7 +309,6 @@ export const CashShiftDetail: React.FC = () => {
         )}
       </div>
 
-      {/* Composição das vendas */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Composição das Vendas</h4>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -356,7 +352,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Resumo por forma de pagamento */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
           <Receipt className="w-3.5 h-3.5" /> Conferência por Forma de Pagamento
@@ -419,7 +414,6 @@ export const CashShiftDetail: React.FC = () => {
         </p>
       </div>
 
-      {/* Entradas vs Saidas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm">
           <div className="flex items-center justify-between">
@@ -449,7 +443,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Taxa de serviço (garçom) & Couvert */}
       {((shift.salesServiceFee ?? 0) > 0 || (shift.salesCouvert ?? 0) > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm">
@@ -475,7 +468,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Vendas e pedidos do período */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
           <Receipt className="w-3.5 h-3.5" /> Vendas e Pedidos do Período
@@ -524,7 +516,6 @@ export const CashShiftDetail: React.FC = () => {
         )}
       </div>
 
-      {/* Movements */}
       <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-3">
         <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider">
           Movimentações do Turno ({movements.length})
@@ -579,7 +570,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Observações do fechamento (durante a conferência) */}
       {isClosing && (
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm space-y-2">
           <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -597,7 +587,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Notes (histórico) */}
       {!isClosing && shift.notes && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-2">
           <StickyNote className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -608,7 +597,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Barra de ação fixa */}
       {isClosing && (
         <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white border-t border-stone-200 p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-30">
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
@@ -630,7 +618,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Movement Modal */}
       {isMovementModalOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200">
@@ -720,7 +707,6 @@ export const CashShiftDetail: React.FC = () => {
         </div>
       )}
 
-      {/* PIN Confirmation Step */}
       {pinStepOpen && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-stone-200">
