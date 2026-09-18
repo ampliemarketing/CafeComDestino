@@ -9,7 +9,7 @@ no bundle público.
 
 | Peça | Arquivo |
 |---|---|
-| Tabela `fiscal_invoices` (1 documento fiscal por pedido) | `supabase/migrations/0050_fiscal_nfce.sql` |
+| Tabela `fiscal_invoices` (1 documento fiscal por pedido) | `supabase/migrations/0052_fiscal_nfce.sql` |
 | Edge Function que monta o payload e chama a Brasil NFe | `supabase/functions/emit-nfce/index.ts` |
 | Mapa forma de pagamento → `tPag`, rateio de desconto por item | `src/lib/fiscal.ts` (`PAYMENT_METHOD_SEFAZ`, `sefazPaymentEntries`, `prorateDiscount`) |
 | `issueNfce()` chamando a Edge Function (era simulação) | `src/context/AppContext.tsx` |
@@ -58,7 +58,7 @@ supabase functions deploy emit-nfce
 Aplicar a migration:
 
 ```bash
-supabase db push        # ou rodar 0050_fiscal_nfce.sql no SQL Editor
+supabase db push        # ou rodar 0052_fiscal_nfce.sql no SQL Editor
 ```
 
 Cadastro da empresa + upload do certificado A1 na Brasil NFe (via SDK/painel
