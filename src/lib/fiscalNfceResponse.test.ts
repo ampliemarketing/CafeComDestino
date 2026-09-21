@@ -110,6 +110,50 @@ describe('parseEnviarNotaFiscalResponse — nota autorizada', () => {
   });
 });
 
+// Capturada em produção (fiscal_invoices.provider_response) em 2026-09-21: a
+// Brasil NFe rejeitou ANTES de mandar pra Sefaz porque `Pagamentos` somava
+// mais que o valor da nota (o pedido tinha taxa de serviço/couvert, que não
+// vira item na NFC-e — ver comentário em scalePaymentsToNoteTotal). `ReturnNF`
+// vem todo zerado; o motivo de verdade só existe em `Error`.
+const SCHEMA_REJECTED_RESPONSE = {
+  Avisos: [],
+  Base64File: null,
+  Base64Xml: null,
+  Error: 'Rejeição 866: Ausência de troco quando o valor dos pagamentos informados for maior que o total da nota. [vPago:43.80 - vNF:36.90]',
+  ReturnNF: {
+    ChaveNF: null,
+    CodStatusRespostaSefaz: 0,
+    CodTipoAmbiente: 0,
+    Detalhes: { valorCofins: 0, valorIcms: 0, valorIpi: 0, valorNf: 0, valorPis: 0 },
+    DsStatusRespostaSefaz: null,
+    DsTipoAmbiente: null,
+    Numero: 0,
+    NumeroProtocolo: null,
+    Ok: false,
+    Serie: 0,
+  },
+};
+
+describe('parseEnviarNotaFiscalResponse — rejeição de validação (Error no nível raiz, ReturnNF zerado)', () => {
+  const parsed = parseEnviarNotaFiscalResponse(SCHEMA_REJECTED_RESPONSE);
+
+  it('não marca como autorizada', () => {
+    expect(parsed.authorized).toBe(false);
+    expect(parsed.cStat).toBe('0');
+  });
+
+  it('usa o campo Error como motivo em vez de ficar vazio (regressão: virava "HTTP 200" na tela)', () => {
+    expect(parsed.xMotivo).toContain('Rejeição 866');
+    expect(parsed.xMotivo).toContain('Ausência de troco');
+  });
+
+  it('chave/protocolo/xml ficam null (nota nunca chegou na Sefaz)', () => {
+    expect(parsed.chave).toBeNull();
+    expect(parsed.protocolo).toBeNull();
+    expect(parsed.xml).toBeNull();
+  });
+});
+
 describe('parseEnviarNotaFiscalResponse — respostas incompletas/erro', () => {
   it('não quebra com corpo vazio ou nulo', () => {
     expect(() => parseEnviarNotaFiscalResponse(null)).not.toThrow();

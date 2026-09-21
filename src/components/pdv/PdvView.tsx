@@ -26,7 +26,7 @@ import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const PdvView: React.FC = () => {
-  const { products, categories, createPdvSale, issueNfce, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
+  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
   // Desconto acima do teto do cargo exige motivo + PIN de gerente (validado no servidor).
@@ -53,7 +53,9 @@ export const PdvView: React.FC = () => {
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState<any>(null);
-  const [isEmittingNfce, setIsEmittingNfce] = useState(false);
+  // NFC-e NÃO é emitida aqui — emissão é sempre manual, só pelo Módulo Fiscal
+  // (decisão do cliente: nunca disparar automático ao finalizar a venda).
+  const [isSaving, setIsSaving] = useState(false);
 
   const [isKgModalOpen, setIsKgModalOpen] = useState(false);
   const [selectedKgType, setSelectedKgType] = useState<'lunch' | 'breakfast'>('lunch');
@@ -146,7 +148,7 @@ export const PdvView: React.FC = () => {
   const discountOverLimit = discountInput > 0 && discountPct > discountLimit + 0.001;
 
   const handleFinalizeSale = async () => {
-    if (isEmittingNfce) return;
+    if (isSaving) return;
 
     if (cartItems.length === 0) {
       addToast('error', 'Carrinho Vazio', 'Adicione produtos antes de finalizar.');
@@ -184,6 +186,7 @@ export const PdvView: React.FC = () => {
       }
     }
 
+    setIsSaving(true);
     const sale = await createPdvSale(
       cartItems,
       isSplitPayment ? 'multiplo' : paymentMethod,
@@ -194,16 +197,13 @@ export const PdvView: React.FC = () => {
       discountOverLimit ? discountReasonInput.trim() : undefined,
       discountOverLimit ? discountPinInput : undefined
     );
+    setIsSaving(false);
 
     if (!sale) return;
 
-    // Emite a NFC-e e só então imprime — o cupom precisa sair com a chave
-    // (ou com o motivo de rejeição refletido no status), não antes dela existir.
-    setIsEmittingNfce(true);
-    const nfceKey = await issueNfce(sale.id);
-    setIsEmittingNfce(false);
-
-    setLastCompletedSale({ ...sale, nfceKey: nfceKey || undefined, fiscalIssued: !!nfceKey });
+    // NFC-e não é emitida aqui: a venda fecha sem nota, e a emissão fica por
+    // conta do usuário no Módulo Fiscal (botão "Emitir"). Nunca automático.
+    setLastCompletedSale(sale);
     setIsPaymentModalOpen(false);
     setIsPrintModalOpen(true);
 
@@ -230,7 +230,7 @@ export const PdvView: React.FC = () => {
           <div>
             <h2 className="font-bold text-sm text-stone-100">PDV & Frente de Caixa</h2>
             <p className="text-[11px] text-stone-400">
-              Venda rápida no balcão com leitor de código de barras e emissão NFC-e.
+              Venda rápida no balcão com leitor de código de barras. NFC-e é emitida à parte, no Módulo Fiscal.
             </p>
           </div>
         </div>
@@ -511,7 +511,7 @@ export const PdvView: React.FC = () => {
               <h3 className="font-bold text-stone-900 text-base">Recebimento de Venda</h3>
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
-                disabled={isEmittingNfce}
+                disabled={isSaving}
                 className="p-1 text-stone-400 disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <X className="w-5 h-5" />
@@ -640,18 +640,18 @@ export const PdvView: React.FC = () => {
 
             <button
               onClick={handleFinalizeSale}
-              disabled={!can('pdv.finalizar_venda') || isEmittingNfce}
+              disabled={!can('pdv.finalizar_venda') || isSaving}
               className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isEmittingNfce ? (
+              {isSaving ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  <span>Emitindo NFC-e...</span>
+                  <span>Salvando...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Concluir Venda e Emitir NFC-e</span>
+                  <span>Concluir Venda</span>
                 </>
               )}
             </button>

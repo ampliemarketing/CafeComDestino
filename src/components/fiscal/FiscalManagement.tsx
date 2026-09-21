@@ -15,14 +15,19 @@ import {
   FileCode2,
   Send,
   RefreshCw,
+  ListChecks,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, maskCNPJ, isValidCNPJ } from '../../lib/validation';
 import {
   emptyFiscalData, normalizeFiscalData, fiscalMissingFields,
-  buildFiscalNoteRows, filterFiscalNoteRows, FiscalNoteStatus,
+  buildFiscalNoteRows, filterFiscalNoteRows, retryQueueRows, RETRY_QUEUE_STATUSES, FiscalNoteStatus,
 } from '../../lib/fiscal';
+import { orderToReceiptData } from '../../lib/printReceipt';
 import { FiscalFieldsForm } from './FiscalFieldsForm';
+import { PrintReceiptModal } from '../common/PrintReceiptModal';
 
 export const FiscalManagement: React.FC = () => {
   const {
@@ -36,11 +41,16 @@ export const FiscalManagement: React.FC = () => {
 
   const [emittingId, setEmittingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'todas' | FiscalNoteStatus>('todas');
+  // Quando uma emissão dá autorizada, abre a tela de impressão na hora —
+  // mesmo padrão do app do garçom ao fechar uma comanda, só que mostrando a
+  // NFC-e (chave/protocolo) em vez do comprovante comum.
+  const [justIssued, setJustIssued] = useState<{ orderId: string; chave: string } | null>(null);
 
   const handleEmit = async (orderId: string) => {
     setEmittingId(orderId);
     try {
-      await issueNfce(orderId);
+      const chave = await issueNfce(orderId);
+      if (chave) setJustIssued({ orderId, chave });
     } finally {
       setEmittingId(null);
     }
@@ -56,10 +66,35 @@ export const FiscalManagement: React.FC = () => {
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       addToast('error', 'Falha ao baixar', 'Arquivo fiscal inválido ou corrompido.');
+    }
+  };
+
+  // O `Base64File` que a Brasil NFe devolve NÃO é um PDF — é uma página HTML
+  // pronta pra impressão (confirmado inspecionando o conteúdo real salvo em
+  // fiscal_invoices.danfe_base64: começa com "<html><head>..."). Baixar isso
+  // como ".pdf" gerava um arquivo que nenhum leitor de PDF conseguia abrir
+  // ("arquivo corrompido"). Em vez de baixar errado, abre direto numa aba —
+  // o usuário vê o DANFCE e, se quiser um PDF de verdade, usa o "Imprimir /
+  // Salvar como PDF" do próprio navegador na aba que abrir.
+  const openDanfceHtml = (base64: string) => {
+    try {
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'text/html' }));
+      const win = window.open(url, '_blank');
+      if (!win) {
+        addToast('error', 'Pop-up bloqueado', 'Libere pop-ups pra esse site e tente de novo pra ver o DANFCE.');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      addToast('error', 'Falha ao abrir DANFCE', 'Conteúdo inválido ou corrompido.');
     }
   };
 
@@ -72,7 +107,10 @@ export const FiscalManagement: React.FC = () => {
     erro: { label: 'ERRO', cls: 'bg-amber-100 text-amber-800' },
   };
 
-  const [activeTab, setActiveTab] = useState<'notes' | 'config' | 'grupos'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'fila' | 'config' | 'grupos'>('notes');
+  const [filaQuery, setFilaQuery] = useState('');
+  // Detalhe de uma rejeição/erro — o motivo completo devolvido pela SEFAZ.
+  const [detailKey, setDetailKey] = useState<string | null>(null);
 
   const [editingGroup, setEditingGroup] = useState<TaxGroup | null>(null);
   const [showGroupErrors, setShowGroupErrors] = useState(false);
@@ -169,6 +207,21 @@ export const FiscalManagement: React.FC = () => {
     [noteRows, statusFilter, paymentFilter, channelFilter, searchQuery],
   );
 
+  // Fila de requerimento: pedidos com nota rejeitada pela Sefaz ou com erro
+  // ao emitir (falha de comunicação, payload inválido, integração não
+  // configurada) — tudo que precisa de uma ação (reenviar) do usuário.
+  const filaAllRows = React.useMemo(
+    () => noteRows.filter((r) => RETRY_QUEUE_STATUSES.includes(r.status)),
+    [noteRows],
+  );
+  const filaRows = React.useMemo(() => retryQueueRows(noteRows, filaQuery), [noteRows, filaQuery]);
+  const detailRow = detailKey ? noteRows.find((r) => r.key === detailKey) : undefined;
+
+  const justIssuedOrder = justIssued ? orders.find((o) => o.id === justIssued.orderId) : undefined;
+  const justIssuedInvoice = justIssued
+    ? fiscalInvoices.find((i) => i.orderId === justIssued.orderId && i.chave === justIssued.chave)
+    : undefined;
+
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 min-h-screen">
       <div className="bg-stone-900 text-stone-100 p-5 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
@@ -208,6 +261,15 @@ export const FiscalManagement: React.FC = () => {
             }`}
           >
             Notas Fiscais ({fiscalInvoices.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('fila')}
+            className={`px-4 py-2 rounded-xl transition flex items-center gap-1.5 ${
+              activeTab === 'fila' ? 'bg-amber-800 text-white' : 'bg-stone-100 text-stone-700'
+            }`}
+          >
+            <ListChecks className="w-3.5 h-3.5" />
+            Fila de Requerimento ({filaAllRows.length})
           </button>
           <button
             onClick={() => setActiveTab('config')}
@@ -328,10 +390,10 @@ export const FiscalManagement: React.FC = () => {
                                   <FileCode2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => inv.danfeBase64 && downloadBase64(inv.danfeBase64, `danfce-${inv.chave || inv.id}.pdf`, 'application/pdf')}
+                                  onClick={() => inv.danfeBase64 && openDanfceHtml(inv.danfeBase64)}
                                   disabled={!inv.danfeBase64}
                                   className="p-1.5 text-stone-600 hover:text-stone-900 border rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
-                                  title="Baixar DANFCE (PDF)"
+                                  title="Abrir DANFCE (imprimir/salvar como PDF pelo navegador)"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                 </button>
@@ -368,6 +430,100 @@ export const FiscalManagement: React.FC = () => {
                     <tr>
                       <td colSpan={7} className="p-6 text-center text-stone-400">
                         Nenhuma nota encontrada com os filtros atuais.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fila' && (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl p-3 text-[11px] text-rose-900">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>
+                Pedidos cuja NFC-e foi <b>rejeitada pela Sefaz</b> ou teve <b>erro ao emitir</b> (comunicação, payload,
+                integração não configurada). Clique em <b>Detalhar</b> pra ver o motivo completo antes de reenviar.
+              </p>
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              <input
+                type="text"
+                maxLength={60}
+                placeholder="Buscar por nº do pedido, cliente ou motivo..."
+                value={filaQuery}
+                onChange={(e) => setFilaQuery(e.target.value.slice(0, 60))}
+                className="w-full border rounded-xl pl-10 pr-4 py-2 text-xs"
+              />
+            </div>
+
+            <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-stone-100 text-stone-600 uppercase font-bold border-b sticky top-0">
+                  <tr>
+                    <th className="p-3">Pedido</th>
+                    <th className="p-3">Data/Hora</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3 text-center">Status</th>
+                    <th className="p-3">Motivo (resumo)</th>
+                    <th className="p-3 text-right">Valor</th>
+                    <th className="p-3 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filaRows.map((row) => {
+                    const meta = STATUS_META[row.status];
+                    const orderId = row.invoice?.orderId ?? row.order?.id ?? '';
+                    return (
+                      <tr key={row.key} className="hover:bg-stone-50">
+                        <td className="p-3 font-bold font-mono text-stone-900">#{row.order?.orderNumber ?? '?'}</td>
+                        <td className="p-3 text-stone-600">
+                          {row.invoice?.createdAt ? new Date(row.invoice.createdAt).toLocaleString('pt-BR') : (row.order?.createdAt || '—')}
+                        </td>
+                        <td className="p-3 font-semibold text-stone-800">{row.order?.customer?.name || '—'}</td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${meta.cls}`}>{meta.label}</span>
+                        </td>
+                        <td className="p-3 text-stone-600 max-w-xs truncate" title={row.invoice?.rejeicaoMotivo || ''}>
+                          {row.invoice?.rejeicaoCodigo ? <span className="font-mono font-bold text-stone-800">[{row.invoice.rejeicaoCodigo}]</span> : null}{' '}
+                          {row.invoice?.rejeicaoMotivo || <span className="italic text-stone-400">sem motivo registrado</span>}
+                        </td>
+                        <td className="p-3 text-right font-bold text-amber-800">R$ {(row.order?.total ?? 0).toFixed(2)}</td>
+                        <td className="p-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setDetailKey(row.key)}
+                              className="flex items-center gap-1 px-2 py-1 border rounded-lg text-stone-700 hover:bg-stone-100 font-bold"
+                              title="Ver o erro completo devolvido pela Sefaz"
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                              Detalhar
+                            </button>
+                            {canEmit && row.order && (
+                              <button
+                                onClick={() => handleEmit(orderId)}
+                                disabled={emittingId === orderId}
+                                className="p-1.5 text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg disabled:opacity-40"
+                                title="Reenviar à SEFAZ"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${emittingId === orderId ? 'animate-spin' : ''}`} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filaRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-stone-400">
+                        {filaAllRows.length === 0
+                          ? 'Nenhuma nota rejeitada ou com erro — fila vazia.'
+                          : 'Nenhum resultado para essa busca.'}
                       </td>
                     </tr>
                   )}
@@ -673,6 +829,109 @@ export const FiscalManagement: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Detalhe da fila de requerimento: motivo completo devolvido pela Sefaz/Brasil NFe. */}
+      {detailRow && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-stone-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-stone-900 text-base flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-700" />
+                Detalhe da Rejeição
+              </h3>
+              <button onClick={() => setDetailKey(null)} className="p-1 text-stone-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-stone-500 font-semibold">Pedido</p>
+                  <p className="font-bold text-stone-900">#{detailRow.order?.orderNumber ?? '?'}</p>
+                </div>
+                <div>
+                  <p className="text-stone-500 font-semibold">Status</p>
+                  <span className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] ${STATUS_META[detailRow.status].cls}`}>
+                    {STATUS_META[detailRow.status].label}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-stone-500 font-semibold">Cliente</p>
+                  <p className="font-semibold text-stone-800">{detailRow.order?.customer?.name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-stone-500 font-semibold">Valor</p>
+                  <p className="font-bold text-amber-800">R$ {(detailRow.order?.total ?? 0).toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-stone-500 font-semibold">Tentativa em</p>
+                  <p className="text-stone-700">{detailRow.invoice?.createdAt ? new Date(detailRow.invoice.createdAt).toLocaleString('pt-BR') : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-stone-500 font-semibold">Última atualização</p>
+                  <p className="text-stone-700">{detailRow.invoice?.updatedAt ? new Date(detailRow.invoice.updatedAt).toLocaleString('pt-BR') : '—'}</p>
+                </div>
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 space-y-1.5">
+                <p className="text-stone-500 font-semibold uppercase text-[10px] tracking-wide">
+                  Código de rejeição{detailRow.invoice?.rejeicaoCodigo ? ` — ${detailRow.invoice.rejeicaoCodigo}` : ''}
+                </p>
+                <p className="text-rose-900 font-semibold whitespace-pre-wrap break-words">
+                  {detailRow.invoice?.rejeicaoMotivo || 'Nenhum motivo foi registrado para esta tentativa.'}
+                </p>
+              </div>
+
+              {detailRow.invoice?.chave && (
+                <div>
+                  <p className="text-stone-500 font-semibold">Chave gerada (mesmo rejeitada)</p>
+                  <p className="font-mono text-[10px] text-stone-700 break-all">{detailRow.invoice.chave}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-3 border-t">
+              <button
+                onClick={() => setDetailKey(null)}
+                className="flex-1 py-2.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-xs"
+              >
+                Fechar
+              </button>
+              {canEmit && detailRow.order && (
+                <button
+                  onClick={() => {
+                    const orderId = detailRow.invoice?.orderId ?? detailRow.order!.id;
+                    setDetailKey(null);
+                    handleEmit(orderId);
+                  }}
+                  className="flex-1 py-2.5 bg-amber-800 text-white font-bold rounded-xl text-xs shadow flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Reenviar à SEFAZ
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Autorizada agora: abre direto perguntando se quer imprimir o cupom
+          com os dados da NFC-e (chave/protocolo), mesmo padrão do app do
+          garçom ao fechar uma comanda. */}
+      {justIssued && justIssuedOrder && (
+        <PrintReceiptModal
+          isOpen
+          onClose={() => setJustIssued(null)}
+          title="NFC-e Autorizada"
+          receiptData={{
+            ...orderToReceiptData(justIssuedOrder, 'caixa'),
+            nfceKey: justIssued.chave,
+            nfceProtocolo: justIssuedInvoice?.protocolo || undefined,
+            nfceNumero: justIssuedInvoice?.numero || undefined,
+          }}
+        />
       )}
     </div>
   );

@@ -10,6 +10,13 @@
 // dentro de `ReturnNF`; e o número da nota (`Numero`) é um campo diferente do
 // protocolo de autorização (`NumeroProtocolo`) — os dois já foram trocados
 // aqui por engano numa versão anterior.
+//
+// Confirmado em 2026-09-21: quando a rejeição acontece ANTES da Sefaz (erro de
+// validação da própria Brasil NFe — payload mal formado, regra de negócio
+// violada, etc.), `ReturnNF` vem todo zerado/nulo (`CodStatusRespostaSefaz: 0`,
+// `DsStatusRespostaSefaz: null`) e o motivo de verdade fica só no campo `Error`
+// no nível raiz da resposta. Sem isso, a rejeição virava "HTTP 200" na tela —
+// tecnicamente correto (a chamada HTTP deu 200), mas escondia a causa real.
 
 /** Getter case-insensitive — a Brasil NFe responde em PascalCase, os SDKs em camelCase. */
 export function pickField(obj: unknown, ...keys: string[]): unknown {
@@ -46,8 +53,12 @@ export function parseEnviarNotaFiscalResponse(body: unknown): ParsedNfceResponse
 
   const okFlag = pickField(ret, 'ok') === true || pickField(body, 'ok') === true;
   const cStat = String(pickField(ret, 'codStatusRespostaSefaz', 'CodStatusRespostaSefaz') ?? '');
+  // Prioridade: mensagem da Sefaz (dentro de ReturnNF) > erro de validação da
+  // própria Brasil NFe (`Error`, no nível raiz — rejeição antes de ir à Sefaz).
   const xMotivo = String(
-    pickField(ret, 'dsStatusRespostaSefaz', 'DsStatusRespostaSefaz', 'mensagem', 'message') ?? '',
+    pickField(ret, 'dsStatusRespostaSefaz', 'DsStatusRespostaSefaz', 'mensagem', 'message') ||
+      pickField(body, 'Error', 'error', 'erro') ||
+      '',
   );
   const chave = String(pickField(ret, 'chaveNf', 'ChaveNF', 'chaveNF', 'chave') ?? '') || null;
   // NumeroProtocolo é o protocolo de autorização da Sefaz; Numero é o número da NFC-e.

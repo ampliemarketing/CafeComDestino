@@ -42,10 +42,12 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
     title: 'Atendimento & Vendas',
     groups: [
       {
+        // Só consulta (ver/pesquisar item) — pedir é exclusivo da rota pública
+        // /pedir, então não há ação de "finalizar pedido" aqui dentro.
         screenId: 'online-menu',
         screenLabel: 'Cardápio Online',
         access: 'online_menu.acessar',
-        actions: [{ key: 'online_menu.finalizar_pedido', label: 'Finalizar pedido do cardápio online' }],
+        actions: [],
       },
       {
         screenId: 'waiter',

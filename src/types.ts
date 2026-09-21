@@ -134,9 +134,7 @@ export interface FiscalData {
 
   // ICMS
   cstCsosn: string;      // * CSOSN (Simples Nacional) ou CST de ICMS (regime normal)
-  aliqIcms?: number;     // alíquota de ICMS (%) quando tributado
   temSt?: boolean;       // produto sujeito a Substituição Tributária
-  aliqFcp?: number;      // Fundo de Combate à Pobreza (%) — alguns estados/produtos
 
   // PIS / COFINS
   cstPis: string;        // * CST de PIS
@@ -144,16 +142,8 @@ export interface FiscalData {
   cstCofins: string;     // * CST de COFINS
   aliqCofins: number;    // * alíquota de COFINS (%)
 
-  // IPI (indústria/importador — normalmente não se aplica a bar/café)
-  cstIpi?: string;
-  aliqIpi?: number;
-  codEnquadramentoIpi?: string;
-
   cBenef?: string;       // código de benefício fiscal (exigido em alguns estados)
   infAdicional?: string; // informação adicional / mensagem fiscal do item
-
-  // Legado (mantido p/ compatibilidade com linhas antigas)
-  taxPercentage?: number;
 }
 
 /**

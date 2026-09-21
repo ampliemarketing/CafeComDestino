@@ -43,9 +43,9 @@ import { parseEnviarNotaFiscalResponse } from '../../../src/lib/fiscalNfceRespon
 
 const FISCAL_DEFAULTS = {
   origem: '0', ncm: '', cest: '', cfop: '5102', gtin: '', unidadeTributavel: '',
-  cstCsosn: '102', aliqIcms: 0, temSt: false, aliqFcp: 0,
+  cstCsosn: '102', temSt: false,
   cstPis: '49', aliqPis: 0, cstCofins: '49', aliqCofins: 0,
-  cstIpi: '', aliqIpi: 0, codEnquadramentoIpi: '', cBenef: '', infAdicional: '',
+  cBenef: '', infAdicional: '',
 };
 type FiscalShape = typeof FISCAL_DEFAULTS & Record<string, unknown>;
 
@@ -106,6 +106,24 @@ function prorateDiscount(items: { unitPrice: number; quantity: number }[], total
   const diff = Number((totalDiscount - out.reduce((s, v) => s + v, 0)).toFixed(2));
   out[n - 1] = Number((out[n - 1] + diff).toFixed(2));
   return out;
+}
+
+/**
+ * Reescala as linhas de pagamento pro valor declarado da nota (soma dos itens
+ * - desconto). `order.total` pode ser maior quando há taxa de serviço/couvert
+ * (não viram item da NFC-e) — se `Pagamentos` somar o total do pedido, a Sefaz
+ * rejeita: "Rejeição 866: Ausência de troco quando o valor dos pagamentos
+ * informados for maior que o total da nota" (mesmo sem ser dinheiro). Ver
+ * regressão real em src/lib/fiscal.test.ts::scalePaymentsToNoteTotal.
+ */
+function scalePaymentsToNoteTotal(entries: SefazPaymentEntry[], noteTotal: number): SefazPaymentEntry[] {
+  const sum = Number(entries.reduce((s, e) => s + e.valor, 0).toFixed(2));
+  const target = Number(noteTotal.toFixed(2));
+  if (entries.length === 0 || sum <= 0 || Math.abs(sum - target) < 0.005) return entries;
+  const scaled = entries.map((e) => ({ ...e, valor: Math.round((e.valor / sum) * target * 100) / 100 }));
+  const diff = Number((target - scaled.reduce((s, e) => s + e.valor, 0)).toFixed(2));
+  scaled[scaled.length - 1] = { ...scaled[scaled.length - 1], valor: Number((scaled[scaled.length - 1].valor + diff).toFixed(2)) };
+  return scaled;
 }
 
 const corsHeaders = {
@@ -186,8 +204,13 @@ function buildNfcePayload(args: {
       Imposto: {
         ICMS: {
           CodSituacaoTributaria: fiscal.cstCsosn,        // CSOSN (Simples) ou CST (regime normal)
-          AliquotaICMS: money(fiscal.aliqIcms || 0),
-          AliquotaFCP: money(fiscal.aliqFcp || 0),
+          // Empresa é Simples Nacional: ICMS vem embutido no DAS, não
+          // discriminado por alíquota na nota — por isso sempre 0 aqui. Se um
+          // dia a empresa mudar de regime (CST de regime normal, fora do
+          // CSOSN), esse valor passa a precisar vir de um campo editável de
+          // novo — ver decisão em FiscalFieldsForm.tsx.
+          AliquotaICMS: 0,
+          AliquotaFCP: 0,
         },
         PIS: {
           CodSituacaoTributaria: fiscal.cstPis,
@@ -197,14 +220,16 @@ function buildNfcePayload(args: {
           CodSituacaoTributaria: fiscal.cstCofins,
           Aliquota: money(fiscal.aliqCofins || 0),
         },
-        ...(fiscal.cstIpi
-          ? { IPI: { CodSituacaoTributaria: fiscal.cstIpi, Aliquota: money(fiscal.aliqIpi || 0), CodEnquadramento: fiscal.codEnquadramentoIpi || '999' } }
-          : {}),
+        // Sem grupo de IPI: só se aplica a indústria/importador, não a
+        // revenda de bar/café (ver FiscalFieldsForm.tsx).
       },
     };
   });
 
-  const pagamentos = sefazPaymentEntries(order).map((p) => ({
+  // vNF real da nota (só os itens) — pode ser menor que order.total quando o
+  // pedido tem taxa de serviço/couvert, que não entram como Produto aqui.
+  const noteTotal = produtos.reduce((s, p) => s + p.ValorTotal - (p.ValorDesconto || 0), 0);
+  const pagamentos = scalePaymentsToNoteTotal(sefazPaymentEntries(order), noteTotal).map((p) => ({
     IndicadorPagamento: 0,             // 0 = pagamento à vista
     FormaPagamento: p.forma,           // tPag (01 dinheiro, 03 crédito, 04 débito, 17 PIX...)
     VlPago: money(p.valor),

@@ -32,9 +32,13 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 );
 
 /**
- * Formulário de dados fiscais do item (NCM, CFOP, CEST, origem, CST/CSOSN,
- * PIS/COFINS, IPI...). Reaproveitado na aba Fiscal do produto e no editor de
- * Grupos Tributários. `disabled` deixa tudo somente-leitura.
+ * Formulário de dados fiscais do item — só os campos realmente usados na
+ * emissão da NFC-e (NCM, CFOP, CEST, origem, CST/CSOSN, PIS/COFINS, cBenef).
+ * Alíquota de ICMS/FCP e o grupo de IPI foram removidos: ICMS no Simples
+ * Nacional vem embutido no DAS (CSOSN cuida disso sozinho) e IPI só se aplica
+ * a indústria/importador, não a revenda de bar/café.
+ * Reaproveitado na aba Fiscal do produto e no editor de Grupos Tributários.
+ * `disabled` deixa tudo somente-leitura.
  */
 export const FiscalFieldsForm: React.FC<Props> = ({ value, onChange, disabled, showErrors }) => {
   const set = (patch: Partial<FiscalData>) => onChange({ ...value, ...patch });
@@ -139,26 +143,6 @@ export const FiscalFieldsForm: React.FC<Props> = ({ value, onChange, disabled, s
           </select>
         </div>
 
-        <div>
-          <label className={labelCls}>Alíquota de ICMS (%)</label>
-          <input
-            type="number" step="0.01" min="0" max="100"
-            value={value.aliqIcms ?? 0}
-            onChange={(e) => set({ aliqIcms: pct(e.target.value) })}
-            className={inp()}
-          />
-        </div>
-
-        <div>
-          <label className={labelCls}>Alíquota de FCP (%)</label>
-          <input
-            type="number" step="0.01" min="0" max="100"
-            value={value.aliqFcp ?? 0}
-            onChange={(e) => set({ aliqFcp: pct(e.target.value) })}
-            className={inp()}
-          />
-        </div>
-
         <div className="flex items-end pb-2">
           <label className="flex items-center gap-2 font-medium cursor-pointer">
             <input
@@ -209,34 +193,7 @@ export const FiscalFieldsForm: React.FC<Props> = ({ value, onChange, disabled, s
         </div>
       </Section>
 
-      <Section title="IPI e outros">
-        <div>
-          <label className={labelCls}>CST de IPI</label>
-          <input
-            type="text" inputMode="numeric" maxLength={2}
-            value={value.cstIpi || ''}
-            onChange={(e) => set({ cstIpi: onlyDigits(e.target.value).slice(0, 2) })}
-            className={inp() + ' font-mono'}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Alíquota de IPI (%)</label>
-          <input
-            type="number" step="0.01" min="0" max="100"
-            value={value.aliqIpi ?? 0}
-            onChange={(e) => set({ aliqIpi: pct(e.target.value) })}
-            className={inp()}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Cód. de enquadramento do IPI</label>
-          <input
-            type="text" inputMode="numeric" maxLength={3}
-            value={value.codEnquadramentoIpi || ''}
-            onChange={(e) => set({ codEnquadramentoIpi: onlyDigits(e.target.value).slice(0, 3) })}
-            className={inp() + ' font-mono'}
-          />
-        </div>
+      <Section title="Outras informações">
         <div>
           <label className={labelCls}>Código de benefício fiscal (cBenef)</label>
           <input

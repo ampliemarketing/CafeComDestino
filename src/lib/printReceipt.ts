@@ -34,6 +34,10 @@ export interface ReceiptData {
   splitPayments?: Array<{ method: string; amount: number }>;
   remainingBalance?: number;
   nfceKey?: string;
+  /** Protocolo de autorização da Sefaz (fiscal_invoices.protocolo) — só quando a NFC-e já foi emitida. */
+  nfceProtocolo?: string;
+  /** Número da NFC-e (fiscal_invoices.numero) — não confundir com o número do pedido. */
+  nfceNumero?: number;
   type: 'caixa' | 'cozinha' | 'pre_conta' | 'adiantamento_parcial' | 'delivery';
 }
 
@@ -174,8 +178,10 @@ export function buildReceiptHtml(d: ReceiptData, company: CompanyProfileData): s
   if (d.nfceKey) {
     rows.push(`
       <div class="center sm">
-        <div class="b">NFC-e EMITIDA COM SUCESSO</div>
+        <div class="b">NFC-e AUTORIZADA</div>
         <div class="break">Chave: ${esc(d.nfceKey)}</div>
+        ${d.nfceNumero ? `<div>Número: ${esc(d.nfceNumero)}</div>` : ''}
+        ${d.nfceProtocolo ? `<div>Protocolo: ${esc(d.nfceProtocolo)}</div>` : ''}
       </div>
       <div class="sep"></div>
     `);

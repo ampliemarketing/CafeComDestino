@@ -47,7 +47,6 @@ export const WaiterApp: React.FC = () => {
     setComandaCouvertQty,
     transferComanda,
     closeComandaAndPay,
-    issueNfce,
     addToast
   } = useApp();
 
@@ -106,7 +105,9 @@ export const WaiterApp: React.FC = () => {
 
   const [isFinalReceiptModalOpen, setIsFinalReceiptModalOpen] = useState(false);
   const [lastFinalizedOrder, setLastFinalizedOrder] = useState<Order | null>(null);
-  const [isEmittingNfce, setIsEmittingNfce] = useState(false);
+  // NFC-e NÃO é emitida aqui — emissão é sempre manual, só pelo Módulo Fiscal
+  // (decisão do cliente: nunca disparar automático ao fechar a comanda).
+  const [isSaving, setIsSaving] = useState(false);
 
   const currentActiveTable = selectedTable ? tables.find((t) => t.id === selectedTable.id) || null : null;
   const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
@@ -1076,14 +1077,14 @@ export const WaiterApp: React.FC = () => {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsFinalPayModalOpen(false)}
-                disabled={isEmittingNfce}
+                disabled={isSaving}
                 className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm disabled:opacity-40"
               >
                 Cancelar
               </button>
               <button
                 onClick={async () => {
-                  if (isEmittingNfce) return;
+                  if (isSaving) return;
 
                   let splitPayments: { method: PaymentMethod; amount: number }[] | undefined = undefined;
 
@@ -1099,6 +1100,7 @@ export const WaiterApp: React.FC = () => {
                     splitPayments = parsedSplits;
                   }
 
+                  setIsSaving(true);
                   const finishedOrder = await closeComandaAndPay(
                     currentActiveTable.id,
                     currentComanda.id,
@@ -1106,6 +1108,7 @@ export const WaiterApp: React.FC = () => {
                     0,
                     splitPayments
                   );
+                  setIsSaving(false);
 
                   if (!finishedOrder) {
                     setIsFinalPayModalOpen(false);
@@ -1114,25 +1117,21 @@ export const WaiterApp: React.FC = () => {
                     return;
                   }
 
-                  // Emite a NFC-e e só então imprime — o cupom precisa sair com a
-                  // chave (ou refletindo a rejeição), não antes dela existir.
-                  setIsEmittingNfce(true);
-                  const nfceKey = await issueNfce(finishedOrder.id);
-                  setIsEmittingNfce(false);
-
+                  // NFC-e não é emitida aqui: a comanda fecha sem nota, e a
+                  // emissão fica por conta do usuário no Módulo Fiscal. Nunca automático.
                   setIsFinalPayModalOpen(false);
                   setSelectedComandaId(null);
                   setActiveTab('map');
-                  setLastFinalizedOrder({ ...finishedOrder, nfceKey: nfceKey || undefined, fiscalIssued: !!nfceKey });
+                  setLastFinalizedOrder(finishedOrder);
                   setIsFinalReceiptModalOpen(true);
                 }}
-                disabled={isEmittingNfce}
+                disabled={isSaving}
                 className="flex-1 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isEmittingNfce ? (
+                {isSaving ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    <span>Emitindo NFC-e...</span>
+                    <span>Salvando...</span>
                   </>
                 ) : (
                   <span>Confirmar e Finalizar</span>

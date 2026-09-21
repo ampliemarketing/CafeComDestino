@@ -163,10 +163,17 @@ describe('buildReceiptHtml', () => {
 
   it('mostra a chave da NFC-e só quando o pedido foi emitido', () => {
     const semNota = buildReceiptHtml(orderToReceiptData(order(), 'caixa'), baseCompany);
-    expect(semNota).not.toContain('NFC-e EMITIDA');
+    expect(semNota).not.toContain('NFC-e AUTORIZADA');
 
     const comNota = buildReceiptHtml(orderToReceiptData(order({ nfceKey: '123456789' }), 'caixa'), baseCompany);
-    expect(comNota).toContain('NFC-e EMITIDA COM SUCESSO');
+    expect(comNota).toContain('NFC-e AUTORIZADA');
     expect(comNota).toContain('123456789');
+  });
+
+  it('mostra número e protocolo da NFC-e quando informados (tela pós-emissão do Módulo Fiscal)', () => {
+    const d = { ...orderToReceiptData(order({ nfceKey: '123456789' }), 'caixa'), nfceNumero: 42, nfceProtocolo: '152260027708189' };
+    const html = buildReceiptHtml(d, baseCompany);
+    expect(html).toContain('Número: 42');
+    expect(html).toContain('Protocolo: 152260027708189');
   });
 });

@@ -152,8 +152,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
 
             {receiptData.nfceKey && (
               <div className="pt-2 text-center text-[9px] text-stone-500 break-all border-t border-dashed">
-                <p className="font-bold text-stone-700">NFC-e EMITIDA COM SUCESSO</p>
+                <p className="font-bold text-stone-700">NFC-e AUTORIZADA</p>
                 <p>Chave: {receiptData.nfceKey}</p>
+                {receiptData.nfceNumero && <p>Número: {receiptData.nfceNumero}</p>}
+                {receiptData.nfceProtocolo && <p>Protocolo: {receiptData.nfceProtocolo}</p>}
               </div>
             )}
 

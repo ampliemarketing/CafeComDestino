@@ -10,9 +10,19 @@ export function rowToCamel<T>(row: Record<string, any>): T {
   return out as T;
 }
 
+/**
+ * `undefined` vira `null` explicitamente. Sem isso, uma chave presente no
+ * objeto com valor `undefined` (ex.: `{ taxGroupId: undefined }` pra
+ * "desvincular" o produto do grupo tributário, ou `{ phone: undefined }` pra
+ * limpar o telefone) some no `JSON.stringify` que o supabase-js faz por baixo
+ * do `.upsert()/.update()` — a chave nunca chega na requisição, a coluna no
+ * Postgres nunca é tocada, e o valor antigo volta assim que a tela recarrega
+ * (parecia que "desvincular" não salvava). `null` sobrevive ao JSON.stringify
+ * e limpa a coluna de verdade.
+ */
 export function toRow(obj: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
-  Object.keys(obj).forEach((k) => { out[toSnakeKey(k)] = obj[k]; });
+  Object.keys(obj).forEach((k) => { const v = obj[k]; out[toSnakeKey(k)] = v === undefined ? null : v; });
   return out;
 }
 

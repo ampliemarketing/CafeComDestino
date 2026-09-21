@@ -8,9 +8,11 @@ import {
   resolveProductFiscal,
   prorateDiscount,
   sefazPaymentEntries,
+  scalePaymentsToNoteTotal,
   PAYMENT_METHOD_SEFAZ,
   buildFiscalNoteRows,
   filterFiscalNoteRows,
+  retryQueueRows,
 } from './fiscal';
 import type { FiscalData, FiscalInvoice, Order, TaxGroup } from '../types';
 
@@ -78,7 +80,7 @@ describe('fiscalMissingFields / isFiscalComplete', () => {
 
 describe('normalizeFiscalData', () => {
   it('preenche os campos ausentes de uma linha antiga', () => {
-    const old = { ncm: '2106.90.90', cfop: '5102', cstCsosn: '102', taxPercentage: 4.5 };
+    const old = { ncm: '2106.90.90', cfop: '5102', cstCsosn: '102' };
     const norm = normalizeFiscalData(old as Partial<FiscalData>);
     expect(norm.origem).toBe('0');
     expect(norm.cstPis).toBe('49');
@@ -161,6 +163,39 @@ describe('sefazPaymentEntries / PAYMENT_METHOD_SEFAZ', () => {
       { forma: '17', rotulo: 'PIX', valor: 20 },
       { forma: '01', rotulo: 'Dinheiro', valor: 30 },
     ]);
+  });
+});
+
+// ===========================================================================
+// Regressão real (2026-09-21): pedido com taxa de serviço fez o pagamento
+// (order.total) ficar maior que a nota (só produtos) — Brasil NFe rejeitou com
+// "Rejeição 866: Ausência de troco quando o valor dos pagamentos informados
+// for maior que o total da nota. [vPago:43.80 - vNF:36.90]".
+// ===========================================================================
+describe('scalePaymentsToNoteTotal', () => {
+  it('reescala uma linha única pro valor da nota quando o pedido tinha taxa de serviço/couvert', () => {
+    const entries = sefazPaymentEntries({ paymentMethod: 'pix', total: 43.8, splitPayments: undefined } as any);
+    expect(scalePaymentsToNoteTotal(entries, 36.9)).toEqual([{ forma: '17', rotulo: 'PIX', valor: 36.9 }]);
+  });
+
+  it('mantém a proporção entre formas divididas e fecha exatamente no total da nota', () => {
+    const entries = [
+      { forma: '17', rotulo: 'PIX', valor: 30 },
+      { forma: '01', rotulo: 'Dinheiro', valor: 20 },
+    ];
+    const out = scalePaymentsToNoteTotal(entries, 40); // pedido de 50 com 10 de taxa/couvert
+    expect(Number(out.reduce((s, e) => s + e.valor, 0).toFixed(2))).toBe(40);
+    expect(out[0].valor).toBeCloseTo(24, 2); // 30/50 * 40
+    expect(out[1].valor).toBeCloseTo(16, 2); // 20/50 * 40
+  });
+
+  it('não mexe quando a soma já bate com o total da nota', () => {
+    const entries = [{ forma: '01', rotulo: 'Dinheiro', valor: 36.9 }];
+    expect(scalePaymentsToNoteTotal(entries, 36.9)).toEqual(entries);
+  });
+
+  it('não quebra com lista vazia', () => {
+    expect(scalePaymentsToNoteTotal([], 10)).toEqual([]);
   });
 });
 
@@ -258,5 +293,50 @@ describe('filterFiscalNoteRows', () => {
     expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: '43' })).toHaveLength(1);
     expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: '9999' })).toHaveLength(1);
     expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: 'ninguem' })).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Fila de Requerimento (Módulo Fiscal ▸ Fila de Requerimento): só rejeitadas
+// e com erro — o que precisa de uma ação (reenviar) do usuário.
+// ===========================================================================
+describe('retryQueueRows', () => {
+  const order = (over: Partial<Order>): Order => ({
+    id: 'o1', orderNumber: 1, total: 50, paymentMethod: 'pix', channel: 'pdv',
+    fiscalIssued: false, createdAt: '10:00', createdAtISO: '2026-09-20T10:00:00.000Z',
+    customer: { name: 'Cliente 1' },
+    ...over,
+  } as unknown as Order);
+
+  const invoice = (over: Partial<FiscalInvoice>): FiscalInvoice => ({
+    id: 'inv1', orderId: 'o1', modelo: 65, ambiente: 2, status: 'autorizada',
+    createdAt: '2026-09-20T10:05:00.000Z',
+    ...over,
+  } as FiscalInvoice);
+
+  const rows = buildFiscalNoteRows(
+    [
+      order({ id: 'o-autorizada' }),
+      order({ id: 'o-sem-emissao' }),
+      order({ id: 'o-rejeitada', orderNumber: 2, customer: { name: 'Maria Silva', phone: '' } }),
+      order({ id: 'o-erro', orderNumber: 3 }),
+    ],
+    [
+      invoice({ id: 'inv-ok', orderId: 'o-autorizada', status: 'autorizada' }),
+      invoice({ id: 'inv-rej', orderId: 'o-rejeitada', status: 'rejeitada', rejeicaoCodigo: '866', rejeicaoMotivo: 'Ausência de troco' }),
+      invoice({ id: 'inv-err', orderId: 'o-erro', status: 'erro', rejeicaoMotivo: 'Integração Brasil NFe não configurada' }),
+    ],
+  );
+
+  it('só lista rejeitada/erro — nunca autorizada, sem_emissao, processando ou cancelada', () => {
+    const fila = retryQueueRows(rows, '');
+    expect(fila.map((r) => r.orderId).sort()).toEqual(['o-erro', 'o-rejeitada']);
+  });
+
+  it('busca por nº do pedido, cliente ou trecho do motivo', () => {
+    expect(retryQueueRows(rows, '2').map((r) => r.orderId)).toEqual(['o-rejeitada']);
+    expect(retryQueueRows(rows, 'maria').map((r) => r.orderId)).toEqual(['o-rejeitada']);
+    expect(retryQueueRows(rows, 'não configurada').map((r) => r.orderId)).toEqual(['o-erro']);
+    expect(retryQueueRows(rows, 'nada bate com isso')).toHaveLength(0);
   });
 });

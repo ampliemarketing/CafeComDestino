@@ -17,7 +17,7 @@ import { PrintReceiptModal } from '../common/PrintReceiptModal';
 import { hasPermission } from '../../lib/permissions';
 
 export const SalesManagement: React.FC = () => {
-  const { orders, issueNfce, updateOrderStatus, addToast, currentUser, reversePaidOrder } = useApp();
+  const { orders, updateOrderStatus, addToast, currentUser, reversePaidOrder } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
   const [reverseOrder, setReverseOrder] = useState<Order | null>(null);
@@ -134,15 +134,12 @@ export const SalesManagement: React.FC = () => {
                   <td className="p-3.5">
                     {ord.fiscalIssued ? (
                       <span className="text-emerald-700 font-bold text-[10px]">Emitida ✅</span>
-                    ) : can('vendas.emitir_nfce') ? (
-                      <button
-                        onClick={() => issueNfce(ord.id)}
-                        className="text-[10px] bg-amber-800 text-white px-2 py-0.5 rounded font-bold hover:bg-amber-900"
-                      >
-                        Emitir NFC-e
-                      </button>
                     ) : (
-                      <span className="text-[10px] text-stone-400">Pendente</span>
+                      // Emissão é só no Módulo Fiscal (nunca daqui) — decisão do
+                      // cliente: um único lugar pra disparar a NFC-e, manual.
+                      <span className="text-[10px] text-stone-400" title="Emita em Módulo Fiscal ▸ Notas Fiscais">
+                        Pendente — emitir no Módulo Fiscal
+                      </span>
                     )}
                   </td>
                   <td className="p-3.5 text-right font-bold text-amber-800 text-sm">

@@ -15,14 +15,26 @@ no bundle público.
 | `issueNfce()` chamando a Edge Function (era simulação) | `src/context/AppContext.tsx` |
 | Aba "Notas Fiscais" lendo `fiscal_invoices`, download real de XML/DANFCE, botão "Emitir/Reenviar", campos CSC ID / IBGE / ambiente | `src/components/fiscal/FiscalManagement.tsx` |
 
-O disparo é **manual**: botão **"Emitir NFC-e"** em *Vendas* (por pedido) e em
-*Módulo Fiscal ▸ Notas Fiscais* (lista "Pedidos sem NFC-e" e botão "Reenviar"
-nas rejeitadas). O fechamento de venda **não** emite nota automaticamente — o
-pedido nasce com `fiscalIssued: false`.
+O disparo é **manual e único**: o **único** lugar do sistema que pode chamar
+`issueNfce()`/a Edge Function `emit-nfce` é a aba **Módulo Fiscal ▸ Notas
+Fiscais** (lista "Pedidos sem NFC-e" + botão "Emitir", e botão "Reenviar" nas
+rejeitadas/com erro) — decisão explícita do cliente (2026-09-21). PDV
+([PdvView.tsx](../src/components/pdv/PdvView.tsx)), Mesas/Comandas
+([WaiterApp.tsx](../src/components/waiter/WaiterApp.tsx),
+[TableManagement.tsx](../src/components/tables/TableManagement.tsx)) e a lista
+de *Vendas* ([SalesManagement.tsx](../src/components/sales/SalesManagement.tsx))
+**nunca** chamam emissão — finalizam a venda/comanda e ponto; o pedido fica
+`fiscalIssued: false` até alguém emitir manualmente no Módulo Fiscal.
 
-> ⚠️ Mudança de comportamento: antes toda venda de PDV/comanda era marcada como
-> "NFC-e emitida" com uma chave **aleatória de simulação**. Isso foi removido.
-> Agora "emitida" só aparece depois de uma autorização real da SEFAZ.
+> ⚠️ Mudança de comportamento (duas rodadas):
+> 1. Antes toda venda de PDV/comanda era marcada como "NFC-e emitida" com uma
+>    chave **aleatória de simulação**. Removido — "emitida" só aparece depois
+>    de autorização real da SEFAZ.
+> 2. Uma iteração seguinte reintroduziu emissão **automática de verdade**
+>    (chamando a Edge Function) logo depois de fechar a venda no PDV e na
+>    comanda do app do garçom — contrariando a decisão acima. Removido de novo
+>    e também tirado o botão de emitir que existia em *Vendas*, deixando o
+>    Módulo Fiscal como único gatilho.
 
 ## Pré-requisitos que o cliente / contador precisa providenciar
 

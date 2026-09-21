@@ -75,4 +75,18 @@ describe('toRow', () => {
     const row = { opened_by: 'u1', initial_float: 100, expected_total: 0, status: 'aberto' };
     expect(toRow(rowToCamel(row))).toEqual(row);
   });
+
+  it('regressão: chave presente com valor undefined vira null (não some) — é assim que "desvincular"/"limpar campo" persiste de verdade', () => {
+    // Produto desvinculado de um Grupo Tributário: { ...product, taxGroupId: undefined }.
+    expect(toRow({ name: 'Coca-Cola', taxGroupId: undefined })).toEqual({
+      name: 'Coca-Cola',
+      tax_group_id: null,
+    });
+    // Limpar telefone/CPF/PIN no cadastro de usuário: `phone: phone.trim() || undefined`.
+    expect(toRow({ phone: undefined, cpf: undefined })).toEqual({ phone: null, cpf: null });
+  });
+
+  it('null explícito continua null (não é o bug — só undefined some no JSON.stringify)', () => {
+    expect(toRow({ promoPrice: null })).toEqual({ promo_price: null });
+  });
 });

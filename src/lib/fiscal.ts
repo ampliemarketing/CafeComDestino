@@ -13,16 +13,11 @@ export const emptyFiscalData = (): FiscalData => ({
   gtin: '',
   unidadeTributavel: '',
   cstCsosn: '102',
-  aliqIcms: 0,
   temSt: false,
-  aliqFcp: 0,
   cstPis: '49',
   aliqPis: 0,
   cstCofins: '49',
   aliqCofins: 0,
-  cstIpi: '',
-  aliqIpi: 0,
-  codEnquadramentoIpi: '',
   cBenef: '',
   infAdicional: '',
 });
@@ -234,6 +229,38 @@ export const sefazPaymentEntries = (
   ];
 };
 
+/**
+ * Reescala as linhas de pagamento para a soma bater EXATAMENTE com o valor
+ * declarado da nota (soma dos itens - desconto). O `order.total` pode ser
+ * maior que isso quando há taxa de serviço/couvert — hoje eles não viram item
+ * na NFC-e (não são "produto" nenhum), então se `Pagamentos` somar o total do
+ * pedido a Sefaz rejeita: "Rejeição 866: Ausência de troco quando o valor dos
+ * pagamentos informados for maior que o total da nota" (mesmo em PIX/cartão,
+ * onde não existe troco de verdade). Mantém a proporção entre as formas e
+ * joga a sobra de arredondamento na última linha.
+ *
+ * Isso é uma correção técnica (a nota tem que fechar com o que ela mesma
+ * declara), não uma decisão fiscal — se o contador decidir que taxa de
+ * serviço/couvert devem entrar na NFC-e como item de serviço, esta função
+ * some e o valor pago volta a ser o `order.total` inteiro.
+ */
+export const scalePaymentsToNoteTotal = (
+  entries: SefazPaymentEntry[],
+  noteTotal: number,
+): SefazPaymentEntry[] => {
+  const sum = Number(entries.reduce((s, e) => s + e.valor, 0).toFixed(2));
+  const target = Number(noteTotal.toFixed(2));
+  if (entries.length === 0 || sum <= 0 || Math.abs(sum - target) < 0.005) return entries;
+
+  const scaled = entries.map((e) => ({ ...e, valor: Math.round((e.valor / sum) * target * 100) / 100 }));
+  const diff = Number((target - scaled.reduce((s, e) => s + e.valor, 0)).toFixed(2));
+  scaled[scaled.length - 1] = {
+    ...scaled[scaled.length - 1],
+    valor: Number((scaled[scaled.length - 1].valor + diff).toFixed(2)),
+  };
+  return scaled;
+};
+
 // ---------------------------------------------------------------------------
 // Rateio de desconto do pedido pelos itens
 // ---------------------------------------------------------------------------
@@ -307,6 +334,25 @@ export const buildFiscalNoteRows = (orders: Order[], invoices: FiscalInvoice[]):
     const db = b.invoice?.createdAt || b.order?.createdAtISO || '';
     return db.localeCompare(da);
   });
+};
+
+/** Status que caem na "Fila de Requerimento" — precisam de uma ação do usuário (reenviar). */
+export const RETRY_QUEUE_STATUSES: FiscalNoteStatus[] = ['rejeitada', 'erro'];
+
+/**
+ * Fila de requerimento (Módulo Fiscal ▸ Fila de Requerimento): só as notas
+ * rejeitadas pela Sefaz ou com erro ao emitir, com busca livre por nº do
+ * pedido, cliente ou trecho do motivo devolvido.
+ */
+export const retryQueueRows = (rows: FiscalNoteRow[], query: string): FiscalNoteRow[] => {
+  const base = rows.filter((r) => RETRY_QUEUE_STATUSES.includes(r.status));
+  const q = query.trim().toLowerCase();
+  if (!q) return base;
+  return base.filter((r) =>
+    String(r.order?.orderNumber ?? '').includes(q) ||
+    (r.order?.customer?.name || '').toLowerCase().includes(q) ||
+    (r.invoice?.rejeicaoMotivo || '').toLowerCase().includes(q),
+  );
 };
 
 export interface FiscalNoteFilters {
