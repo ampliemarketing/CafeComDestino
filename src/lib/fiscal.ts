@@ -3,7 +3,7 @@
 // as listas de códigos (origem, CST/CSOSN, CST PIS/COFINS, CFOP) e as regras de
 // "quais campos são obrigatórios" antes de mandar o item pro emissor de NF.
 
-import type { FiscalData, Order, PaymentMethod, Product, TaxGroup } from '../types';
+import type { FiscalData, FiscalInvoice, Order, OrderChannel, PaymentMethod, Product, TaxGroup } from '../types';
 
 export const emptyFiscalData = (): FiscalData => ({
   origem: '0',
@@ -257,4 +257,78 @@ export const prorateDiscount = (
   const diff = Number((totalDiscount - out.reduce((s, v) => s + v, 0)).toFixed(2));
   out[n - 1] = Number((out[n - 1] + diff).toFixed(2));
   return out;
+};
+
+// ---------------------------------------------------------------------------
+// Lista de notas fiscais (tela Módulo Fiscal ▸ Notas Fiscais)
+// ---------------------------------------------------------------------------
+/** Status de exibição: os da tabela `fiscal_invoices` + "nunca tentou emitir". */
+export type FiscalNoteStatus = FiscalInvoice['status'] | 'sem_emissao';
+
+export interface FiscalNoteRow {
+  key: string;
+  orderId: string;
+  order?: Order;
+  /** `null` = pedido concluído que ainda não teve nenhuma tentativa de emissão. */
+  invoice: FiscalInvoice | null;
+  status: FiscalNoteStatus;
+}
+
+/**
+ * Uma lista só: pedidos sem nenhuma linha em `fiscal_invoices` entram como
+ * status "sem_emissao" (em vez de sumirem da tela ou aparecerem só numa caixa
+ * separada). Um pedido com tentativa anterior (rejeitada/erro/autorizada) não
+ * duplica aqui — ele já aparece pela própria linha de `invoices`.
+ */
+export const buildFiscalNoteRows = (orders: Order[], invoices: FiscalInvoice[]): FiscalNoteRow[] => {
+  const ordersById = new Map(orders.map((o) => [o.id, o]));
+
+  const invoiceRows: FiscalNoteRow[] = invoices.map((inv) => ({
+    key: inv.id,
+    orderId: inv.orderId,
+    order: ordersById.get(inv.orderId),
+    invoice: inv,
+    status: inv.status,
+  }));
+
+  const orderIdsWithInvoice = new Set(invoices.map((i) => i.orderId));
+  const pendingRows: FiscalNoteRow[] = orders
+    .filter((o) => !orderIdsWithInvoice.has(o.id) && !o.fiscalIssued)
+    .map((o) => ({
+      key: `pending-${o.id}`,
+      orderId: o.id,
+      order: o,
+      invoice: null,
+      status: 'sem_emissao' as const,
+    }));
+
+  return [...invoiceRows, ...pendingRows].sort((a, b) => {
+    const da = a.invoice?.createdAt || a.order?.createdAtISO || '';
+    const db = b.invoice?.createdAt || b.order?.createdAtISO || '';
+    return db.localeCompare(da);
+  });
+};
+
+export interface FiscalNoteFilters {
+  status: FiscalNoteStatus | 'todas';
+  payment: PaymentMethod | 'todas';
+  channel: OrderChannel | 'todos';
+  query: string;
+}
+
+/** Aplica os mesmos filtros da tela (status, forma de pagamento, canal, busca livre). */
+export const filterFiscalNoteRows = (rows: FiscalNoteRow[], filters: FiscalNoteFilters): FiscalNoteRow[] => {
+  const q = filters.query.trim().toLowerCase();
+  return rows
+    .filter((r) => filters.status === 'todas' || r.status === filters.status)
+    .filter((r) => filters.payment === 'todas' || r.order?.paymentMethod === filters.payment)
+    .filter((r) => filters.channel === 'todos' || r.order?.channel === filters.channel)
+    .filter((r) => {
+      if (!q) return true;
+      return (
+        (r.invoice?.chave || '').toLowerCase().includes(q) ||
+        (r.order?.customer?.name || '').toLowerCase().includes(q) ||
+        String(r.order?.orderNumber ?? '').includes(q)
+      );
+    });
 };

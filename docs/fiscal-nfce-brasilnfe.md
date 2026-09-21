@@ -34,7 +34,8 @@ pedido nasce com `fiscalIssued: false`.
    Fiscal Eletrônico).
 4. **CSC + ID do CSC** (Código de Segurança do Contribuinte) — gerado no portal
    da SEFAZ. **Um par para homologação, outro para produção.** É o que assina o
-   QR Code da NFC-e; sem ele a nota não autoriza.
+   QR Code da NFC-e; sem ele a nota não autoriza. **Cadastrado uma única vez na
+   Brasil NFe** (não é enviado por nota — ver seção abaixo).
 5. **Dados fiscais reais dos produtos** (NCM, CFOP, CSOSN/CST, alíquotas de
    PIS/COFINS) — definidos pelo contador e cadastrados em
    *Módulo Fiscal ▸ Grupos Tributários*.
@@ -48,9 +49,7 @@ pedido nasce com `fiscalIssued: false`.
 supabase secrets set \
   BRASILNFE_TOKEN='...' \
   BRASILNFE_USER_TOKEN='...' \
-  BRASILNFE_BASE_URL='https://api.brasilnfe.com.br/services/' \
-  BRASILNFE_CSC='...' \
-  BRASILNFE_CSC_ID='000001'
+  BRASILNFE_BASE_URL='https://api.brasilnfe.com.br/services/'
 
 supabase functions deploy emit-nfce
 ```
@@ -66,17 +65,46 @@ deles, ou pelo script de smoke abaixo). Enquanto `BRASILNFE_TOKEN` não estiver
 setado, a Edge Function grava `fiscal_invoices.status = 'erro'` com o motivo e
 devolve `{ ok:false, notConfigured:true }` — nada quebra.
 
+## CSC — cadastro único na Brasil NFe (não é enviado por nota)
+
+Confirmado por teste ponta-a-ponta em 2026-09-20: `EnviarNotaFiscal` **não tem
+campos `Csc`/`IdTokenCsc`** — enviá-los não tem efeito algum. Quem assina o QR
+Code é o CSC cadastrado **uma vez** na própria empresa, no endpoint
+`POST /empresa/EditarEmpresa` (headers `Token` + `UserToken`), dentro de:
+
+```json
+{
+  "Configuracao": {
+    "NFCe": {
+      "IdCSCProducao": "000001",
+      "CSCProducao": "<csc de produção, exatamente como na SEFAZ>",
+      "IdCSCHomologacao": "000001",
+      "CSCHomologacao": "<csc de homologação, exatamente como na SEFAZ>"
+    }
+  }
+}
+```
+
+O **ID sempre com 6 dígitos** (ex. `"000001"`, não `"1"`) — foi exatamente
+enviar `"1"` sem zeros à esquerda (ou não configurar isso na empresa) que
+causou a rejeição SEFAZ 462 *"Código Identificador do CSC no QR-Code não
+cadastrado na SEFAZ"* mesmo com o CSC correto e ativo no portal da SEFAZ.
+
+Configure isso pelo **painel da Brasil NFe** (Empresas ▸ Editar ▸ aba NFC-e) —
+mais seguro que chamar `EditarEmpresa` via API, já que esse endpoint espera o
+objeto completo da empresa e um payload parcial pode sobrescrever outros
+campos já cadastrados.
+
 ## Fase 0 — teste isolado (recomendado antes de ligar no app)
 
 `scripts/brasilnfe-smoke.mjs` monta um payload NFC-e mínimo em **homologação** e
 chama `EnviarNotaFiscal`, salvando o XML e a DANFCE retornados. Serve para
-validar credenciais, certificado, CSC e o **formato exato dos campos** do
-payload (a doc REST pública é resumida — pode ser preciso ajustar nomes de
-campos em `supabase/functions/emit-nfce/index.ts::buildNfcePayload`).
+validar credenciais e certificado — **o CSC precisa já estar configurado na
+empresa** (seção acima), senão a SEFAZ rejeita com o erro 462 mesmo com tudo
+mais certo.
 
 ```bash
-BRASILNFE_TOKEN=... BRASILNFE_USER_TOKEN=... BRASILNFE_CSC=... BRASILNFE_CSC_ID=... \
-node scripts/brasilnfe-smoke.mjs
+BRASILNFE_TOKEN=... BRASILNFE_USER_TOKEN=... node scripts/brasilnfe-smoke.mjs
 ```
 
 ## Pendências conhecidas (próximas fases)

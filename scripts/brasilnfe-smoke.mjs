@@ -10,23 +10,26 @@
 // O XML e o PDF retornados são salvos em ./scratch-nfce-*.{xml,pdf}.
 //
 // Como rodar:
-//   BRASILNFE_TOKEN=...  BRASILNFE_USER_TOKEN=...  BRASILNFE_CSC=...  \
-//   BRASILNFE_CSC_ID=000001  node scripts/brasilnfe-smoke.mjs
+//   BRASILNFE_TOKEN=...  BRASILNFE_USER_TOKEN=...  node scripts/brasilnfe-smoke.mjs
 //
 // Opcionais:
 //   BRASILNFE_BASE_URL   (default https://api.brasilnfe.com.br/services/)
 //   CNPJ, IE, UF, COD_MUNICIPIO, RAZAO_SOCIAL, SERIE
 //
 // ⚠️ Antes disso a empresa + certificado A1 precisam estar cadastrados na
-//    Brasil NFe (painel deles ou SDK — módulo Empresa, usa o UserToken).
+//    Brasil NFe (painel deles ou SDK — módulo Empresa, usa o UserToken), e o
+//    CSC precisa estar configurado NA EMPRESA (não aqui): confirmado por teste
+//    ponta-a-ponta que `EnviarNotaFiscal` não aceita `Csc`/`IdTokenCsc` — quem
+//    assina o QR Code é o CSC cadastrado uma vez em `POST /empresa/EditarEmpresa`
+//    (`Configuracao.NFCe.IdCSCHomologacao`/`CSCHomologacao`, ID com 6 dígitos,
+//    ex. "000001"). Sem isso a SEFAZ rejeita com "Código Identificador do CSC
+//    no QR-Code não cadastrado" mesmo com o CSC certo na SEFAZ.
 // ============================================================================
 import { writeFileSync } from 'node:fs';
 
 const BASE = (process.env.BRASILNFE_BASE_URL ?? 'https://api.brasilnfe.com.br/services/').replace(/\/*$/, '/');
 const TOKEN = process.env.BRASILNFE_TOKEN;
 const USER_TOKEN = process.env.BRASILNFE_USER_TOKEN ?? '';
-const CSC = process.env.BRASILNFE_CSC ?? '';
-const CSC_ID = process.env.BRASILNFE_CSC_ID ?? '';
 
 if (!TOKEN) {
   console.error('Faltou BRASILNFE_TOKEN. Veja o cabeçalho do arquivo.');
@@ -64,8 +67,6 @@ const payload = {
       Cep: '01001000',
     },
   },
-  IdTokenCsc: MODELO === 65 ? (CSC_ID || undefined) : undefined, // CSC só existe para NFC-e (QR Code)
-  Csc: MODELO === 65 ? (CSC || undefined) : undefined,
   Produtos: [
     {
       CodProdutoServico: 'TESTE-1',
@@ -130,18 +131,20 @@ console.log('\nHTTP', resp.status);
 console.log(JSON.stringify(body, null, 2));
 
 const ret = body?.returnNF ?? body?.ReturnNF ?? body ?? {};
-const pick = (...ks) => {
+const pickIn = (obj, ...ks) => {
   for (const k of ks) {
-    for (const key of Object.keys(ret)) {
-      if (key.toLowerCase() === k.toLowerCase() && ret[key] != null) return ret[key];
+    for (const key of Object.keys(obj ?? {})) {
+      if (key.toLowerCase() === k.toLowerCase() && obj[key] != null) return obj[key];
     }
   }
   return undefined;
 };
+const pick = (...ks) => pickIn(ret, ...ks);
 
 const stamp = Date.now();
-const xml = pick('base64Xml', 'xml');
-const pdf = pick('base64File', 'danfe', 'pdf');
+// Base64Xml/Base64File vêm no nível raiz da resposta, não dentro de ReturnNF/returnNF.
+const xml = pickIn(body, 'base64Xml', 'xml');
+const pdf = pickIn(body, 'base64File', 'danfe', 'pdf');
 if (xml) { writeFileSync(`scratch-nfce-${stamp}.xml`, Buffer.from(xml, 'base64')); console.log(`\n→ scratch-nfce-${stamp}.xml`); }
 if (pdf) { writeFileSync(`scratch-nfce-${stamp}.pdf`, Buffer.from(pdf, 'base64')); console.log(`→ scratch-nfce-${stamp}.pdf`); }
 

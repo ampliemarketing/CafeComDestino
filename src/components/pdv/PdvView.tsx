@@ -26,7 +26,7 @@ import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const PdvView: React.FC = () => {
-  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
+  const { products, categories, createPdvSale, issueNfce, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
   // Desconto acima do teto do cargo exige motivo + PIN de gerente (validado no servidor).
@@ -53,6 +53,7 @@ export const PdvView: React.FC = () => {
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState<any>(null);
+  const [isEmittingNfce, setIsEmittingNfce] = useState(false);
 
   const [isKgModalOpen, setIsKgModalOpen] = useState(false);
   const [selectedKgType, setSelectedKgType] = useState<'lunch' | 'breakfast'>('lunch');
@@ -145,6 +146,8 @@ export const PdvView: React.FC = () => {
   const discountOverLimit = discountInput > 0 && discountPct > discountLimit + 0.001;
 
   const handleFinalizeSale = async () => {
+    if (isEmittingNfce) return;
+
     if (cartItems.length === 0) {
       addToast('error', 'Carrinho Vazio', 'Adicione produtos antes de finalizar.');
       return;
@@ -194,7 +197,13 @@ export const PdvView: React.FC = () => {
 
     if (!sale) return;
 
-    setLastCompletedSale(sale);
+    // Emite a NFC-e e só então imprime — o cupom precisa sair com a chave
+    // (ou com o motivo de rejeição refletido no status), não antes dela existir.
+    setIsEmittingNfce(true);
+    const nfceKey = await issueNfce(sale.id);
+    setIsEmittingNfce(false);
+
+    setLastCompletedSale({ ...sale, nfceKey: nfceKey || undefined, fiscalIssued: !!nfceKey });
     setIsPaymentModalOpen(false);
     setIsPrintModalOpen(true);
 
@@ -500,7 +509,11 @@ export const PdvView: React.FC = () => {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-stone-200">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-bold text-stone-900 text-base">Recebimento de Venda</h3>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="p-1 text-stone-400">
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                disabled={isEmittingNfce}
+                className="p-1 text-stone-400 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -627,11 +640,20 @@ export const PdvView: React.FC = () => {
 
             <button
               onClick={handleFinalizeSale}
-              disabled={!can('pdv.finalizar_venda')}
+              disabled={!can('pdv.finalizar_venda') || isEmittingNfce}
               className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Concluir Venda e Emitir NFC-e</span>
+              {isEmittingNfce ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  <span>Emitindo NFC-e...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Concluir Venda e Emitir NFC-e</span>
+                </>
+              )}
             </button>
           </div>
         </div>

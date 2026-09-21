@@ -7,12 +7,19 @@
 // só quem tem a permissão `vendas.emitir_nfce` (ou é admin) pode emitir.
 //
 // Secrets necessários (supabase secrets set ...):
-//   BRASILNFE_TOKEN          - token de emissão (header `Token`)
-//   BRASILNFE_USER_TOKEN     - token do módulo Empresa (header `UserToken`) [opcional aqui]
-//   BRASILNFE_BASE_URL       - default https://api.brasilnfe.com.br/services/
-//   BRASILNFE_CSC            - Código de Segurança do Contribuinte (SEFAZ)
-//   BRASILNFE_CSC_ID         - ID do CSC (ex.: "000001")
+//   BRASILNFE_TOKEN              - token de emissão (header `Token`)
+//   BRASILNFE_USER_TOKEN         - token do módulo Empresa (header `UserToken`) [opcional aqui]
+//   BRASILNFE_BASE_URL           - default https://api.brasilnfe.com.br/services/
 // (SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY são injetados.)
+//
+// IMPORTANTE — CSC não é enviado por nota: confirmado por teste ponta-a-ponta
+// (2026-09-20) que `EnviarNotaFiscal` não tem campos `Csc`/`IdTokenCsc` — a
+// Brasil NFe assina o QR Code com o CSC cadastrado UMA VEZ no cadastro da
+// empresa (`POST /empresa/EditarEmpresa`, objeto `Configuracao.NFCe`:
+// `IdCSCProducao`, `CSCProducao`, `IdCSCHomologacao`, `CSCHomologacao`, com o
+// ID sempre com 6 dígitos, ex. "000001"). Enviar esses campos aqui não tem
+// efeito nenhum — por isso foram removidos do payload abaixo. Configure o CSC
+// pelo painel da Brasil NFe (Empresas ▸ Editar ▸ NFC-e) ou via aquele endpoint.
 //
 // Enquanto BRASILNFE_TOKEN não estiver configurado, grava uma linha
 // `fiscal_invoices.status = 'erro'` com o motivo e devolve { ok:false,
@@ -24,11 +31,15 @@
 // pública + o SDK PHP; ajuste as chaves se o smoke test acusar rejeição de schema.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { parseEnviarNotaFiscalResponse } from '../../../src/lib/fiscalNfceResponse.ts';
 
 // NOTA: o Deno não resolve os imports de `src/lib/fiscal.ts` (ele importa de
 // '../types' sem extensão, que só o Vite entende). Por isso os helpers fiscais
 // abaixo são uma cópia enxuta do que existe em src/lib/fiscal.ts — mantenha os
 // dois lados em sincronia (mesmo trade-off do src/lib/permissions.ts).
+// `fiscalNfceResponse.ts` é a exceção: não tem imports próprios, então o Deno
+// resolve o caminho relativo direto — por isso aquele módulo é compartilhado
+// de verdade (mesmo arquivo, testado por `fiscalNfceResponse.test.ts`).
 
 const FISCAL_DEFAULTS = {
   origem: '0', ncm: '', cest: '', cfop: '5102', gtin: '', unidadeTributavel: '',
@@ -114,24 +125,10 @@ const BRASILNFE_TOKEN = Deno.env.get('BRASILNFE_TOKEN') ?? '';
 const BRASILNFE_USER_TOKEN = Deno.env.get('BRASILNFE_USER_TOKEN') ?? '';
 const BRASILNFE_BASE_URL = (Deno.env.get('BRASILNFE_BASE_URL') ?? 'https://api.brasilnfe.com.br/services/')
   .replace(/\/*$/, '/');
-const BRASILNFE_CSC = Deno.env.get('BRASILNFE_CSC') ?? '';
-const BRASILNFE_CSC_ID = Deno.env.get('BRASILNFE_CSC_ID') ?? '';
+// CSC não é secret desta função — ver nota acima (cadastrado uma vez na Brasil NFe).
 
 const onlyDigits = (v: unknown) => String(v ?? '').replace(/\D/g, '');
 const money = (v: number) => Number((Number.isFinite(v) ? v : 0).toFixed(2));
-
-/** Getter case-insensitive — a Brasil NFe responde em PascalCase, os SDKs em camelCase. */
-function pick(obj: unknown, ...keys: string[]): unknown {
-  if (!obj || typeof obj !== 'object') return undefined;
-  const rec = obj as Record<string, unknown>;
-  const lower: Record<string, unknown> = {};
-  for (const k of Object.keys(rec)) lower[k.toLowerCase()] = rec[k];
-  for (const k of keys) {
-    const hit = lower[k.toLowerCase()];
-    if (hit !== undefined && hit !== null) return hit;
-  }
-  return undefined;
-}
 
 function crtCode(raw: unknown): number {
   const m = String(raw ?? '').match(/\d/);
@@ -250,8 +247,6 @@ function buildNfcePayload(args: {
       },
     },
     Cliente: cliente,
-    IdTokenCsc: BRASILNFE_CSC_ID || undefined,
-    Csc: BRASILNFE_CSC || undefined,
     Produtos: produtos,
     Pagamentos: pagamentos,
     InformacoesAdicionais: `Pedido #${order.order_number ?? ''}`.trim(),
@@ -362,17 +357,8 @@ Deno.serve(async (req) => {
   }
 
   // ---- 6. interpreta a resposta (aceita PascalCase e camelCase) ----
-  const ret = pick(providerBody, 'returnNF', 'ReturnNF') ?? providerBody;
-  const okFlag = pick(ret, 'ok') === true || pick(providerBody, 'ok') === true;
-  const cStat = String(pick(ret, 'codStatusRespostaSefaz', 'CodStatusRespostaSefaz') ?? '');
-  const xMotivo = String(pick(ret, 'dsStatusRespostaSefaz', 'DsStatusRespostaSefaz', 'mensagem', 'message') ?? '');
-  const chave = String(pick(ret, 'chaveNf', 'ChaveNF', 'chaveNF', 'chave') ?? '') || null;
-  const protocolo = String(pick(ret, 'numero', 'Numero', 'protocolo', 'Protocolo') ?? '') || null;
-  const numero = Number(pick(ret, 'numeroNota', 'NumeroNota', 'nnf', 'nNF')) || null;
-  const xml = pick(ret, 'base64Xml', 'Base64Xml', 'xml') as string | undefined;
-  const danfe = pick(ret, 'base64File', 'Base64File', 'danfe', 'pdf') as string | undefined;
-
-  const authorized = (okFlag && (cStat === '' || cStat === '100')) || cStat === '100';
+  const { authorized, cStat, xMotivo, chave, protocolo, numero, xml, danfe } =
+    parseEnviarNotaFiscalResponse(providerBody);
 
   await upsertInvoice({
     status: authorized ? 'autorizada' : 'rejeitada',

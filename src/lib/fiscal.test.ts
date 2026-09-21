@@ -9,8 +9,10 @@ import {
   prorateDiscount,
   sefazPaymentEntries,
   PAYMENT_METHOD_SEFAZ,
+  buildFiscalNoteRows,
+  filterFiscalNoteRows,
 } from './fiscal';
-import type { FiscalData, Order, TaxGroup } from '../types';
+import type { FiscalData, FiscalInvoice, Order, TaxGroup } from '../types';
 
 const validFiscal = (): FiscalData => ({
   ...emptyFiscalData(),
@@ -159,5 +161,102 @@ describe('sefazPaymentEntries / PAYMENT_METHOD_SEFAZ', () => {
       { forma: '17', rotulo: 'PIX', valor: 20 },
       { forma: '01', rotulo: 'Dinheiro', valor: 30 },
     ]);
+  });
+});
+
+// ===========================================================================
+// Lista de notas (Módulo Fiscal ▸ Notas Fiscais): pedidos sem nenhuma
+// tentativa de emissão devem aparecer na mesma lista com status "sem_emissao"
+// em vez de sumir da tela ou virar uma lista separada.
+// ===========================================================================
+describe('buildFiscalNoteRows', () => {
+  const order = (over: Partial<Order>): Order => ({
+    id: 'o1', orderNumber: 1, total: 50, paymentMethod: 'pix', channel: 'pdv',
+    fiscalIssued: false, createdAt: '10:00', createdAtISO: '2026-09-20T10:00:00.000Z',
+    customer: { name: 'Cliente 1' },
+    ...over,
+  } as unknown as Order);
+
+  const invoice = (over: Partial<FiscalInvoice>): FiscalInvoice => ({
+    id: 'inv1', orderId: 'o1', modelo: 65, ambiente: 2, status: 'autorizada',
+    createdAt: '2026-09-20T10:05:00.000Z',
+    ...over,
+  } as FiscalInvoice);
+
+  it('pedido sem nenhuma linha em fiscal_invoices vira status "sem_emissao"', () => {
+    const rows = buildFiscalNoteRows([order({ id: 'o1' })], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('sem_emissao');
+    expect(rows[0].invoice).toBeNull();
+    expect(rows[0].orderId).toBe('o1');
+  });
+
+  it('pedido com invoice usa o status da própria invoice, não duplica como pendente', () => {
+    const rows = buildFiscalNoteRows(
+      [order({ id: 'o1' })],
+      [invoice({ orderId: 'o1', status: 'rejeitada' })],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('rejeitada');
+    expect(rows[0].invoice?.id).toBe('inv1');
+  });
+
+  it('pedido com fiscalIssued=true e sem invoice não aparece como pendente (não deveria acontecer, mas não deve virar "emitir" à toa)', () => {
+    const rows = buildFiscalNoteRows([order({ id: 'o1', fiscalIssued: true })], []);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('ordena do mais recente para o mais antigo, misturando invoices e pendentes', () => {
+    const rows = buildFiscalNoteRows(
+      [
+        order({ id: 'o-pending-antigo', createdAtISO: '2026-09-18T00:00:00.000Z' }),
+        order({ id: 'o-pending-novo', createdAtISO: '2026-09-21T00:00:00.000Z' }),
+      ],
+      [invoice({ id: 'inv-meio', orderId: 'o-com-invoice', createdAt: '2026-09-19T00:00:00.000Z' })],
+    );
+    expect(rows.map((r) => r.orderId)).toEqual(['o-pending-novo', 'o-com-invoice', 'o-pending-antigo']);
+  });
+});
+
+describe('filterFiscalNoteRows', () => {
+  const baseOrder: Order = {
+    id: 'o1', orderNumber: 42, total: 50, paymentMethod: 'pix', channel: 'pdv',
+    fiscalIssued: false, createdAt: '10:00', createdAtISO: '2026-09-20T10:00:00.000Z',
+    customer: { name: 'Maria Silva' },
+  } as unknown as Order;
+
+  const rows = buildFiscalNoteRows(
+    [
+      baseOrder,
+      { ...baseOrder, id: 'o2', orderNumber: 43, paymentMethod: 'dinheiro', channel: 'garcom', customer: { name: 'João' } } as unknown as Order,
+    ],
+    [
+      {
+        id: 'inv1', orderId: 'o2', modelo: 65, ambiente: 2, status: 'autorizada',
+        chave: '5226...9999', createdAt: '2026-09-20T11:00:00.000Z',
+      } as FiscalInvoice,
+    ],
+  );
+
+  it('filtra por status, incluindo o pseudo-status "sem_emissao"', () => {
+    const semEmissao = filterFiscalNoteRows(rows, { status: 'sem_emissao', payment: 'todas', channel: 'todos', query: '' });
+    expect(semEmissao).toHaveLength(1);
+    expect(semEmissao[0].orderId).toBe('o1');
+
+    const autorizadas = filterFiscalNoteRows(rows, { status: 'autorizada', payment: 'todas', channel: 'todos', query: '' });
+    expect(autorizadas).toHaveLength(1);
+    expect(autorizadas[0].orderId).toBe('o2');
+  });
+
+  it('filtra por forma de pagamento e por canal', () => {
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'dinheiro', channel: 'todos', query: '' })).toHaveLength(1);
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'garcom', query: '' })).toHaveLength(1);
+  });
+
+  it('busca por nome do cliente, número do pedido ou chave', () => {
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: 'maria' })).toHaveLength(1);
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: '43' })).toHaveLength(1);
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: '9999' })).toHaveLength(1);
+    expect(filterFiscalNoteRows(rows, { status: 'todas', payment: 'todas', channel: 'todos', query: 'ninguem' })).toHaveLength(0);
   });
 });

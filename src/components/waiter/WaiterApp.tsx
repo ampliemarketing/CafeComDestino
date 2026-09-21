@@ -47,6 +47,7 @@ export const WaiterApp: React.FC = () => {
     setComandaCouvertQty,
     transferComanda,
     closeComandaAndPay,
+    issueNfce,
     addToast
   } = useApp();
 
@@ -105,6 +106,7 @@ export const WaiterApp: React.FC = () => {
 
   const [isFinalReceiptModalOpen, setIsFinalReceiptModalOpen] = useState(false);
   const [lastFinalizedOrder, setLastFinalizedOrder] = useState<Order | null>(null);
+  const [isEmittingNfce, setIsEmittingNfce] = useState(false);
 
   const currentActiveTable = selectedTable ? tables.find((t) => t.id === selectedTable.id) || null : null;
   const currentComanda = currentActiveTable?.comandas.find((c) => c.id === selectedComandaId) || null;
@@ -1074,12 +1076,15 @@ export const WaiterApp: React.FC = () => {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsFinalPayModalOpen(false)}
-                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm"
+                disabled={isEmittingNfce}
+                className="flex-1 py-3.5 bg-stone-200 text-stone-700 font-bold rounded-xl text-sm disabled:opacity-40"
               >
                 Cancelar
               </button>
               <button
                 onClick={async () => {
+                  if (isEmittingNfce) return;
+
                   let splitPayments: { method: PaymentMethod; amount: number }[] | undefined = undefined;
 
                   if (isFinalSplitPayment) {
@@ -1101,17 +1106,37 @@ export const WaiterApp: React.FC = () => {
                     0,
                     splitPayments
                   );
+
+                  if (!finishedOrder) {
+                    setIsFinalPayModalOpen(false);
+                    setSelectedComandaId(null);
+                    setActiveTab('map');
+                    return;
+                  }
+
+                  // Emite a NFC-e e só então imprime — o cupom precisa sair com a
+                  // chave (ou refletindo a rejeição), não antes dela existir.
+                  setIsEmittingNfce(true);
+                  const nfceKey = await issueNfce(finishedOrder.id);
+                  setIsEmittingNfce(false);
+
                   setIsFinalPayModalOpen(false);
                   setSelectedComandaId(null);
                   setActiveTab('map');
-                  if (finishedOrder) {
-                    setLastFinalizedOrder(finishedOrder);
-                    setIsFinalReceiptModalOpen(true);
-                  }
+                  setLastFinalizedOrder({ ...finishedOrder, nfceKey: nfceKey || undefined, fiscalIssued: !!nfceKey });
+                  setIsFinalReceiptModalOpen(true);
                 }}
-                className="flex-1 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow"
+                disabled={isEmittingNfce}
+                className="flex-1 py-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-sm shadow disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                Confirmar e Finalizar
+                {isEmittingNfce ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Emitindo NFC-e...</span>
+                  </>
+                ) : (
+                  <span>Confirmar e Finalizar</span>
+                )}
               </button>
             </div>
           </div>
