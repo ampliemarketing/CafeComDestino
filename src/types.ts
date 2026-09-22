@@ -319,6 +319,8 @@ export interface Order {
   preparedAt?: string;
   deliveredAt?: string;
   tunaTransactionId?: string;
+  /** id da cobrança no PagBank (Pix/cartão via /pedir) — ver módulo pagbank-*. */
+  pagbankChargeId?: string;
   deliveryDriverName?: string;
   waiterName?: string;
   notes?: string;

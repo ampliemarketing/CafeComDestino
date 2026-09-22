@@ -14,7 +14,6 @@ import {
   Store as StoreIcon,
   Utensils,
   Sparkles,
-  Copy,
   XCircle,
   Loader2,
   Check
@@ -24,6 +23,7 @@ import { rowToCamel } from '../../lib/caseMapping';
 import { MAXLEN, sanitizeText, hasText, isValidPhone, maskPhone } from '../../lib/validation';
 import { Product, ProductAddition, PaymentMethod, Category, CompanyProfileData, OrderItem } from '../../types';
 import { LegalModal } from '../legal/LegalModal';
+import { PagBankCheckout } from './PagBankCheckout';
 
 // Página pública do cardápio online — pedido como convidado, sem login.
 // Propositalmente não usa AppContext/useApp(): roda fora da árvore
@@ -146,10 +146,14 @@ export const PublicOnlineMenu: React.FC = () => {
   const [neighborhood, setNeighborhood] = useState('');
   const [complement, setComplement] = useState('');
   const [reference, setReference] = useState('');
-  const [isPixCopied, setIsPixCopied] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
   const [confirmedTrackingToken, setConfirmedTrackingToken] = useState<string | null>(null);
+  // Token de acompanhamento gerado uma vez por tentativa de pedido — usado
+  // tanto no caminho "dinheiro" (grava direto no pedido) quanto no PagBank
+  // (vai no rascunho e só "nasce" pra valer quando o pedido é criado, no
+  // pagamento confirmado). Renovado a cada novo pedido em handleOpenCart.
+  const [trackingToken, setTrackingToken] = useState<string>(genTrackingToken);
 
   // Status aberto/fechado: mesmo critério do toggle no Navbar interno
   // (companyProfile.operatingHours === 'Fechado'). Fechado = cliente
@@ -226,64 +230,75 @@ export const PublicOnlineMenu: React.FC = () => {
   const minOrderMet = minOrderValue > 0 && cartSubtotal >= minOrderValue;
   const minOrderProgressPct = minOrderValue > 0 ? Math.max(0, Math.min(100, (cartSubtotal / minOrderValue) * 100)) : 100;
 
+  const buildOrderItems = (): OrderItem[] => cart.map((c) => ({
+    id: 'item-' + Math.random().toString(36).substring(2, 7),
+    productId: c.product.id,
+    productName: c.product.name,
+    quantity: c.quantity,
+    unitPrice: c.unitPrice,
+    additions: c.additions,
+    notes: c.notes,
+  }));
+
+  const orderNotes = `Pedido Online (convidado) - ${serviceType.toUpperCase()}`;
+
+  const orderAddress = serviceType === 'entrega'
+    ? {
+        street: street.trim().slice(0, MAXLEN.address),
+        number: number.trim().slice(0, 20),
+        neighborhood: neighborhood.trim().slice(0, MAXLEN.personName),
+        complement: complement.trim().slice(0, MAXLEN.shortNote),
+        reference: reference.trim().slice(0, MAXLEN.shortNote),
+      }
+    : undefined;
+
+  const validateCustomerFields = (): boolean => {
+    if (belowMinOrder) {
+      setMessage({ type: 'error', text: `Pedido mínimo de R$ ${minOrderValue.toFixed(2)}. Faltam R$ ${(minOrderValue - cartSubtotal).toFixed(2)}.` });
+      return false;
+    }
+    if (!hasText(customerName) || !hasText(customerPhone)) {
+      setMessage({ type: 'error', text: 'Nome e WhatsApp/Telefone são obrigatórios.' });
+      return false;
+    }
+    if (customerName.trim().length < 2) {
+      setMessage({ type: 'error', text: 'Informe seu nome completo.' });
+      return false;
+    }
+    if (!isValidPhone(customerPhone)) {
+      setMessage({ type: 'error', text: 'Telefone inválido. Use DDD + número (10 ou 11 dígitos).' });
+      return false;
+    }
+    if (serviceType === 'entrega' && (!hasText(street) || !hasText(number) || !hasText(neighborhood))) {
+      setMessage({ type: 'error', text: 'Informe rua, número e bairro para entrega.' });
+      return false;
+    }
+    return true;
+  };
+
+  // Só o caminho "pagamento na entrega/retirada" segue direto pra
+  // create_order_and_credit_cash — Pix e cartão passam pelo PagBank
+  // (PagBankCheckout abaixo), que só cria o pedido de verdade quando o
+  // pagamento é confirmado.
   const handleFinalizeOrder = async () => {
     if (!isStoreOpen) {
       setMessage({ type: 'error', text: 'O restaurante está fechado no momento. Não é possível concluir o pedido.' });
       return;
     }
-    if (belowMinOrder) {
-      setMessage({ type: 'error', text: `Pedido mínimo de R$ ${minOrderValue.toFixed(2)}. Faltam R$ ${(minOrderValue - cartSubtotal).toFixed(2)}.` });
-      return;
-    }
-    if (!hasText(customerName) || !hasText(customerPhone)) {
-      setMessage({ type: 'error', text: 'Nome e WhatsApp/Telefone são obrigatórios.' });
-      return;
-    }
-    if (customerName.trim().length < 2) {
-      setMessage({ type: 'error', text: 'Informe seu nome completo.' });
-      return;
-    }
-    if (!isValidPhone(customerPhone)) {
-      setMessage({ type: 'error', text: 'Telefone inválido. Use DDD + número (10 ou 11 dígitos).' });
-      return;
-    }
-    if (serviceType === 'entrega' && (!hasText(street) || !hasText(number) || !hasText(neighborhood))) {
-      setMessage({ type: 'error', text: 'Informe rua, número e bairro para entrega.' });
-      return;
-    }
+    if (!validateCustomerFields()) return;
 
     setIsPlacingOrder(true);
 
-    const orderItems: OrderItem[] = cart.map((c) => ({
-      id: 'item-' + Math.random().toString(36).substring(2, 7),
-      productId: c.product.id,
-      productName: c.product.name,
-      quantity: c.quantity,
-      unitPrice: c.unitPrice,
-      additions: c.additions,
-      notes: c.notes,
-    }));
-
-    const orderNumber = 1000 + Math.floor(Math.random() * 9000);
-    const trackingToken = genTrackingToken();
+    const orderItems = buildOrderItems();
     const newOrder = {
       id: 'ord-' + Date.now(),
-      orderNumber,
       channel: 'online',
       customer: {
         name: customerName.trim().slice(0, MAXLEN.personName),
         phone: customerPhone.trim().slice(0, MAXLEN.phone),
         wantsWhatsappUpdates,
         trackingToken,
-        address: serviceType === 'entrega'
-          ? {
-              street: street.trim().slice(0, MAXLEN.address),
-              number: number.trim().slice(0, 20),
-              neighborhood: neighborhood.trim().slice(0, MAXLEN.personName),
-              complement: complement.trim().slice(0, MAXLEN.shortNote),
-              reference: reference.trim().slice(0, MAXLEN.shortNote),
-            }
-          : undefined,
+        address: orderAddress,
       },
       items: orderItems,
       serviceType,
@@ -292,12 +307,11 @@ export const PublicOnlineMenu: React.FC = () => {
       discount: 0,
       total: cartTotal,
       paymentMethod,
-      paymentStatus: (paymentMethod === 'pix' || paymentMethod === 'cartao_credito') ? 'pagamento_aprovado' : 'aguardando_pagamento',
+      paymentStatus: 'aguardando_pagamento',
       orderStatus: 'novo',
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      tunaTransactionId: 'TUNA-' + Math.floor(100000 + Math.random() * 900000),
-      notes: `Pedido Online (convidado) - ${serviceType.toUpperCase()}`,
+      notes: orderNotes,
       fiscalIssued: false,
     };
 
@@ -315,8 +329,20 @@ export const PublicOnlineMenu: React.FC = () => {
       return;
     }
 
-    setConfirmedOrderNumber(orderNumber);
+    // order_number é atribuído pelo servidor (trigger orders_assign_number) —
+    // anon não pode ler `orders` direto (RLS), então relê pela mesma RPC
+    // pública de acompanhamento (já concedida a anon) em vez de supor um
+    // valor no cliente.
+    const { data: tracking } = await supabase.rpc('get_order_tracking', { p_token: trackingToken });
+    setConfirmedOrderNumber((tracking as { orderNumber?: number } | null)?.orderNumber ?? null);
     setConfirmedTrackingToken(trackingToken);
+    setCart([]);
+    setCheckoutStep('confirmed');
+  };
+
+  const handlePagBankPaid = (result: { orderNumber: number | null; trackingToken: string }) => {
+    setConfirmedOrderNumber(result.orderNumber);
+    setConfirmedTrackingToken(result.trackingToken);
     setCart([]);
     setCheckoutStep('confirmed');
   };
@@ -337,7 +363,7 @@ export const PublicOnlineMenu: React.FC = () => {
       setNeighborhood('');
       setComplement('');
       setReference('');
-      setIsPixCopied(false);
+      setTrackingToken(genTrackingToken());
     }
     setIsCartOpen(true);
   };
@@ -751,11 +777,6 @@ export const PublicOnlineMenu: React.FC = () => {
 
               {checkoutStep === 'payment' && (
                 <div className="space-y-4 text-xs">
-                  <div className="p-3 bg-stone-100 rounded-xl border border-stone-200">
-                    <p className="font-bold text-stone-900 text-sm">Integração Tuna Pagamentos</p>
-                    <p className="text-[10px] text-stone-600 mt-0.5">Checkout seguro e confirmação instantânea via Webhook.</p>
-                  </div>
-
                   <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Forma de Pagamento</h4>
                   <div className="space-y-2">
                     <button
@@ -791,37 +812,42 @@ export const PublicOnlineMenu: React.FC = () => {
                       {paymentMethod === 'dinheiro' && <CheckCircle2 className="w-4 h-4 text-amber-700" />}
                     </button>
                   </div>
+
+                  {(paymentMethod === 'pix' || paymentMethod === 'cartao_credito') && (
+                    <div className="pt-2 border-t">
+                      <PagBankCheckout
+                        paymentMethod={paymentMethod}
+                        cartTotal={cartTotal}
+                        orderContext={{
+                          items: buildOrderItems(),
+                          customerName: customerName.trim().slice(0, MAXLEN.personName),
+                          customerPhone: customerPhone.trim().slice(0, MAXLEN.phone),
+                          wantsWhatsappUpdates,
+                          serviceType,
+                          deliveryFee: cartDeliveryFee,
+                          notes: orderNotes,
+                          trackingToken,
+                          address: orderAddress,
+                        }}
+                        onPaid={handlePagBankPaid}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
-              {checkoutStep === 'confirmed' && confirmedOrderNumber !== null && (
+              {checkoutStep === 'confirmed' && (
                 <div className="space-y-4 text-xs text-center py-4">
                   <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
                     <CheckCircle2 className="w-6 h-6" />
                   </div>
                   <div>
                     <h4 className="font-bold text-base text-stone-900">Pedido Confirmado!</h4>
-                    <p className="text-stone-500 mt-1">Pedido nº #{confirmedOrderNumber}</p>
+                    <p className="text-stone-500 mt-1">{confirmedOrderNumber !== null ? `Pedido nº #${confirmedOrderNumber}` : 'Pedido recebido'}</p>
                     <p className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded inline-block mt-1">
-                      Tuna Pagamentos: APROVADO
+                      {paymentMethod === 'dinheiro' ? 'Pagamento na entrega/retirada' : 'Pagamento confirmado'}
                     </p>
                   </div>
-
-                  {paymentMethod === 'pix' && (
-                    <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-2 text-left">
-                      <p className="font-bold text-stone-800 text-xs text-center">Chave Pix Copia e Cola</p>
-                      <div className="bg-white p-2 rounded-xl border font-mono text-[10px] break-all text-stone-600">
-                        00020126580014br.gov.bcb.pix0136cafecomdestino-pay-1001-sp5204000053039865405115.705802BR5925CAFE COM DESTINO6009SAO PAULO62070503***6304
-                      </div>
-                      <button
-                        onClick={() => { setIsPixCopied(true); setMessage({ type: 'success', text: 'Chave Pix copiada!' }); }}
-                        className="w-full bg-emerald-700 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1.5"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>{isPixCopied ? 'Chave Copiada!' : 'Copiar Código Pix'}</span>
-                      </button>
-                    </div>
-                  )}
 
                   <p className="text-stone-500 pt-2 border-t">
                     Vamos avisar por WhatsApp/telefone conforme seu pedido avançar na cozinha. Guarde o número do
@@ -839,7 +865,12 @@ export const PublicOnlineMenu: React.FC = () => {
                   )}
 
                   <button
-                    onClick={() => { setCheckoutStep('cart'); setConfirmedOrderNumber(null); setConfirmedTrackingToken(null); }}
+                    onClick={() => {
+                      setCheckoutStep('cart');
+                      setConfirmedOrderNumber(null);
+                      setConfirmedTrackingToken(null);
+                      setTrackingToken(genTrackingToken());
+                    }}
                     className="w-full bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md"
                   >
                     Fazer novo pedido
@@ -892,7 +923,11 @@ export const PublicOnlineMenu: React.FC = () => {
                     <button onClick={() => setCheckoutStep('cart')} className="px-4 py-3 bg-stone-200 text-stone-700 rounded-xl font-bold text-xs">
                       Voltar
                     </button>
-                    <button onClick={() => setCheckoutStep('payment')} disabled={!isStoreOpen} className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md disabled:opacity-50">
+                    <button
+                      onClick={() => { if (validateCustomerFields()) setCheckoutStep('payment'); }}
+                      disabled={!isStoreOpen}
+                      className="flex-1 bg-amber-800 hover:bg-amber-900 text-white py-3 rounded-xl font-bold text-xs shadow-md disabled:opacity-50"
+                    >
                       Ir para Pagamento
                     </button>
                   </div>
@@ -903,14 +938,17 @@ export const PublicOnlineMenu: React.FC = () => {
                     <button onClick={() => setCheckoutStep('customer')} className="px-4 py-3 bg-stone-200 text-stone-700 rounded-xl font-bold text-xs">
                       Voltar
                     </button>
-                    <button
-                      onClick={handleFinalizeOrder}
-                      disabled={isPlacingOrder || !isStoreOpen}
-                      className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      {isPlacingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      <span>Confirmar & Pagar R$ {cartTotal.toFixed(2)}</span>
-                    </button>
+                    {/* Pix/cartão: o botão de pagar já está dentro do PagBankCheckout, acima. */}
+                    {paymentMethod === 'dinheiro' && (
+                      <button
+                        onClick={handleFinalizeOrder}
+                        disabled={isPlacingOrder || !isStoreOpen}
+                        className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isPlacingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        <span>Confirmar Pedido R$ {cartTotal.toFixed(2)}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -123,6 +123,7 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         actions: [
           { key: 'vendas.emitir_nfce', label: 'Emitir NFC-e de um pedido' },
           { key: 'vendas.reimprimir', label: 'Reimprimir comprovante' },
+          { key: 'vendas.estornar_pagbank', label: 'Estornar pagamento PagBank (Pix/cartão do cardápio online)' },
         ],
       },
     ],
