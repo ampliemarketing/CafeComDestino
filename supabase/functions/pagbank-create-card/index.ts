@@ -18,12 +18,16 @@
 //
 // Secrets: ver cabeçalho de supabase/functions/_shared/pagbank/client.ts.
 //
-// TODO(fase-0): confirmar em sandbox o formato exato de payment_method.card e
-// a tabela completa de payment_response.code antes de produção.
-
-import { loadPagBankConfig, pagbankFetch, createAdminClient, corsHeaders, json } from '../_shared/pagbank/client.ts';
-import { sanitizeForLog, parsePagBankOrderResponse, translateDeclineMessage } from '../../../src/lib/pagbank.ts';
+import { loadPagBankConfig, pagbankFetch, createAdminClient, corsHeaders, json, getClientIp, checkRateLimit } from '../_shared/pagbank/client.ts';
+import { sanitizeForLog, parsePagBankOrderResponse, translateDeclineMessage, validatePagBankCustomer } from '../../../src/lib/pagbank.ts';
 import { finalizePaidCharge } from '../_shared/pagbank/finalize.ts';
+
+// Achado de auditoria (Alto #1 — "card testing"): rate limit básico por IP
+// antes de sequer olhar pro cartão — este é o endpoint que um script de
+// fraude usaria como oráculo de "cartão vivo/morto", então o limite aqui é
+// bem mais apertado que o do Pix.
+const RATE_LIMIT_MAX_HITS = 5;
+const RATE_LIMIT_WINDOW_SECONDS = 300; // 5 min
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -45,7 +49,16 @@ Deno.serve(async (req) => {
     return json({ error: 'Dados do cartão incompletos.' }, 400);
   }
 
+  const customerError = validatePagBankCustomer(draft.customer);
+  if (customerError) return json({ error: customerError }, 400);
+
   const admin = createAdminClient();
+
+  const clientIp = getClientIp(req);
+  const withinLimit = await checkRateLimit(admin, 'pagbank-create-card', clientIp, RATE_LIMIT_MAX_HITS, RATE_LIMIT_WINDOW_SECONDS);
+  if (!withinLimit) {
+    return json({ error: 'Muitas tentativas de pagamento. Aguarde alguns minutos e tente novamente, ou escolha Pix.' }, 429);
+  }
 
   // ---- 1. idempotência: enquanto uma tentativa está em andamento, não deixa
   // criar outra cobrança pro mesmo referenceId (evita duplo clique em "pagar"

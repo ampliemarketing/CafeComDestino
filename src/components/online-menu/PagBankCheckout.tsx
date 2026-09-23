@@ -19,9 +19,8 @@ import {
 
 declare global {
   interface Window {
-    // TODO(fase-0): confirmar contra a doc oficial do PagBank o nome exato do
-    // global e a assinatura de encryptCard antes de ir a produção (mesmo tipo
-    // de placeholder já usado em emit-nfce pros campos da Brasil NFe).
+    // Confirmado contra a doc oficial (developer.pagbank.com.br/docs/criptografia-e-chave-publica):
+    // `encryptedCard` no retorno é uma STRING direta, não um objeto aninhado.
     PagSeguro?: {
       encryptCard: (opts: {
         publicKey: string;
@@ -30,7 +29,7 @@ declare global {
         expMonth: string;
         expYear: string;
         securityCode: string;
-      }) => { hasErrors: boolean; errors?: { code: string; message: string }[]; encryptedCard?: { encryptedCard: string } };
+      }) => { hasErrors: boolean; errors?: { code: string; message: string }[]; encryptedCard?: string };
     };
   }
 }
@@ -199,17 +198,22 @@ export const PagBankCheckout: React.FC<Props> = ({ paymentMethod, orderContext, 
     setPhase('submitting');
     setError(null);
 
-    const [expMonth, expYear] = maskExpiry(cardExpiry).split('/');
+    const [expMonth, expYearShort] = maskExpiry(cardExpiry).split('/');
+    // O SDK exige expYear com 4 dígitos (1900–2099) — o campo captura só 2
+    // ("30"), então completa pro século 2000 antes de mandar pro encryptCard.
+    // Erro real visto em teste manual: "invalid field `expYear`. You must
+    // pass a value between 1900 and 2099" ao mandar "30" cru.
+    const expYear = expYearShort ? `20${expYearShort}` : '';
     const encrypted = window.PagSeguro.encryptCard({
       publicKey,
       holder: cardHolder.trim(),
       number: onlyDigits(cardNumber),
       expMonth: expMonth ?? '',
-      expYear: expYear ?? '',
+      expYear,
       securityCode: cardCvv,
     });
 
-    if (encrypted.hasErrors || !encrypted.encryptedCard?.encryptedCard) {
+    if (encrypted.hasErrors || !encrypted.encryptedCard) {
       setError(encrypted.errors?.[0]?.message || 'Dados do cartão inválidos.');
       setPhase('form');
       return;
@@ -218,7 +222,7 @@ export const PagBankCheckout: React.FC<Props> = ({ paymentMethod, orderContext, 
     const result = await createPagBankCardCharge({
       referenceId,
       orderDraft: buildDraft(),
-      encryptedCard: encrypted.encryptedCard.encryptedCard,
+      encryptedCard: encrypted.encryptedCard,
       holderName: cardHolder.trim(),
       holderTaxId: onlyDigits(taxId),
     });

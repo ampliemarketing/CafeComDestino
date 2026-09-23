@@ -6,6 +6,7 @@ import {
   translateDeclineMessage,
   sha256Hex,
   verifyPagBankWebhookSignature,
+  validatePagBankCustomer,
   PAGBANK_SANDBOX_BASE_URL,
   PAGBANK_PRODUCTION_BASE_URL,
 } from './pagbank';
@@ -166,5 +167,42 @@ describe('translateDeclineMessage', () => {
     const msg = translateDeclineMessage('99999', 'some internal provider detail');
     expect(msg).not.toContain('internal provider detail');
     expect(msg.length).toBeGreaterThan(0);
+  });
+});
+
+describe('validatePagBankCustomer', () => {
+  const VALID = { name: 'Maria da Silva', phone: '11987654321', email: 'maria@example.com', taxId: '52998224725' };
+
+  it('aceita um cliente com todos os campos válidos', () => {
+    expect(validatePagBankCustomer(VALID)).toBeNull();
+  });
+
+  it('rejeita nome ausente/curto demais — achado de auditoria: essa checagem não roda mais no create_order_and_credit_cash quando chamado via service_role', () => {
+    expect(validatePagBankCustomer({ ...VALID, name: '' })).toMatch(/nome/i);
+    expect(validatePagBankCustomer({ ...VALID, name: 'A' })).toMatch(/nome/i);
+  });
+
+  it('rejeita telefone inválido', () => {
+    expect(validatePagBankCustomer({ ...VALID, phone: '123' })).toMatch(/telefone/i);
+  });
+
+  it('rejeita e-mail ausente ou malformado', () => {
+    expect(validatePagBankCustomer({ ...VALID, email: '' })).toMatch(/e-mail/i);
+    expect(validatePagBankCustomer({ ...VALID, email: 'nao-e-email' })).toMatch(/e-mail/i);
+  });
+
+  it('rejeita CPF ausente, malformado ou com dígito verificador errado', () => {
+    expect(validatePagBankCustomer({ ...VALID, taxId: '' })).toMatch(/cpf/i);
+    expect(validatePagBankCustomer({ ...VALID, taxId: '123' })).toMatch(/cpf/i);
+    expect(validatePagBankCustomer({ ...VALID, taxId: '11111111111' })).toMatch(/cpf/i); // dígitos repetidos, DV inválido
+  });
+
+  it('aceita CNPJ válido no campo taxId', () => {
+    expect(validatePagBankCustomer({ ...VALID, taxId: '11222333000181' })).toBeNull();
+  });
+
+  it('rejeita customer nulo/indefinido sem lançar exceção', () => {
+    expect(validatePagBankCustomer(null)).not.toBeNull();
+    expect(validatePagBankCustomer(undefined)).not.toBeNull();
   });
 });

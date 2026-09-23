@@ -18,10 +18,15 @@
 // Formato de POST /orders confirmado num teste real em sandbox (2026-09-22)
 // — ver comentário de parsePagBankOrderResponse em src/lib/pagbank.ts.
 
-import { loadPagBankConfig, pagbankFetch, createAdminClient, corsHeaders, json } from '../_shared/pagbank/client.ts';
-import { sanitizeForLog, parsePagBankOrderResponse } from '../../../src/lib/pagbank.ts';
+import { loadPagBankConfig, pagbankFetch, createAdminClient, corsHeaders, json, getClientIp, checkRateLimit } from '../_shared/pagbank/client.ts';
+import { sanitizeForLog, parsePagBankOrderResponse, validatePagBankCustomer } from '../../../src/lib/pagbank.ts';
 
 const PIX_EXPIRATION_MINUTES = 30;
+// Achado de auditoria (Alto #1): rate limit básico por IP contra abuso —
+// gerar Pix em massa não é tão valioso pra fraude quanto testar cartão, mas
+// ainda vale limitar (evita spam de cobranças/pedidos pendentes).
+const RATE_LIMIT_MAX_HITS = 20;
+const RATE_LIMIT_WINDOW_SECONDS = 300; // 5 min
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -34,7 +39,16 @@ Deno.serve(async (req) => {
     return json({ error: 'Requisição inválida.' }, 400);
   }
 
+  const customerError = validatePagBankCustomer(draft.customer);
+  if (customerError) return json({ error: customerError }, 400);
+
   const admin = createAdminClient();
+
+  const clientIp = getClientIp(req);
+  const withinLimit = await checkRateLimit(admin, 'pagbank-create-pix', clientIp, RATE_LIMIT_MAX_HITS, RATE_LIMIT_WINDOW_SECONDS);
+  if (!withinLimit) {
+    return json({ error: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' }, 429);
+  }
 
   // ---- 1. idempotência: clique duplo em "gerar Pix" não cria cobrança nova ----
   const { data: existing } = await admin.from('pagbank_orders').select('*').eq('id', referenceId).maybeSingle();

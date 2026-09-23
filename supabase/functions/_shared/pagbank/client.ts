@@ -86,3 +86,33 @@ export const createAdminClient = () => createClient(SUPABASE_URL, SERVICE_ROLE_K
 
 export const createCallerClient = (authHeader: string) =>
   createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+
+/** IP real do cliente — a plataforma do Supabase injeta `x-forwarded-for`. */
+export function getClientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for') ?? '';
+  return fwd.split(',')[0]?.trim() || 'unknown';
+}
+
+/**
+ * Rate limit básico por IP (achado de auditoria, Alto #1 — "card testing":
+ * testar cartões roubados em massa usando o merchant como oráculo de
+ * aprovado/recusado). Não é uma solução de WAF, é proteção mínima — ver
+ * `check_pagbank_rate_limit` (migration 0054) pro upsert atômico que evita
+ * race entre requisições concorrentes do mesmo IP.
+ */
+export async function checkRateLimit(
+  admin: ReturnType<typeof createAdminClient>,
+  bucket: string,
+  key: string,
+  maxHits: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('check_pagbank_rate_limit', {
+    p_bucket: bucket,
+    p_key: key,
+    p_max_hits: maxHits,
+    p_window_seconds: windowSeconds,
+  });
+  if (error) return true; // falha ao checar rate limit não deve derrubar o checkout — fail-open aqui
+  return data === true;
+}

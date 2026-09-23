@@ -156,11 +156,51 @@ com `node:crypto`.
 - `PAGBANK_TOKEN` no `.env.example` da raiz ou no
   bundle do frontend — são secrets de Edge Function, nunca `VITE_*`.
 
+## Auditoria de segurança e correções (migration 0054)
+
+Uma auditoria completa (agente `security-auditor`) revisou toda a integração
+ponta a ponta depois da entrega inicial. Os 4 achados de **Alto risco** foram
+corrigidos na migration `0054_pagbank_security_hardening.sql`:
+
+1. **Race condition na finalização** — a resposta síncrona do cartão e o
+   webhook podiam chamar a finalização quase ao mesmo tempo pro mesmo pedido;
+   sem lock, um pedido pago de verdade podia acabar marcado como erro.
+   Corrigido: a finalização inteira agora roda atômica dentro de uma única
+   função SQL (`finalize_pagbank_paid_charge`), com `select ... for update`
+   travando a linha até a transação terminar.
+2. **Preço manipulável de item por quilo** — `price_public_order_items`
+   confiava no `unitPrice` enviado pelo cliente pra `prod-kg-almoco`/
+   `prod-kg-cafe` (herdado de uma exceção do PDV, com pesagem física). Esses
+   produtos não aparecem no cardápio público e agora são rejeitados nessa
+   função.
+3. **Validação de CPF/e-mail/nome ausente no backend** — `create_order_and_credit_cash`
+   só valida esses campos quando chamado como `anon`; o fluxo PagBank chama
+   via `service_role`, pulando a checagem. Nova função
+   `validatePagBankCustomer` (`src/lib/pagbank.ts`, reaproveitando
+   `isValidCpfCnpj`/`isValidEmail`/`isValidPhone` de `src/lib/validation.ts`)
+   roda em `pagbank-create-pix`/`pagbank-create-card` antes de criar qualquer
+   cobrança.
+4. **Sem rate limiting** — endpoint de cartão era vulnerável a "card testing"
+   (testar cartões roubados em massa usando o merchant como oráculo de
+   aprovado/recusado). Rate limit básico por IP (`check_pagbank_rate_limit`,
+   tabela `pagbank_rate_limits`): 5 tentativas/5min em `pagbank-create-card`,
+   20/5min em `pagbank-create-pix`. Não é uma solução de WAF, é proteção
+   mínima — mesmo espírito de `login_attempts`/`pin_attempts` já usado no
+   projeto.
+
+Achados de Médio/Baixo risco (preset de permissão do cargo "caixa" herdando
+`vendas.estornar_pagbank`, validação de valor no estorno parcial, teto de
+parcelamento, comparação não constant-time na assinatura do webhook, CORS
+aberto) ficaram registrados mas **não corrigidos nesta rodada** — decisão
+consciente de escopo, não descuido.
+
 ## Limitações conhecidas desta fase
 
 - PDV e mesa não usam PagBank (decisão de escopo — ver contexto no commit
   desta migration).
 - Webhook processa tudo de forma síncrona, sem fila (mesmo padrão do resto do
   repo — não há infraestrutura de fila hoje).
-- Rate limiting do endpoint de webhook é best-effort (token na URL + dedupe),
-  não uma solução de WAF.
+- Rate limiting é best-effort (contador simples por IP), não uma solução de
+  WAF — ver seção de auditoria acima.
+- Itens vendidos por peso (`prod-kg-almoco`/`prod-kg-cafe`) não estão
+  disponíveis para pagamento online — só no PDV, com pesagem física.

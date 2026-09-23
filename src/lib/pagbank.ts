@@ -1,11 +1,16 @@
 // Helpers puros da integração PagBank — resolução de URL base por ambiente,
 // sanitização de log e interpretação da resposta de /orders. Módulo sem
-// imports de propósito (nem de `../types`): é importado tanto pelo
-// frontend/Vitest (Node) quanto pelas Edge Functions `pagbank-*` (Deno) — o
-// Deno só resolve um import relativo direto quando o próprio arquivo não tem
-// imports que dependam da resolução "estilo Vite". Mesmo mecanismo já usado
-// por `fiscalNfceResponse.ts` com `emit-nfce`.
-//
+// imports "estilo Vite" de propósito (nem de `../types`): é importado tanto
+// pelo frontend/Vitest (Node) quanto pelas Edge Functions `pagbank-*` (Deno)
+// — o Deno só resolve um import relativo direto quando o arquivo importado
+// (e tudo que ele importa, recursivamente) não depende de resolução
+// "estilo Vite" (sem extensão). Mesmo mecanismo já usado por
+// `fiscalNfceResponse.ts` com `emit-nfce`. A única exceção é o import de
+// `./validation.ts` logo abaixo — ele também não tem nenhum import próprio,
+// então a cadeia continua Deno-safe.
+
+import { isValidCpfCnpj, isValidEmail, isValidPhone } from './validation.ts';
+
 // Formato de `POST/GET /orders` confirmado num teste real em sandbox
 // (2026-09-22) — ver comentário de parsePagBankOrderResponse.
 //
@@ -143,4 +148,36 @@ const KNOWN_DECLINE_MESSAGES: Record<string, string> = {
 export function translateDeclineMessage(code: string | null, rawMessage: string | null): string {
   if (code && KNOWN_DECLINE_MESSAGES[code]) return KNOWN_DECLINE_MESSAGES[code];
   return 'Pagamento recusado pela operadora. Tente outro cartão ou escolha Pix.';
+}
+
+// ---------------------------------------------------------------------------
+// Validação server-side do cliente informado no checkout PagBank — achado de
+// segurança (Alto #4): `create_order_and_credit_cash` só valida nome/telefone
+// quando `auth.role() = 'anon'`, mas o fluxo PagBank chama essa RPC via
+// service_role (v_is_anon = false), então esse bloco é pulado. As Edge
+// Functions pagbank-create-pix/pagbank-create-card chamam esta função ANTES
+// de criar qualquer cobrança — a validação de CPF/CNPJ/e-mail do frontend
+// (`PagBankCheckout.tsx`) é só UX, nunca a fonte de verdade.
+// ---------------------------------------------------------------------------
+
+export interface PagBankCustomerInput {
+  name?: unknown;
+  phone?: unknown;
+  email?: unknown;
+  taxId?: unknown;
+}
+
+/** Devolve uma mensagem de erro em PT-BR se algum campo for inválido, ou `null` se tudo ok. */
+export function validatePagBankCustomer(customer: PagBankCustomerInput | null | undefined): string | null {
+  const name = String(customer?.name ?? '').trim();
+  const phone = String(customer?.phone ?? '');
+  const email = String(customer?.email ?? '');
+  const taxId = String(customer?.taxId ?? '');
+
+  if (name.length < 2 || name.length > 120) return 'Nome do cliente inválido.';
+  if (!isValidPhone(phone)) return 'Telefone do cliente inválido.';
+  if (!email || !isValidEmail(email)) return 'E-mail do cliente inválido.';
+  if (!taxId || !isValidCpfCnpj(taxId)) return 'CPF/CNPJ do cliente inválido.';
+
+  return null;
 }
