@@ -7,7 +7,10 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole } from '../../types';
-import { PERMISSION_CATALOG, ROLE_DEFAULT_PERMISSIONS, ScreenPermissionGroup } from '../../lib/permissions';
+import {
+  PERMISSION_CATALOG, ROLE_DEFAULT_PERMISSIONS, ScreenPermissionGroup,
+  hasPermission, canGrantPermission, grantableRoles,
+} from '../../lib/permissions';
 import { MAXLEN, sanitizeText, maskPhone, maskCPF, isValidCPF, isValidPhone, isValidEmail } from '../../lib/validation';
 
 const ROLES: UserRole[] = ['admin', 'gerente', 'caixa', 'garcom', 'cozinha', 'estoque', 'financeiro'];
@@ -44,6 +47,15 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
   const isEdit = !!user;
   const isSelf = isEdit && user!.id === currentUser.id;
 
+  // O que QUEM ESTÁ EDITANDO pode fazer — o servidor aplica a mesma regra
+  // (trigger prevent_self_privilege_escalation / admin-create-user, 0055).
+  const canEditPerms = !isSelf && (isEdit ? hasPermission(currentUser, 'usuarios.editar_permissoes') : hasPermission(currentUser, 'usuarios.criar'));
+  const canToggleActive = !isSelf && hasPermission(currentUser, 'usuarios.ativar_inativar');
+  const canSetPin = hasPermission(currentUser, 'usuarios.definir_pin') && (!isSelf || currentUser.role === 'admin');
+  const canGrant = (key: string) => canGrantPermission(currentUser, key);
+  const roleOptions = grantableRoles(currentUser, ROLES);
+  const grantableDefaults = (r: UserRole) => ROLE_DEFAULT_PERMISSIONS[r].filter(canGrant);
+
   const [activeTab, setActiveTab] = useState<'conta' | 'permissoes'>('conta');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -58,19 +70,20 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
   const [role, setRole] = useState<UserRole>(user?.role ?? 'garcom');
   const [active, setActive] = useState(user?.active ?? true);
   const [code, setCode] = useState('');
-  const [permissions, setPermissions] = useState<string[]>(user?.permissions ?? ROLE_DEFAULT_PERMISSIONS.garcom);
+  const [permissions, setPermissions] = useState<string[]>(user?.permissions ?? grantableDefaults('garcom'));
   const [saving, setSaving] = useState(false);
 
   const isAdminRole = role === 'admin';
   const allGroups = PERMISSION_CATALOG.flatMap((s) => s.groups);
 
+  // Remover é sempre livre; adicionar só o que o editor também possui.
   const togglePermission = (key: string) => {
-    setPermissions((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]));
+    setPermissions((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : canGrant(key) ? [...prev, key] : prev));
   };
 
   const applyRoleDefaults = (newRole: UserRole) => {
     setRole(newRole);
-    setPermissions(ROLE_DEFAULT_PERMISSIONS[newRole]);
+    setPermissions(grantableDefaults(newRole));
   };
 
   const groupKeys = (group: ScreenPermissionGroup) => [group.access, ...group.actions.map((a) => a.key)];
@@ -86,7 +99,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
     const keys = groupKeys(group);
     const allChecked = isGroupFullyChecked(group);
     setPermissions((prev) =>
-      allChecked ? prev.filter((p) => !keys.includes(p)) : Array.from(new Set([...prev, ...keys]))
+      allChecked ? prev.filter((p) => !keys.includes(p)) : Array.from(new Set([...prev, ...keys.filter(canGrant)]))
     );
   };
 
@@ -131,8 +144,9 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
         name: name.trim(),
         phone: phone.trim() || undefined,
         cpf: cpf.trim() || undefined,
-        code: code.trim() || undefined,
-        ...(isSelf ? {} : { role, active, permissions }),
+        code: canSetPin ? code.trim() || undefined : undefined,
+        ...(canEditPerms ? { role, permissions } : {}),
+        ...(canToggleActive ? { active } : {}),
       });
       setSaving(false);
       onClose();
@@ -262,11 +276,11 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <label className="text-[10px] font-bold text-stone-500 uppercase">Cargo</label>
                 <select
                   value={role}
-                  disabled={isSelf}
+                  disabled={!canEditPerms}
                   onChange={(e) => applyRoleDefaults(e.target.value as UserRole)}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs uppercase font-bold disabled:opacity-50"
                 >
-                  {ROLES.map((r) => (
+                  {(roleOptions.includes(role) ? roleOptions : [role, ...roleOptions]).map((r) => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
@@ -275,7 +289,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <div className="flex items-end">
                   <button
                     type="button"
-                    disabled={isSelf}
+                    disabled={!canToggleActive}
                     onClick={() => setActive((v) => !v)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border disabled:opacity-50 ${
                       active ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-stone-200 text-stone-600 border-stone-300'
@@ -285,7 +299,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                   </button>
                 </div>
               )}
-              {isEdit && (
+              {isEdit && canSetPin && (
                 <div>
                   <label className="text-[10px] font-bold text-stone-500 uppercase flex items-center gap-1">
                     <KeyRound className="w-3 h-3" /> PIN de Fechamento de Caixa
@@ -299,7 +313,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                     className="w-full border rounded-lg px-2 py-1.5 text-xs font-mono tracking-widest"
                   />
-                  <p className="text-[10px] text-stone-400 mt-1">4 a 6 dígitos. Por segurança o PIN atual não é exibido — deixe em branco para mantê-lo. Só administradores podem alterar PIN.</p>
+                  <p className="text-[10px] text-stone-400 mt-1">4 a 6 dígitos. Por segurança o PIN atual não é exibido — deixe em branco para mantê-lo.</p>
                 </div>
               )}
             </div>
@@ -317,8 +331,17 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                 <p className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
                   Você não pode alterar suas próprias permissões.
                 </p>
+              ) : !canEditPerms ? (
+                <p className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2">
+                  Você não tem permissão para alterar cargo/permissões de usuários.
+                </p>
               ) : (
                 <div className="border rounded-xl divide-y overflow-hidden">
+                  {currentUser.role !== 'admin' && (
+                    <p className="text-[10px] text-stone-500 bg-stone-50 px-3 py-2">
+                      Permissões que você não possui aparecem bloqueadas — só um administrador pode concedê-las.
+                    </p>
+                  )}
                   {allGroups.map((group) => {
                     const Icon = SCREEN_ICONS[group.screenId] ?? Package;
                     const isOpen = !!expanded[group.screenId];
@@ -351,10 +374,16 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({ user, onClose }) =
                         {isOpen && group.actions.length > 0 && (
                           <div className="px-3 pb-2.5 pl-10 space-y-1.5 bg-stone-50/60">
                             {group.actions.map((action) => (
-                              <label key={action.key} className="flex items-center gap-1.5 text-stone-600 cursor-pointer">
+                              <label
+                                key={action.key}
+                                className={`flex items-center gap-1.5 text-stone-600 ${
+                                  !permissions.includes(action.key) && !canGrant(action.key) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                                }`}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={permissions.includes(action.key)}
+                                  disabled={!permissions.includes(action.key) && !canGrant(action.key)}
                                   onChange={() => togglePermission(action.key)}
                                 />
                                 {action.label}

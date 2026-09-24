@@ -1,7 +1,10 @@
 // Edge Function chamada pelo painel "Usuários & Permissões" para criar
-// funcionários. Só quem já é admin (checado pelo profile do chamador,
-// usando o JWT recebido) pode criar novas contas — a service role key
-// nunca é exposta ao frontend, só existe aqui como secret da function.
+// funcionários. Admin ou quem tem `usuarios.criar` (checado pelo profile do
+// chamador, usando o JWT recebido) pode criar novas contas — a service role
+// key nunca é exposta ao frontend, só existe aqui como secret da function.
+// Não-admin: não cria admin, só concede permissões que ele mesmo tem e só
+// define PIN com `usuarios.definir_pin` (mesma regra do trigger
+// prevent_self_privilege_escalation, migration 0055).
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { ALL_PERMISSIONS } from '../../../src/lib/permissions.ts';
 
@@ -37,12 +40,14 @@ Deno.serve(async (req) => {
 
   const { data: callerProfile, error: callerProfileError } = await callerClient
     .from('profiles')
-    .select('role')
+    .select('role, permissions, active')
     .eq('id', caller.id)
     .single();
 
-  if (callerProfileError || callerProfile?.role !== 'admin') {
-    return json({ error: 'Apenas administradores podem criar usuários.' }, 403);
+  const callerIsAdmin = callerProfile?.role === 'admin';
+  const callerPerms: string[] = Array.isArray(callerProfile?.permissions) ? callerProfile!.permissions : [];
+  if (callerProfileError || callerProfile?.active === false || (!callerIsAdmin && !callerPerms.includes('usuarios.criar'))) {
+    return json({ error: 'Sem permissão para criar usuários.' }, 403);
   }
 
   const body = await req.json().catch(() => null);
@@ -65,6 +70,18 @@ Deno.serve(async (req) => {
   }
   if (!VALID_ROLES.includes(role)) {
     return json({ error: 'Cargo inválido.' }, 400);
+  }
+  if (!callerIsAdmin) {
+    if (role === 'admin') {
+      return json({ error: 'Apenas administradores podem criar usuários administradores.' }, 403);
+    }
+    const notOwned = permissions.filter((p: string) => !callerPerms.includes(p));
+    if (notOwned.length > 0) {
+      return json({ error: `Você não pode conceder permissões que não possui: ${notOwned.join(', ')}` }, 403);
+    }
+    if (code && !callerPerms.includes('usuarios.definir_pin')) {
+      return json({ error: 'Sem permissão para definir PIN de usuário.' }, 403);
+    }
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);

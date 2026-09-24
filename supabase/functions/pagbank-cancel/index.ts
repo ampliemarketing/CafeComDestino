@@ -1,7 +1,8 @@
 // Edge Function `pagbank-cancel` — cancelamento/estorno (total ou parcial) de
 // uma cobrança PagBank já paga. Chamada autenticada, só por funcionário com
-// permissão `vendas.estornar_pagbank` (ou admin) — mesmo padrão de
-// verificação de emit-nfce.
+// permissão `fiscal.estornar_pagbank` (ou admin) — mesmo padrão de
+// verificação de emit-nfce. O botão fica no Módulo Fiscal, nas ações de uma
+// nota autorizada.
 //
 // Prazos de reembolso por método (cartão até 350 dias, Pix até 90 dias) são
 // responsabilidade do próprio PagBank — esta função só repassa o pedido;
@@ -29,9 +30,9 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userErr } = await caller.auth.getUser();
   if (userErr || !user) return json({ error: 'Não autenticado.' }, 401);
 
-  const { data: profile } = await caller.from('profiles').select('role, permissions').eq('id', user.id).single();
+  const { data: profile } = await caller.from('profiles').select('role, permissions, active').eq('id', user.id).single();
   const perms: string[] = Array.isArray(profile?.permissions) ? profile!.permissions : [];
-  const allowed = profile?.role === 'admin' || perms.includes('vendas.estornar_pagbank');
+  const allowed = profile?.active !== false && (profile?.role === 'admin' || perms.includes('fiscal.estornar_pagbank'));
   if (!allowed) return json({ error: 'Sem permissão para estornar pagamento PagBank.' }, 403);
 
   const body = await req.json().catch(() => null);

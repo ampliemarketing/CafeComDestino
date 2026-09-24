@@ -26,7 +26,7 @@ import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, toBoundedNumber } from '../../lib/validation';
 
 export const PdvView: React.FC = () => {
-  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser, validateManagerPin } = useApp();
+  const { products, categories, createPdvSale, cashShift, companyProfile, addToast, currentUser, validateDiscountApproverPin } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
 
   // Desconto acima do teto do cargo exige motivo + PIN de gerente (validado no servidor).
@@ -179,9 +179,9 @@ export const PdvView: React.FC = () => {
         addToast('error', 'Desconto acima do limite', `Seu teto é ${discountLimit}%. Informe o motivo do desconto.`);
         return;
       }
-      const pinOk = await validateManagerPin(discountPinInput);
+      const pinOk = await validateDiscountApproverPin(discountPinInput, 'pdv');
       if (!pinOk) {
-        addToast('error', 'Desconto acima do limite', 'PIN de gerente inválido.');
+        addToast('error', 'Desconto acima do limite', 'PIN inválido ou de alguém sem permissão para aprovar desconto acima do teto.');
         return;
       }
     }
@@ -205,7 +205,7 @@ export const PdvView: React.FC = () => {
     // conta do usuário no Módulo Fiscal (botão "Emitir"). Nunca automático.
     setLastCompletedSale(sale);
     setIsPaymentModalOpen(false);
-    setIsPrintModalOpen(true);
+    if (can('pdv.imprimir')) setIsPrintModalOpen(true);
 
     setCartItems([]);
     setDiscountInput(0);
@@ -468,7 +468,7 @@ export const PdvView: React.FC = () => {
               {discountOverLimit && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 space-y-1.5">
                   <p className="text-[11px] font-bold text-amber-800">
-                    Desconto de {discountPct.toFixed(1)}% acima do seu teto ({discountLimit}%). Precisa de autorização de gerente.
+                    Desconto de {discountPct.toFixed(1)}% acima do seu teto ({discountLimit}%). Precisa do PIN de quem pode aprovar desconto acima do teto.
                   </p>
                   <input
                     value={discountReasonInput}
@@ -481,7 +481,7 @@ export const PdvView: React.FC = () => {
                     inputMode="numeric"
                     value={discountPinInput}
                     onChange={(e) => setDiscountPinInput(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin))}
-                    placeholder="PIN do gerente"
+                    placeholder="PIN do aprovador"
                     className="w-full border rounded-lg p-1.5 text-xs tracking-[0.3em] text-center font-bold"
                   />
                 </div>

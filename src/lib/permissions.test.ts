@@ -6,6 +6,7 @@ import {
   HOME_VIEW_BY_ROLE,
   ROLE_DEFAULT_PERMISSIONS,
   hasPermission,
+  grantableRoles,
   type UserRole,
 } from './permissions';
 
@@ -29,6 +30,13 @@ describe('hasPermission', () => {
 
   it('não-admin sem array de permissões nega tudo', () => {
     expect(hasPermission({ role: 'garcom' } as never, 'mesas.acessar')).toBe(false);
+  });
+});
+
+describe('grantableRoles', () => {
+  it('só admin oferece o cargo admin', () => {
+    expect(grantableRoles({ role: 'admin' }, ROLES)).toContain('admin');
+    expect(grantableRoles({ role: 'gerente' }, ROLES)).not.toContain('admin');
   });
 });
 
@@ -130,6 +138,29 @@ describe('ROLE_DEFAULT_PERMISSIONS — presets por cargo', () => {
       expect.arrayContaining(['kitchen.acessar', 'kitchen.avancar_status']),
     );
     expect(ROLE_DEFAULT_PERMISSIONS.cozinha.every((k) => k.startsWith('kitchen.'))).toBe(true);
+  });
+
+  it('config fiscal sensível (CNPJ/SEFAZ, grupos tributários) fica fora de caixa e financeiro', () => {
+    for (const role of ['caixa', 'financeiro'] as UserRole[]) {
+      expect(ROLE_DEFAULT_PERMISSIONS[role], role).not.toContain('fiscal.editar_dados_empresa');
+      expect(ROLE_DEFAULT_PERMISSIONS[role], role).not.toContain('fiscal.grupos_tributarios');
+    }
+    expect(ROLE_DEFAULT_PERMISSIONS.caixa).toContain('fiscal.emitir_nfce');
+    expect(ROLE_DEFAULT_PERMISSIONS.caixa).not.toContain('fiscal.estornar_pagbank');
+  });
+
+  it('gerente cria e edita usuários, mas não define PIN', () => {
+    const gerente = ROLE_DEFAULT_PERMISSIONS.gerente;
+    expect(gerente).toEqual(expect.arrayContaining([
+      'usuarios.acessar', 'usuarios.criar', 'usuarios.editar_permissoes', 'usuarios.ativar_inativar',
+    ]));
+    expect(gerente).not.toContain('usuarios.definir_pin');
+  });
+
+  it('chaves antigas renomeadas não existem mais no catálogo', () => {
+    for (const k of ['vendas.emitir_nfce', 'vendas.estornar_pagbank', 'online_menu.finalizar_pedido']) {
+      expect(ALL_PERMISSIONS).not.toContain(k);
+    }
   });
 
   it('estoque não acessa telas financeiras', () => {

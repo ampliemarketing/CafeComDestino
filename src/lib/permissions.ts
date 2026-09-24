@@ -70,7 +70,7 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'mesas.pagamento_parcial', label: 'Lançar pagamento parcial/adiantamento' },
           { key: 'mesas.estornar_pagamento_parcial', label: 'Estornar pagamento parcial' },
           { key: 'mesas.desconto', label: 'Aplicar desconto no fechamento' },
-          { key: 'mesas.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo' },
+          { key: 'mesas.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo (com o próprio PIN)' },
           { key: 'mesas.remover_taxa_servico', label: 'Remover a taxa de serviço / couvert da comanda' },
           { key: 'mesas.fechar_comanda', label: 'Fechar comanda e receber pagamento' },
           { key: 'mesas.imprimir', label: 'Imprimir pré-conta' },
@@ -92,8 +92,9 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         actions: [
           { key: 'pdv.lancar_item_kg', label: 'Lançar item por quilo' },
           { key: 'pdv.desconto', label: 'Aplicar desconto na venda' },
-          { key: 'pdv.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo' },
-          { key: 'pdv.finalizar_venda', label: 'Finalizar venda / emitir NFC-e' },
+          { key: 'pdv.desconto_acima_limite', label: 'Aprovar desconto acima do teto do cargo (com o próprio PIN)' },
+          // NFC-e não é emitida no PDV — só manualmente pelo Módulo Fiscal.
+          { key: 'pdv.finalizar_venda', label: 'Finalizar venda' },
           { key: 'pdv.imprimir', label: 'Imprimir comprovante' },
         ],
       },
@@ -120,10 +121,11 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         screenId: 'sales',
         screenLabel: 'Gestão de Vendas',
         access: 'vendas.acessar',
+        // Emissão de NFC-e e estorno PagBank moraram aqui (vendas.emitir_nfce /
+        // vendas.estornar_pagbank) mas os botões ficam no Módulo Fiscal — viraram
+        // fiscal.emitir_nfce / fiscal.estornar_pagbank (migration 0055).
         actions: [
-          { key: 'vendas.emitir_nfce', label: 'Emitir NFC-e de um pedido' },
           { key: 'vendas.reimprimir', label: 'Reimprimir comprovante' },
-          { key: 'vendas.estornar_pagbank', label: 'Estornar pagamento PagBank (Pix/cartão do cardápio online)' },
         ],
       },
     ],
@@ -189,8 +191,11 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         screenLabel: 'Emissão Fiscal NFC-e',
         access: 'fiscal.acessar',
         actions: [
+          { key: 'fiscal.emitir_nfce', label: 'Emitir / reenviar NFC-e de um pedido' },
           { key: 'fiscal.baixar_xml', label: 'Baixar XML de nota fiscal' },
-          { key: 'fiscal.editar_dados_empresa', label: 'Editar dados fiscais da empresa' },
+          { key: 'fiscal.estornar_pagbank', label: 'Estornar pagamento PagBank (Pix/cartão) de nota autorizada' },
+          { key: 'fiscal.grupos_tributarios', label: 'Criar/editar/excluir grupos tributários' },
+          { key: 'fiscal.editar_dados_empresa', label: 'Editar dados fiscais da empresa (CNPJ, IE, ambiente SEFAZ)' },
         ],
       },
       {
@@ -213,6 +218,7 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
           { key: 'empresa.editar_perfil', label: 'Editar perfil do restaurante' },
           { key: 'empresa.editar_midia', label: 'Alterar logo/capa do cardápio online' },
           { key: 'empresa.editar_precos_buffet', label: 'Editar preços do buffet/quilo' },
+          { key: 'empresa.editar_regras_caixa', label: 'Editar regras de caixa (taxa de serviço, couvert, teto de desconto, diferença de fechamento)' },
         ],
       },
     ],
@@ -276,26 +282,45 @@ const screenPermissions = (screenIds: string[]): string[] =>
       .flatMap((group) => [group.access, ...group.actions.map((a) => a.key)])
   );
 
+const without = (keys: string[], excluded: string[]) => keys.filter((k) => !excluded.includes(k));
+
+// Configuração fiscal sensível (CNPJ/ambiente SEFAZ, grupos tributários) —
+// fica fora dos presets operacionais; admin/gerente liberam caso a caso.
+const FISCAL_CONFIG_KEYS = ['fiscal.editar_dados_empresa', 'fiscal.grupos_tributarios'];
+
 export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, string[]> = {
   admin: ALL_PERMISSIONS,
-  gerente: screenPermissions([
+  // Gerente cria/edita usuários, mas definir PIN (credencial de aprovação)
+  // continua só com quem o admin liberar.
+  gerente: without(screenPermissions([
     'dashboard', 'online-menu', 'waiter', 'tables', 'kitchen', 'pdv', 'caixas', 'livro-caixa', 'sales',
     'products', 'inventory', 'groups', 'suppliers',
-    'deliveries', 'fiscal', 'printers', 'reports', 'audit',
+    'deliveries', 'fiscal', 'printers', 'reports', 'users', 'audit',
+  ]), ['usuarios.definir_pin']),
+  caixa: without(screenPermissions(['online-menu', 'tables', 'pdv', 'caixas', 'livro-caixa', 'sales', 'deliveries', 'fiscal']), [
+    'caixas.estornar_venda', 'caixas.reabrir',
+    'pdv.desconto_acima_limite', 'mesas.desconto_acima_limite', 'mesas.remover_taxa_servico',
+    'fiscal.estornar_pagbank', ...FISCAL_CONFIG_KEYS,
   ]),
-  caixa: screenPermissions(['online-menu', 'tables', 'pdv', 'caixas', 'livro-caixa', 'sales', 'deliveries', 'fiscal'])
-    .filter((k) => k !== 'caixas.estornar_venda' && k !== 'caixas.reabrir'
-      && k !== 'pdv.desconto_acima_limite' && k !== 'mesas.desconto_acima_limite'
-      && k !== 'mesas.remover_taxa_servico'),
-  garcom: screenPermissions(['online-menu', 'waiter', 'tables'])
-    .filter((k) => k !== 'mesas.desconto_acima_limite' && k !== 'mesas.remover_taxa_servico'),
+  garcom: without(screenPermissions(['online-menu', 'waiter', 'tables']), [
+    'mesas.desconto_acima_limite', 'mesas.remover_taxa_servico',
+  ]),
   cozinha: screenPermissions(['kitchen']),
   estoque: screenPermissions(['products', 'inventory', 'groups', 'suppliers']),
-  financeiro: screenPermissions(['dashboard', 'caixas', 'livro-caixa', 'sales', 'reports', 'fiscal']),
+  financeiro: without(screenPermissions(['dashboard', 'caixas', 'livro-caixa', 'sales', 'reports', 'fiscal']), FISCAL_CONFIG_KEYS),
 };
 
 export function hasPermission(user: { role: UserRole; permissions?: string[] } | null | undefined, key: string): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
   return !!user.permissions?.includes(key);
+}
+
+// Quem não é admin só concede permissões que ele mesmo tem, e nunca o cargo
+// admin — mesma regra do servidor (trigger prevent_self_privilege_escalation e
+// Edge Function admin-create-user, migration 0055).
+export const canGrantPermission = hasPermission;
+
+export function grantableRoles(user: { role: UserRole } | null | undefined, roles: UserRole[]): UserRole[] {
+  return user?.role === 'admin' ? roles : roles.filter((r) => r !== 'admin');
 }

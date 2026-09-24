@@ -374,6 +374,8 @@ interface AppContextType {
 
   reversePaidOrder: (orderId: string, reason: string, managerPin: string) => Promise<boolean>;
   validateManagerPin: (pin: string) => Promise<boolean>;
+  /** PIN de quem pode aprovar desconto acima do teto (`pdv.` / `mesas.desconto_acima_limite`). */
+  validateDiscountApproverPin: (pin: string, scope: 'pdv' | 'mesas') => Promise<boolean>;
   validateOwnPin: (pin: string) => Promise<boolean>;
   recordCashExpense: (entry: { description: string; category?: string; amount: number }) => Promise<boolean>;
 
@@ -435,6 +437,8 @@ interface AppContextType {
   /** Emite a NFC-e do pedido via Edge Function `emit-nfce`. Resolve com a
    *  chave de acesso quando autorizada, ou string vazia em qualquer falha. */
   issueNfce: (orderId: string) => Promise<string>;
+  /** Estorno total de um pagamento PagBank via Edge Function `pagbank-cancel`. */
+  refundPagbankPayment: (orderId: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1360,6 +1364,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return data === true;
   };
 
+  const validateDiscountApproverPin = async (pin: string, scope: 'pdv' | 'mesas'): Promise<boolean> => {
+    const { data, error } = await supabase.rpc('validate_discount_approver_pin', { p_pin: pin, p_scope: scope });
+    if (error) { addToast('error', 'Erro ao validar PIN', error.message); return false; }
+    return data === true;
+  };
+
   const validateOwnPin = async (pin: string): Promise<boolean> => {
     const { data, error } = await supabase.rpc('validate_user_pin', { p_pin: pin });
     if (error) { addToast('error', 'Erro ao validar PIN', error.message); return false; }
@@ -1669,6 +1679,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return data.chave || '';
   };
 
+  const refundPagbankPayment = async (orderId: string): Promise<boolean> => {
+    const order = orders.find((o) => o.id === orderId);
+    const { data, error } = await supabase.functions.invoke('pagbank-cancel', { body: { orderId } });
+
+    if (error) {
+      // Erro HTTP da função (403, 502...) vem em error.context — a mensagem
+      // amigável está no corpo JSON.
+      let message = error.message || 'Erro ao chamar o serviço de pagamento.';
+      try {
+        const body = await (error as any).context?.json?.();
+        if (body?.error) message = body.error;
+      } catch { /* corpo não é JSON */ }
+      addToast('error', 'Falha ao estornar pagamento', message);
+      logAudit('Estorno PagBank (falha)', 'Fiscal', `Pedido #${order?.orderNumber ?? orderId} - ${message}`);
+      return false;
+    }
+    if (data?.alreadyCancelled) {
+      addToast('info', 'Pagamento já estornado', `Pedido #${order?.orderNumber ?? orderId}.`);
+      return true;
+    }
+    addToast('success', 'Pagamento estornado', `R$ ${Number(data?.amount ?? order?.total ?? 0).toFixed(2)} devolvido ao cliente pelo PagBank.`);
+    logAudit('Estorno PagBank', 'Fiscal', `Pedido #${order?.orderNumber ?? orderId} - R$ ${Number(data?.amount ?? 0).toFixed(2)}`);
+    return true;
+  };
+
   if (!sessionChecked || (session && authLoading)) {
     return (
       <div className="min-h-screen bg-[#F6F1EA] flex items-center justify-center">
@@ -1743,6 +1778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createPdvSale,
         reversePaidOrder,
         validateManagerPin,
+        validateDiscountApproverPin,
         validateOwnPin,
         recordCashExpense,
         openCashShift,
@@ -1767,6 +1803,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordCourtesy,
         fiscalInvoices,
         issueNfce,
+        refundPagbankPayment,
       }}
     >
       {children}

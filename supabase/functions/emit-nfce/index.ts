@@ -4,7 +4,8 @@
 //
 // Chamada pelo frontend: supabase.functions.invoke('emit-nfce', { body: { orderId } })
 // O JWT do funcionário logado vai no header Authorization e é validado aqui —
-// só quem tem a permissão `vendas.emitir_nfce` (ou é admin) pode emitir.
+// só quem tem a permissão `fiscal.emitir_nfce` (ou é admin) pode emitir — a
+// mesma chave que libera o botão Emitir/Reenviar no Módulo Fiscal.
 //
 // Secrets necessários (supabase secrets set ...):
 //   BRASILNFE_TOKEN              - token de emissão (header `Token`)
@@ -290,9 +291,9 @@ Deno.serve(async (req) => {
   const { data: { user }, error: userErr } = await caller.auth.getUser();
   if (userErr || !user) return json({ error: 'Não autenticado.' }, 401);
 
-  const { data: profile } = await caller.from('profiles').select('role, permissions').eq('id', user.id).single();
+  const { data: profile } = await caller.from('profiles').select('role, permissions, active').eq('id', user.id).single();
   const perms: string[] = Array.isArray(profile?.permissions) ? profile!.permissions : [];
-  const allowed = profile?.role === 'admin' || perms.includes('vendas.emitir_nfce') || perms.includes('fiscal.acessar');
+  const allowed = profile?.active !== false && (profile?.role === 'admin' || perms.includes('fiscal.emitir_nfce'));
   if (!allowed) return json({ error: 'Sem permissão para emitir NFC-e.' }, 403);
 
   const body = await req.json().catch(() => null);
