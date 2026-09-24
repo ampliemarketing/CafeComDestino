@@ -47,7 +47,11 @@ export const PERMISSION_CATALOG: PermissionSection[] = [
         screenId: 'online-menu',
         screenLabel: 'Cardápio Online',
         access: 'online_menu.acessar',
-        actions: [],
+        // O botão "Restaurante Aberto/Fechado" fica na barra do topo, mas o que
+        // ele controla é se o /pedir aceita pedido — por isso mora aqui.
+        actions: [
+          { key: 'online_menu.abrir_fechar_loja', label: 'Abrir/fechar o restaurante para pedidos online' },
+        ],
       },
       {
         screenId: 'waiter',
@@ -303,7 +307,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, string[]> = {
     'fiscal.estornar_pagbank', ...FISCAL_CONFIG_KEYS,
   ]),
   garcom: without(screenPermissions(['online-menu', 'waiter', 'tables']), [
-    'mesas.desconto_acima_limite', 'mesas.remover_taxa_servico',
+    'mesas.desconto_acima_limite', 'mesas.remover_taxa_servico', 'online_menu.abrir_fechar_loja',
   ]),
   cozinha: screenPermissions(['kitchen']),
   estoque: screenPermissions(['products', 'inventory', 'groups', 'suppliers']),

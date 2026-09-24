@@ -559,9 +559,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const setCompanyProfile = (profile: CompanyProfileData) => {
+    const previous = companyProfile;
     setCompanyProfileState(profile);
     supabase.from('company_profile').update(toRow(profile)).eq('id', true).then(({ error }) => {
-      if (error) addToast('error', 'Erro ao salvar perfil da empresa', error.message);
+      if (!error) return;
+      // Servidor recusou (ex.: sem permissão — trigger guard_company_profile_update):
+      // desfaz a atualização otimista pra tela não mostrar um estado que não existe.
+      setCompanyProfileState(previous);
+      addToast('error', 'Erro ao salvar perfil da empresa', error.message);
     });
   };
 

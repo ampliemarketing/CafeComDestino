@@ -130,6 +130,7 @@ describe('ROLE_DEFAULT_PERMISSIONS — presets por cargo', () => {
     expect(garcom).not.toContain('mesas.desconto_acima_limite');
     expect(garcom).not.toContain('mesas.remover_taxa_servico');
     expect(garcom).not.toContain('pdv.acessar');
+    expect(garcom).not.toContain('online_menu.abrir_fechar_loja');
     expect(garcom).not.toContain('caixas.acessar');
   });
 
