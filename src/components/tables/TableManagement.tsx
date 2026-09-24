@@ -45,7 +45,8 @@ export const TableManagement: React.FC = () => {
     setComandaCouvertQty,
     companyProfile,
     addToast,
-    currentUser
+    currentUser,
+    validateDiscountApproverPin
   } = useApp();
 
   const can = (key: string) => hasPermission(currentUser, key);
@@ -76,6 +77,9 @@ export const TableManagement: React.FC = () => {
   const [isFinalPayModalOpen, setIsFinalPayModalOpen] = useState(false);
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<PaymentMethod>('pix');
   const [finalDiscount, setFinalDiscount] = useState<number>(0);
+  const [finalDiscountReason, setFinalDiscountReason] = useState('');
+  const [finalDiscountPin, setFinalDiscountPin] = useState('');
+  const [isClosingComanda, setIsClosingComanda] = useState(false);
 
   const [tableToDelete, setTableToDelete] = useState<DiningTable | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
@@ -862,6 +866,38 @@ export const TableManagement: React.FC = () => {
               const subtotalComTaxa = currentComanda.subtotal + serviceFee + couvert;
               const remainingBeforeDiscount = Math.max(0, subtotalComTaxa - totalAdvances);
               const finalAmountToCollect = Math.max(0, remainingBeforeDiscount - finalDiscount);
+              // Mesmo cálculo do servidor (create_order_and_credit_cash): % sobre o
+              // consumo da comanda, teto configurado por cargo em Perfil da Empresa.
+              const discountPct = currentComanda.subtotal > 0 ? (finalDiscount / currentComanda.subtotal) * 100 : 0;
+              const discountLimit = companyProfile.discountLimits?.[currentUser.role] ?? (currentUser.role === 'admin' ? 100 : 0);
+              const discountOverLimit = finalDiscount > 0 && discountPct > discountLimit + 0.001;
+
+              const handleConfirmClose = async () => {
+                if (isClosingComanda) return;
+                if (discountOverLimit) {
+                  if (!finalDiscountReason.trim()) {
+                    addToast('error', 'Desconto acima do limite', `Seu teto é ${discountLimit}%. Informe o motivo do desconto.`);
+                    return;
+                  }
+                  const pinOk = await validateDiscountApproverPin(finalDiscountPin, 'mesas');
+                  if (!pinOk) {
+                    addToast('error', 'Desconto acima do limite', 'PIN inválido ou de alguém sem permissão para aprovar desconto acima do teto.');
+                    return;
+                  }
+                }
+                setIsClosingComanda(true);
+                const closed = await closeComandaAndPay(
+                  currentActiveTable.id, currentComanda.id, finalPaymentMethod, finalDiscount, undefined,
+                  discountOverLimit ? finalDiscountReason.trim() : undefined,
+                  discountOverLimit ? finalDiscountPin : undefined,
+                );
+                setIsClosingComanda(false);
+                if (!closed) return;
+                setFinalDiscountReason('');
+                setFinalDiscountPin('');
+                setIsFinalPayModalOpen(false);
+                setSelectedComandaId(null);
+              };
 
               return (
                 <div className="space-y-4 text-xs">
@@ -919,6 +955,28 @@ export const TableManagement: React.FC = () => {
                   </div>
                   )}
 
+                  {discountOverLimit && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 space-y-1.5">
+                      <p className="text-[11px] font-bold text-amber-800">
+                        Desconto de {discountPct.toFixed(1)}% acima do seu teto ({discountLimit}%). Precisa do PIN de quem pode aprovar desconto acima do teto.
+                      </p>
+                      <input
+                        value={finalDiscountReason}
+                        onChange={(e) => setFinalDiscountReason(sanitizeText(e.target.value, MAXLEN.notes))}
+                        placeholder="Motivo do desconto"
+                        className="w-full border rounded-lg p-1.5 text-xs"
+                      />
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        value={finalDiscountPin}
+                        onChange={(e) => setFinalDiscountPin(e.target.value.replace(/\D/g, '').slice(0, MAXLEN.pin))}
+                        placeholder="PIN do aprovador"
+                        className="w-full border rounded-lg p-1.5 text-xs tracking-[0.3em] text-center font-bold"
+                      />
+                    </div>
+                  )}
+
                   {finalAmountToCollect > 0 ? (
                     <div>
                       <label className="font-bold text-stone-700 block mb-1">Forma de Pagamento do Saldo Restante</label>
@@ -962,12 +1020,9 @@ export const TableManagement: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        closeComandaAndPay(currentActiveTable.id, currentComanda.id, finalPaymentMethod, finalDiscount);
-                        setIsFinalPayModalOpen(false);
-                        setSelectedComandaId(null);
-                      }}
-                      className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow"
+                      onClick={handleConfirmClose}
+                      disabled={isClosingComanda}
+                      className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow disabled:opacity-60"
                     >
                       Confirmar e Finalizar
                     </button>

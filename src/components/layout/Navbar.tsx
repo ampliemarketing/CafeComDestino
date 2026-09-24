@@ -33,8 +33,10 @@ export const Navbar: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const isStoreOpen = companyProfile.operatingHours !== 'Fechado';
+  const canToggleStore = hasPermission(currentUser, 'online_menu.abrir_fechar_loja');
 
   const toggleStoreStatus = () => {
+    if (!canToggleStore) return;
     const newStatus = isStoreOpen ? 'Fechado' : 'Terça a Domingo - 11:30 às 23:30';
     setCompanyProfile({ ...companyProfile, operatingHours: newStatus });
     addToast('info', 'Status da Loja Alterado', isStoreOpen ? 'Restaurante marcado como FECHADO' : 'Restaurante ABERTO para pedidos');
@@ -74,10 +76,12 @@ export const Navbar: React.FC = () => {
         <div className="hidden md:flex items-center gap-2 pl-4 border-l border-stone-800">
           <button
             onClick={toggleStoreStatus}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+            disabled={!canToggleStore}
+            title={canToggleStore ? undefined : 'Sem permissão para abrir/fechar o restaurante'}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition disabled:cursor-default ${
               isStoreOpen
-                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800 hover:bg-emerald-900/80'
-                : 'bg-rose-950/60 text-rose-400 border-rose-800 hover:bg-rose-900/80'
+                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800 enabled:hover:bg-emerald-900/80'
+                : 'bg-rose-950/60 text-rose-400 border-rose-800 enabled:hover:bg-rose-900/80'
             }`}
           >
             <Power className="w-3.5 h-3.5" />

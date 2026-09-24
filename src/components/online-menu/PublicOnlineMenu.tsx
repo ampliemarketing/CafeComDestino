@@ -12,7 +12,6 @@ import {
   CreditCard,
   Truck,
   Store as StoreIcon,
-  Utensils,
   Sparkles,
   XCircle,
   Loader2,
@@ -134,7 +133,7 @@ export const PublicOnlineMenu: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'customer' | 'payment' | 'confirmed'>('cart');
-  const [serviceType, setServiceType] = useState<'entrega' | 'retirada' | 'consumo_local'>('entrega');
+  const [serviceType, setServiceType] = useState<'entrega' | 'retirada'>('entrega');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
@@ -710,7 +709,7 @@ export const PublicOnlineMenu: React.FC = () => {
               {checkoutStep === 'customer' && (
                 <div className="space-y-4 text-xs">
                   <h4 className="font-bold text-xs uppercase text-stone-500 tracking-wider">Tipo de Atendimento</h4>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => setServiceType('entrega')}
                       className={`p-2.5 rounded-xl border text-center font-bold flex flex-col items-center gap-1 ${serviceType === 'entrega' ? 'bg-amber-800 text-white border-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700'}`}
@@ -724,13 +723,6 @@ export const PublicOnlineMenu: React.FC = () => {
                     >
                       <StoreIcon className="w-4 h-4" />
                       <span>Retirada</span>
-                    </button>
-                    <button
-                      onClick={() => setServiceType('consumo_local')}
-                      className={`p-2.5 rounded-xl border text-center font-bold flex flex-col items-center gap-1 ${serviceType === 'consumo_local' ? 'bg-amber-800 text-white border-amber-800' : 'bg-stone-50 border-stone-200 text-stone-700'}`}
-                    >
-                      <Utensils className="w-4 h-4" />
-                      <span>Mesa</span>
                     </button>
                   </div>
 

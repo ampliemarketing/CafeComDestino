@@ -18,6 +18,7 @@ import {
   ListChecks,
   AlertTriangle,
   Info,
+  Undo2,
 } from 'lucide-react';
 import { hasPermission } from '../../lib/permissions';
 import { MAXLEN, sanitizeText, maskCNPJ, isValidCNPJ } from '../../lib/validation';
@@ -33,13 +34,34 @@ export const FiscalManagement: React.FC = () => {
   const {
     orders, companyProfile, setCompanyProfile, addToast, currentUser,
     taxGroups, products, saveTaxGroup, deleteTaxGroup, confirmDialog,
-    fiscalInvoices, issueNfce,
+    fiscalInvoices, issueNfce, refundPagbankPayment,
   } = useApp();
   const can = (key: string) => hasPermission(currentUser, key);
-  const canEditFiscal = can('fiscal.editar_dados_empresa');
-  const canEmit = can('vendas.emitir_nfce') || can('fiscal.editar_dados_empresa');
+  const canManageTaxGroups = can('fiscal.grupos_tributarios');
+  const canEmit = can('fiscal.emitir_nfce');
+  const canRefundPagbank = can('fiscal.estornar_pagbank');
 
   const [emittingId, setEmittingId] = useState<string | null>(null);
+  const [refundingId, setRefundingId] = useState<string | null>(null);
+
+  // Estorno só do pagamento PagBank (Pix/cartão do cardápio online). A NFC-e
+  // continua autorizada — o cancelamento da nota na SEFAZ é outro processo.
+  const handleRefund = async (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const ok = await confirmDialog({
+      title: 'Estornar pagamento PagBank',
+      message: `Devolver R$ ${order.total.toFixed(2)} do pedido #${order.orderNumber} ao cliente pelo PagBank? ` +
+        'A operação não pode ser desfeita. A NFC-e autorizada NÃO é cancelada automaticamente.',
+    });
+    if (!ok) return;
+    setRefundingId(orderId);
+    try {
+      await refundPagbankPayment(orderId);
+    } finally {
+      setRefundingId(null);
+    }
+  };
   const [statusFilter, setStatusFilter] = useState<'todas' | FiscalNoteStatus>('todas');
   // Quando uma emissão dá autorizada, abre a tela de impressão na hora —
   // mesmo padrão do app do garçom ao fechar uma comanda, só que mostrando a
@@ -397,6 +419,21 @@ export const FiscalManagement: React.FC = () => {
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                 </button>
+                                {canRefundPagbank && inv.status === 'autorizada' && order?.pagbankChargeId
+                                  && order.paymentStatus === 'pagamento_aprovado' && (
+                                  <button
+                                    onClick={() => handleRefund(orderId)}
+                                    disabled={refundingId === orderId}
+                                    className="flex items-center gap-1 px-2 py-1 text-rose-700 hover:text-rose-900 border border-rose-300 rounded-lg font-bold text-[11px] disabled:opacity-40"
+                                    title="Estornar o pagamento PagBank (Pix/cartão) deste pedido"
+                                  >
+                                    <Undo2 className={`w-3.5 h-3.5 ${refundingId === orderId ? 'animate-pulse' : ''}`} />
+                                    Estornar
+                                  </button>
+                                )}
+                                {order?.paymentStatus === 'pagamento_estornado' && (
+                                  <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold text-[9px]">ESTORNADO</span>
+                                )}
                                 {canEmit && (inv.status === 'rejeitada' || inv.status === 'erro') && order && (
                                   <button
                                     onClick={() => handleEmit(orderId)}
@@ -682,7 +719,7 @@ export const FiscalManagement: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-bold text-stone-900 text-sm">Grupos Tributários</h3>
-              {canEditFiscal && (
+              {canManageTaxGroups && (
                 <button
                   onClick={handleNewGroup}
                   className="bg-amber-800 hover:bg-amber-900 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow flex items-center gap-2 shrink-0"
@@ -728,7 +765,7 @@ export const FiscalManagement: React.FC = () => {
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => openGroupEditor({ ...g, fiscal: normalizeFiscalData(g.fiscal) })}
-                            disabled={!canEditFiscal}
+                            disabled={!canManageTaxGroups}
                             title="Editar grupo"
                             className="p-1.5 text-stone-600 hover:text-stone-900 disabled:opacity-30 disabled:cursor-not-allowed"
                           >
@@ -736,7 +773,7 @@ export const FiscalManagement: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleDeleteGroup(g)}
-                            disabled={!canEditFiscal}
+                            disabled={!canManageTaxGroups}
                             title="Excluir grupo"
                             className="p-1.5 text-rose-600 hover:text-rose-800 disabled:opacity-30 disabled:cursor-not-allowed"
                           >

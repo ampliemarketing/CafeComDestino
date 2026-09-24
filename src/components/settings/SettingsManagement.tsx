@@ -60,6 +60,18 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
   const canEditCompanyProfile = hasPermission(currentUser, 'empresa.editar_perfil');
   const canEditCompanyMedia = hasPermission(currentUser, 'empresa.editar_midia');
   const canEditBuffetPrices = hasPermission(currentUser, 'empresa.editar_precos_buffet');
+  const canEditCashRules = hasPermission(currentUser, 'empresa.editar_regras_caixa');
+  const canEditAnyCompanyField = canEditCompanyProfile || canEditCompanyMedia || canEditBuffetPrices || canEditCashRules;
+  const canManageUsers = ['usuarios.editar_permissoes', 'usuarios.ativar_inativar', 'usuarios.definir_pin']
+    .some((k) => hasPermission(currentUser, k));
+
+  // Cada aba é uma tela do menu com permissão de acesso própria — sem isso,
+  // quem só tem Impressoras conseguia abrir a lista de usuários pela aba.
+  const tabAllowed: Record<'profile' | 'users' | 'printers', boolean> = {
+    profile: hasPermission(currentUser, 'empresa.acessar'),
+    users: hasPermission(currentUser, 'usuarios.acessar'),
+    printers: hasPermission(currentUser, 'impressoras.acessar'),
+  };
 
   React.useEffect(() => {
     if (initialTab) {
@@ -149,6 +161,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
 
       <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-4">
         <div className="flex gap-2 border-b pb-3 text-xs font-bold">
+          {tabAllowed.profile && (
           <button
             onClick={() => setActiveTab('profile')}
             className={`px-4 py-2 rounded-xl transition ${
@@ -157,6 +170,8 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           >
             Perfil do Restaurante
           </button>
+          )}
+          {tabAllowed.users && (
           <button
             onClick={() => setActiveTab('users')}
             className={`px-4 py-2 rounded-xl transition ${
@@ -165,6 +180,8 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           >
             Gestão de Equipe & Usuários
           </button>
+          )}
+          {tabAllowed.printers && (
           <button
             onClick={() => setActiveTab('printers')}
             className={`px-4 py-2 rounded-xl transition ${
@@ -173,9 +190,16 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           >
             Impressoras Térmicas
           </button>
+          )}
         </div>
 
-        {activeTab === 'profile' && (
+        {!tabAllowed[activeTab] && (
+          <p className="p-6 text-center text-stone-500 text-sm">
+            Você não tem permissão para acessar esta aba. Fale com um administrador.
+          </p>
+        )}
+
+        {activeTab === 'profile' && tabAllowed.profile && (
           <div className="max-w-2xl space-y-6 text-xs">
             <div>
               <h3 className="font-bold text-stone-900 text-sm border-b pb-2 mb-3">Identidade Visual & Dados Gerais</h3>
@@ -490,7 +514,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                 <h4 className="font-bold text-stone-900 text-sm">Taxa de Serviço, Couvert e Regras de Caixa</h4>
               </div>
 
-              <fieldset disabled={!canEditCompanyProfile} className="grid grid-cols-1 sm:grid-cols-2 gap-3 disabled:opacity-60 text-xs">
+              <fieldset disabled={!canEditCashRules} className="grid grid-cols-1 sm:grid-cols-2 gap-3 disabled:opacity-60 text-xs">
                 <label className="flex items-center gap-2 font-semibold text-stone-700">
                   <input type="checkbox" checked={serviceFeeEnabledInput} onChange={(e) => setServiceFeeEnabledInput(e.target.checked)} />
                   Cobrar taxa de serviço nas comandas
@@ -540,10 +564,10 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     className="w-full border rounded-xl p-2.5 font-bold" />
                 </div>
               </fieldset>
-              <p className="text-[10px] text-stone-500">Descontos acima do teto do cargo exigem motivo e PIN de gerente. Admin não tem teto.</p>
+              <p className="text-[10px] text-stone-500">Descontos acima do teto do cargo exigem motivo e o PIN de alguém com a permissão "Aprovar desconto acima do teto". Admin não tem teto.</p>
             </div>
 
-            {(canEditCompanyProfile || canEditCompanyMedia || canEditBuffetPrices) && (
+            {canEditAnyCompanyField && (
             <button
               onClick={() => {
                 if (logoUrlInput.length > MAXLEN.url || coverUrlInput.length > MAXLEN.url) {
@@ -551,40 +575,50 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                     'O link da logo ou da capa passou de 2048 caracteres (provavelmente uma imagem embutida). Cole uma URL de imagem no campo e salve de novo.');
                   return;
                 }
+                // Só entra no update o bloco que o usuário pode editar — o servidor
+                // (trigger guard_company_profile_update, 0055) confere coluna a coluna.
                 const updatedProfile = {
                   ...companyProfile,
-                  name: nameInput,
-                  tradeName: tradeNameInput,
-                  phone: phoneInput,
-                  primaryColor: primaryColorInput,
-                  logoUrl: logoUrlInput,
-                  coverUrl: coverUrlInput,
-                  buffetPrices: {
-                    lunchPricePerKg: lunchPriceInput,
-                    breakfastPricePerKg: breakfastPriceInput,
-                    plateTareGrams: tareInput,
-                    lunchEnabled: lunchEnabledInput,
-                    breakfastEnabled: breakfastEnabledInput,
-                  },
-                  deliveryFee: deliveryFeeInput,
-                  minOrderValue: minOrderValueInput,
-                  serviceFeeEnabled: serviceFeeEnabledInput,
-                  serviceFeePercent: serviceFeePercentInput,
-                  couvertEnabled: couvertEnabledInput,
-                  couvertValue: couvertValueInput,
-                  blindConferenceThreshold: blindThresholdInput,
-                  discountLimits: {
-                    ...(companyProfile.discountLimits || {}),
-                    caixa: discCaixaInput,
-                    gerente: discGerenteInput,
-                    financeiro: discFinanceiroInput,
-                    admin: 100,
-                  },
+                  ...(canEditCompanyProfile && {
+                    name: nameInput,
+                    tradeName: tradeNameInput,
+                    phone: phoneInput,
+                    primaryColor: primaryColorInput,
+                    deliveryFee: deliveryFeeInput,
+                    minOrderValue: minOrderValueInput,
+                  }),
+                  ...(canEditCompanyMedia && {
+                    logoUrl: logoUrlInput,
+                    coverUrl: coverUrlInput,
+                  }),
+                  ...(canEditBuffetPrices && {
+                    buffetPrices: {
+                      lunchPricePerKg: lunchPriceInput,
+                      breakfastPricePerKg: breakfastPriceInput,
+                      plateTareGrams: tareInput,
+                      lunchEnabled: lunchEnabledInput,
+                      breakfastEnabled: breakfastEnabledInput,
+                    },
+                  }),
+                  ...(canEditCashRules && {
+                    serviceFeeEnabled: serviceFeeEnabledInput,
+                    serviceFeePercent: serviceFeePercentInput,
+                    couvertEnabled: couvertEnabledInput,
+                    couvertValue: couvertValueInput,
+                    blindConferenceThreshold: blindThresholdInput,
+                    discountLimits: {
+                      ...(companyProfile.discountLimits || {}),
+                      caixa: discCaixaInput,
+                      gerente: discGerenteInput,
+                      financeiro: discFinanceiroInput,
+                      admin: 100,
+                    },
+                  }),
                 };
                 setCompanyProfile(updatedProfile);
 
                 // Also update matching products in catalog
-                products.forEach((p) => {
+                if (canEditBuffetPrices) products.forEach((p) => {
                   if (p.id === 'prod-kg-almoco' || p.name.toLowerCase().includes('almoço por quilo')) {
                     saveProduct({ ...p, price: lunchPriceInput, name: `Almoço Por Quilo (R$ ${lunchPriceInput.toFixed(2).replace('.', ',')}/kg)` });
                   }
@@ -604,7 +638,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           </div>
         )}
 
-        {activeTab === 'users' && (
+        {activeTab === 'users' && tabAllowed.users && (
           <div className="space-y-4 text-xs">
             <div className="flex justify-between items-center border-b pb-2">
               <h3 className="font-bold text-stone-900 text-sm">Usuários Cadastrados no Sistema</h3>
@@ -627,7 +661,8 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
                       <p className="font-bold text-stone-900">{u.name}</p>
                       <p className="text-[10px] text-stone-500">{u.email}</p>
                     </div>
-                    {hasPermission(currentUser, 'usuarios.editar_permissoes') && (
+                    {/* Admin só é editável por admin (mesma regra do servidor, 0055). */}
+                    {canManageUsers && (u.role !== 'admin' || currentUser.role === 'admin') && (
                       <button
                         onClick={() => setUserModalTarget(u)}
                         className="p-1.5 rounded-lg text-stone-500 hover:text-amber-800 hover:bg-amber-50"
@@ -662,7 +697,7 @@ export const SettingsManagement: React.FC<SettingsManagementProps> = ({ initialT
           />
         )}
 
-        {activeTab === 'printers' && (
+        {activeTab === 'printers' && tabAllowed.printers && (
           <div className="max-w-xl space-y-4 text-xs">
             <h3 className="font-bold text-stone-900 text-sm border-b pb-2">Impressão de Comprovantes e Comandas</h3>
 
